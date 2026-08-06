@@ -376,13 +376,29 @@ is wrapped in its own `try` — a missing plat must not lose the zoning answer.
 
 ## 10. Rendering (lines 908–1128)
 
-### `pair(dt, dd, cls)`
+### `pair(dt, dd, cls, linkText)`
 
 Builds one `<dt>`/`<dd>` row and type-switches the value:
 
-- Looks like a URL → a link **labelled by its field name**, never a bare URL (2.4.4).
-- Looks like a phone number → a `tel:` link.
-- Otherwise → text.
+- **URL** → a link titled `linkText` if supplied, otherwise the field label. Never a bare URL
+  (2.4.4). `linkText` comes from the layer's `nameField` or `linkName`, so a link reads
+  "Rocky Mountain Power" rather than "Provider website".
+- **Phone** → `phoneShaped()` recognises the shape, then `dialable()` decides. A `tel:` link is
+  created **only** for 10 digits, or 11 starting with 1, and the display is normalised to
+  `(801) 483-6900`. Anything else renders as plain text.
+- **Otherwise** → text.
+
+> **Why phones are validated.** The waste district's number is stored as `385468632` — 9 digits. The
+> earlier code linked anything phone-shaped, producing a `tel:` link that cannot connect. For a
+> screen reader user who cannot see that the number looks short, a dead link is worse than plain
+> text. Malformed numbers now render unlinked, which also makes the data defect visible.
+
+### Row shape
+
+Both the configured and fallback branches emit the same shape: first row
+`<Layer label> — <Field label>`, later rows just `<Field label>`. An earlier version prefixed
+fallback rows with `↳`, which made unconfigured layers (electrical) look different from configured
+ones. Removed for congruence.
 
 ### `ownerPair(raw, careOf)`
 

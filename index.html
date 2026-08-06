@@ -23,6 +23,7 @@
   --no:#4a4a4a;
   --warn-bg:#fff4e5;
   --warn-ink:#7a3e00;     /* 6.9:1 on --warn-bg */
+  --note-ink:#3f3f3f;     /* 8.9:1 on --surface */
   --focus:#b5230f;
   --radius:6px;
 }
@@ -30,7 +31,8 @@
   :root{
     --ink:#f2f2f2; --ink-soft:#c9c9c9; --bg:#121517; --surface:#1e2327;
     --line:#8d9499; --line-soft:#333a40; --accent:#7fc4f2; --accent-dk:#a8d8f8;
-    --yes:#7fd396; --no:#b9c0c5; --warn-bg:#3a2a12; --warn-ink:#ffd9a0; --focus:#ff8a70;
+    --yes:#7fd396; --no:#b9c0c5; --warn-bg:#3a2a12; --warn-ink:#ffd9a0;
+    --note-ink:#cdd3d8; --focus:#ff8a70;
   }
 }
 *{box-sizing:border-box}
@@ -156,6 +158,16 @@ dd.none{color:var(--ink-soft);font-style:italic}
 .callout p{margin:.25rem 0}
 .callout strong{color:inherit}
 .meta{font-size:.875rem;color:var(--ink-soft);margin-top:.35rem}
+/* Standing data-quality disclaimer. Deliberately quieter than .callout so a
+   permanent caveat does not compete with an actual property-specific warning. */
+.note{
+  margin:.85rem 0 0; padding:.65rem .85rem; border-radius:var(--radius);
+  background:var(--surface); border:1px solid var(--line-soft);
+  border-left:4px solid var(--line);
+  font-size:.875rem; color:var(--note-ink); line-height:1.55;
+}
+.note p{margin:0}
+.note strong{color:var(--ink)}
 footer{margin-top:3rem;border-top:2px solid var(--line-soft);background:var(--surface)}
 footer .wrap{padding-block:1.5rem;font-size:.9375rem;color:var(--ink-soft)}
 footer h2{font-size:1.0625rem;margin:1.5rem 0 .35rem;color:var(--ink)}
@@ -345,12 +357,55 @@ const CFG = {
   org: "https://services9.arcgis.com/XRrSFvEwSsReIxuA/arcgis/rest/services",
 
   // Address suggestions come from the City's authoritative address points.
+  //
+  // The stored format is:  AddNum + PrefixDir + StreetName + StreetType + SuffixDir
+  //   "3300 E SANTA ROSA AVE"   ->  3300 | E | SANTA ROSA | AVE | (none)
+  //   "2760 S 2100 E"           ->  2760 | S | 2100        | (none) | E
+  //
+  // Residents type "3300 East Santa Rosa Avenue", which matches none of that.
+  // So input is normalised and then searched in tiers — see findAddresses().
   address: {
     url:  "/Address_Points/FeatureServer/0",
-    searchField: "FullAdd",       // field typed against
-    parcelField: "ParcelID",      // joins to parcels
+    searchField: "FullAdd",
+    parcelField: "ParcelID",
+    numField:    "AddNum",
+    nameField:   "StreetName",
     extra: ["City","ZipCode","UnitType","UnitID"],
-    max: 8
+    max: 10,
+
+    // Spelled-out word -> the abbreviation actually stored in the data.
+    // Add to this list rather than changing the search logic.
+    synonyms: {
+      NORTH:"N", SOUTH:"S", EAST:"E", WEST:"W",
+      AVENUE:"AVE", AV:"AVE",
+      BOULEVARD:"BLVD", BOUL:"BLVD",
+      CIRCLE:"CIR",
+      COURT:"CT",
+      COVE:"CV",
+      DRIVE:"DR",
+      EXPRESSWAY:"EXPY", EXPWY:"EXPY",
+      LANE:"LN",
+      PARKWAY:"PKWY",
+      PLACE:"PL",
+      ROAD:"RD",
+      SQUARE:"SQ",
+      STREET:"ST", STR:"ST",
+      TERRACE:"TER", TERR:"TER"
+    },
+    // Values present in StreetType, plus safe extras.
+    types: ["AVE","BAY","BLVD","CIR","CT","CV","DR","EXPY","LN","PKWY","PL",
+            "RD","SQ","ST","TER","WAY"],
+    // Values present in PrefixDir / SuffixDir.
+    dirs: ["N","S","E","W"],
+    // What residents type -> what the data actually stores.
+    // Verified against the address points: the data has MILLCREEK as one word.
+    // Only map a variant that does NOT already exist as its own street name.
+    // Both "MILLCREEK CANYON" and "MILLCREEK CYN" exist in the data, so do
+    // not alias one to the other — it would hide real addresses.
+    streetAliases: {
+      "MILL CREEK": "MILLCREEK",
+      "DEER CREEK": "DEERCREEK"
+    }
   },
 
   // The parcel record. Carries many determinations already denormalised.
@@ -404,9 +459,11 @@ const CFG = {
     { key:"sens_poly", group:"Zoning", label:"Sensitive Land Areas cross-check",
       url:"/Sensitive_Land_Areas__Feb24/FeatureServer/0", boolean:true, hidden:true },
 
+    // attachments:true -> also fetch the recorded plat PDF attached to the feature.
     { key:"subdiv", group:"Subdivision and plat", label:"Recorded subdivision",
       url:"/Subdivision_Dissovle_3/FeatureServer/7",
-      fields:{SUB_PLAT:"Subdivision or plat name", PLAT_NUM:"Plat number"} },
+      fields:{SUB_PLAT:"Subdivision or plat name", PLAT_NUM:"Plat number"},
+      attachments:true, attachmentLabel:"Recorded plat" },
 
     { key:"flood", group:"Natural hazards", label:"FEMA flood hazard zone",
       url:"/Flood_Hazard_Zones_Final_Update/FeatureServer/0",
@@ -428,6 +485,19 @@ const CFG = {
     { key:"sewer", group:"Services", label:"Sewer district",
       url:"/SewerDistrictsUpdated/FeatureServer/0",
       fields:{District:"District", Phone:"Phone", address:"Office address"} },
+    // Millcreek is served by several retail (culinary) water companies —
+    // Salt Lake City Water, Holliday Water, Boundary Spring and others.
+    // Derived from the PARCEL CENTROID, returning a single provider.
+    //
+    // Deliberately NOT multi:true. A single point can only fall inside two
+    // service-area polygons if those polygons overlap, which is a topology
+    // error in the source data rather than two real providers. Reporting both
+    // would present a data defect to the resident as a fact about their
+    // property. One answer plus the disclaimer below is the honest treatment.
+    { key:"water", group:"Services", label:"Culinary (retail) water provider",
+      url:"/Water_Services_2021/FeatureServer/3",
+      fields:{DWNAME:"Provider", phone:"Phone", webpublic:"Provider website",
+              WHOLESALER:"Wholesale supplier"} },
     { key:"power", group:"Services", label:"Electrical service area",
       url:"/Electrical_Service/FeatureServer/0" },
     { key:"fire",  group:"Services", label:"Firework restriction area",
@@ -467,6 +537,28 @@ const CFG = {
     ["tax_dist",          "Tax district"],
     ["prop_zip",          "ZIP code"]
   ],
+
+  // Standing disclaimers shown with a whole result group, every time —
+  // not only when something looks unusual. Keyed by the group name used in
+  // LAYERS above.
+  GROUP_NOTES: {
+    "Services":
+      "Utility service area boundaries are compiled from state agency and provider "+
+      "sources, including the Utah Division of Drinking Water and the Utah Geospatial "+
+      "Resource Center. They are approximate. Boundaries are known to contain gaps, "+
+      "overlaps and other mapping errors, they are not always updated when a provider's "+
+      "service area changes, and they are derived here from a single point inside the "+
+      "parcel rather than the whole property. Treat this as a starting point, not proof "+
+      "of service. Your utility bill or meter is the authoritative record of who serves "+
+      "you. Confirm with the provider before relying on this for design, construction, "+
+      "a property transaction, or a connection application.",
+    "Natural hazards":
+      "Hazard boundaries are regulatory mapping products from FEMA and the Utah "+
+      "Geological Survey. They are approximate at parcel scale and are derived here from "+
+      "a single point inside the parcel, so a property may be partly within a hazard area "+
+      "even where this reports “No”. This is not a flood determination for lending "+
+      "or insurance purposes."
+  },
 
   // Field names never shown from generic layers.
   JUNK: /^(objectid|fid|globalid|shape|shape_|se_anno|created|creator|editor|edit|last_edit|mod_date|creationda|effective_|zone_code|cozone|applicatio|zone_desc2|notes|document_n|reg_plan_c|res_max_de)/i,
@@ -535,6 +627,82 @@ const decode = (fld,v) => {
 };
 const esc = s => String(s).replace(/'/g,"''");
 
+/* ---------------------------------------------------------------
+   Address parsing.
+   Residents do not type addresses the way the County stores them.
+   "3300 East Santa Rosa Avenue" must find "3300 E SANTA ROSA AVE".
+   Strategy: normalise the words, split off the house number and the
+   street name, and search on those two — because the pieces people
+   get wrong (direction, street type) are exactly the pieces we can
+   afford to ignore.
+   --------------------------------------------------------------- */
+function parseAddress(raw){
+  const A=CFG.address;
+  const DIRS=new Set(A.dirs), TYPES=new Set(A.types);
+  let s=String(raw||"").toUpperCase();
+  s=s.split(",")[0];                                   // drop ", MILLCREEK, UT 84109"
+  s=s.replace(/\b(?:APT|APARTMENT|UNIT|STE|SUITE|BLDG|BUILDING|LOT|#)\s*[\w-]*/g," ");
+  s=s.replace(/[.,;:]/g," ").replace(/\s+/g," ").trim();
+  if(!s) return {num:null,street:"",normalized:""};
+
+  let toks=s.split(" ").map(t=>A.synonyms[t]||t);
+
+  // Local street-name variants residents actually type. "MILLCREEK" is one
+  // word in the data; people write "Mill Creek". Extend this list as you find
+  // more — it is cheaper than loosening the search.
+  let joined=toks.join(" ");
+  for(const [from,to] of Object.entries(A.streetAliases||{})){
+    joined=joined.replace(new RegExp("\\b"+from+"\\b","g"),to);
+  }
+  toks=joined.split(" ").filter(Boolean);
+
+  // Capture the normalised string BEFORE consuming the house number,
+  // otherwise the exact-match tier searches without it and never hits.
+  const normalized=toks.join(" ");
+
+  const work=[...toks];
+  let num=null;
+  if(/^\d+[A-Z]?$/.test(work[0])) num=work.shift();     // leading house number
+
+  const rest=[...work];
+  if(rest.length>1 && DIRS.has(rest[0])) rest.shift();                       // prefix dir
+  if(rest.length>1 && DIRS.has(rest[rest.length-1])) rest.pop();             // suffix dir
+  if(rest.length>1 && TYPES.has(rest[rest.length-1])) rest.pop();            // street type
+
+  return {num, street:rest.join(" "), normalized};
+}
+
+/* Tiered search. Returns the first tier that finds anything, plus a note
+   explaining any broadening so it can be announced to the user. */
+async function findAddresses(raw, limit){
+  const A=CFG.address, p=parseAddress(raw);
+  if(!p.normalized) return {items:[],note:null,parsed:p};
+
+  const tiers=[];
+  tiers.push({ w:`UPPER(${A.searchField}) LIKE '${esc(p.normalized)}%'`, note:null });
+  if(p.num && p.street)
+    tiers.push({ w:`${A.numField}='${esc(p.num)}' AND UPPER(${A.nameField}) LIKE '${esc(p.street)}%'`,
+                 note:"Matched on house number and street name." });
+  if(!p.num && p.street)
+    tiers.push({ w:`UPPER(${A.nameField}) LIKE '${esc(p.street)}%'`,
+                 note:"Showing addresses on that street." });
+  if(p.street && p.street.length>2)
+    tiers.push({ w:`UPPER(${A.searchField}) LIKE '%${esc(p.street)}%'`,
+                 note:"No exact match, so the search was broadened." });
+
+  for(const t of tiers){
+    const j=await query(A.url,{
+      where:t.w,
+      outFields:[A.searchField,A.parcelField,...A.extra].join(","),
+      orderByFields:A.searchField,
+      resultRecordCount:String(limit||A.max)
+    });
+    const items=(j.features||[]).map(f=>f.attributes).filter(a=>a[A.parcelField]);
+    if(items.length) return {items, note:t.note, parsed:p};
+  }
+  return {items:[], note:null, parsed:p};
+}
+
 /* --- Suggestions (accessible combobox) --------------------------- */
 let timer;
 q$.addEventListener("input", ()=>{
@@ -547,35 +715,31 @@ q$.addEventListener("input", ()=>{
 
 async function suggest(term){
   const mine = ++seq;
-  const A=CFG.address;
-  // A bare 14-digit string is a parcel number, not an address.
+  // A bare 9-14 digit string is a parcel number, not an address.
   if(/^\d{9,14}$/.test(term)){
     closeList();
     say("Looks like a parcel number. Choose “Look up property”.");
     return;
   }
-  const where = `UPPER(${A.searchField}) LIKE '${esc(term.toUpperCase())}%'`;
   try{
-    const j = await query(A.url, {
-      where, outFields:[A.searchField,A.parcelField,...A.extra].join(","),
-      orderByFields:A.searchField, resultRecordCount:String(A.max)
-    });
+    const {items:found, note} = await findAddresses(term);
     if(mine!==seq) return;                        // stale response
-    items = (j.features||[]).map(f=>f.attributes).filter(a=>a[A.parcelField]);
-    render();
+    items = found;
+    render(note);
   }catch(e){
     if(mine!==seq) return;
     closeList(); say("Could not reach the address service. "+e.message, "error");
   }
 }
 
-function render(){
+function render(note){
   list$.textContent="";
   active=-1;
   q$.removeAttribute("aria-activedescendant");
   if(!items.length){
     closeList();
-    say("No addresses match. Check the spelling, or call "+CFG.contact.phone+" for help.");
+    say("No addresses match. Try just the house number and street name — for example "+
+        "“3300 Santa Rosa” — or call "+CFG.contact.phone+" for help.");
     return;
   }
   items.forEach((a,i)=>{
@@ -589,8 +753,12 @@ function render(){
   });
   list$.hidden=false;
   q$.setAttribute("aria-expanded","true");
-  say(items.length===1 ? "1 address match. Use the Down arrow to review it."
-                       : items.length+" address matches. Use arrow keys to review them.");
+  const base = items.length===1
+    ? "1 address match. Use the Down arrow to review it."
+    : items.length+" address matches. Use arrow keys to review them.";
+  // Tell the user when the search had to be loosened, rather than silently
+  // returning something different from what they typed.
+  say(note ? note+" "+base : base);
 }
 function closeList(){
   list$.hidden=true; list$.textContent="";
@@ -651,17 +819,25 @@ $("#lookup").addEventListener("submit", async e=>{
   if(!term){ say("Enter an address or parcel number first.","error"); q$.focus(); return; }
   if(chosen){ load(chosen,term); return; }
   if(/^\d{9,14}$/.test(term)){ load(term.padStart(14,"0"), term); return; }
-  // Free text: take the single best address match.
+  // Free text: run the same tiered search the suggestions use.
   say("Searching…");
   try{
     const A=CFG.address;
-    const j=await query(A.url,{
-      where:`UPPER(${A.searchField}) LIKE '${esc(term.toUpperCase())}%'`,
-      outFields:[A.searchField,A.parcelField].join(","), resultRecordCount:"1"
-    });
-    const a=(j.features||[])[0]?.attributes;
-    if(!a){ say("No property matches “"+term+"”. Check the spelling, or call "+CFG.contact.phone+".","error"); return; }
-    load(a[A.parcelField], a[A.searchField]);
+    const {items:found, note} = await findAddresses(term);
+    if(!found.length){
+      say("No property matches “"+term+"”. Try just the house number and street name — "+
+          "for example “3300 Santa Rosa”. Or call "+CFG.contact.phone+" and staff will "+
+          "look it up for you.","error");
+      return;
+    }
+    // Several candidates: let the user choose rather than guessing for them.
+    if(found.length>1){
+      items=found; render(note);
+      q$.focus();
+      return;
+    }
+    if(note) say(note);
+    load(found[0][A.parcelField], found[0][A.searchField]);
   }catch(err){ say("Search failed. "+err.message,"error"); }
 });
 $("#clear").addEventListener("click", ()=>{
@@ -707,8 +883,22 @@ async function hits(lon,lat,mine){
         query(L.url,{...geo,outFields:"*"}),
         schema(L.url)
       ]);
-      return {...L, attrs:(j.features||[])[0]?.attributes||null, sch, failed:false};
-    }catch{ return {...L, attrs:null, sch:{}, failed:true}; }
+      const feats = (j.features||[]).map(f=>f.attributes);
+      const out = {...L, attrs:feats[0]||null, all:feats, sch, failed:false, files:[]};
+
+      // Recorded plat (or any other attachment) on the matched feature.
+      if(L.attachments && out.attrs && out.attrs.OBJECTID!=null){
+        try{
+          const r = await fetch(CFG.org+L.url+"/"+out.attrs.OBJECTID+"/attachments?f=json");
+          const a = await r.json();
+          out.files = (a.attachmentInfos||[]).map(x=>({
+            id:x.id, name:x.name, type:x.contentType, size:x.size,
+            url:CFG.org+L.url+"/"+out.attrs.OBJECTID+"/attachments/"+x.id
+          }));
+        }catch{ /* attachment listing is non-critical; carry on without it */ }
+      }
+      return out;
+    }catch{ return {...L, attrs:null, all:[], sch:{}, failed:true, files:[]}; }
   }));
 }
 
@@ -850,6 +1040,7 @@ function draw(rec,sch,overlays,label,lat,lon){
         return;
       }
       if(!o.attrs){ dl.append(pair(o.label,"Not in this area","none")); return; }
+
       if(o.fields){
         // Explicitly configured fields.
         let printed=0;
@@ -872,6 +1063,28 @@ function draw(rec,sch,overlays,label,lat,lon){
           dl.append(pair(i===0?o.label:"↳ "+lab, nice));
         });
       }
+
+      /* Attachments — the recorded plat PDF. Link it with descriptive text
+         (never "attachment" or a bare URL), and say plainly that these are
+         scanned drawings that a screen reader cannot read, with the staffed
+         route offered alongside. The link is useful; pretending it is
+         accessible would not be. */
+      if(o.files && o.files.length){
+        o.files.forEach(f=>{
+          const dd=el("dd",{});
+          dd.append(el("a",{href:f.url, rel:"noopener",
+            text:(o.attachmentLabel||"Attachment")+" — "+
+                 String(o.attrs[Object.keys(o.fields||{})[0]]||f.name)+
+                 " (PDF, "+Math.round(f.size/1024)+" KB)"}));
+          dl.append(el("div",{class:"pair"},[
+            el("dt",{text:o.attachmentLabel||"Attachment"}), dd]));
+        });
+        gnotes.push("Recorded plats are scanned survey drawings. They are images, so a screen "+
+          "reader cannot read them and they cannot be made fully accessible. If you need the "+
+          "information on the plat — lot dimensions, easements, setbacks — call "+
+          CFG.contact.phone+" and staff will read it to you or describe it. Please say which "+
+          "property and what you need to know.");
+      }
     });
     card.append(dl);
     gnotes.forEach(n=>{
@@ -879,6 +1092,14 @@ function draw(rec,sch,overlays,label,lat,lon){
       cal.append(el("p",{},[el("strong",{text:"What this means. "}),document.createTextNode(n)]));
       card.append(cal);
     });
+    // Standing data-quality disclaimer for the whole group, always shown.
+    const gn=(CFG.GROUP_NOTES||{})[g];
+    if(gn){
+      const d=el("div",{class:"note"});
+      d.append(el("p",{},[
+        el("strong",{text:"About this data. "}), document.createTextNode(gn)]));
+      card.append(d);
+    }
     body$.append(card);
   });
 

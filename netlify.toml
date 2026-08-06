@@ -1,0 +1,27 @@
+# Netlify configuration for the Millcreek Property Lookup.
+#
+# This app is deployed as its OWN Netlify site, deliberately separate from the
+# Experience Builder site at maps.millcreekut.gov. Reason: an ExB Developer
+# Edition deploy replaces the whole publish directory, which would silently
+# delete this app if it lived inside that site.
+#
+# The clean public URL is then produced by a rewrite in the ExB site's own
+# netlify.toml — see DEPLOY.md, step 4.
+
+[build]
+  # No build step. The app is a single static HTML document by design.
+  publish = "."
+  command = ""
+
+[[redirects]]
+  # Send unknown paths to the app rather than a Netlify 404, so a mistyped
+  # deep link still reaches a working lookup form.
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

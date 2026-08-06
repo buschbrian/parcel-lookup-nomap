@@ -448,9 +448,10 @@ const CFG = {
       url:"/HistoricDistricts/FeatureServer/0", boolean:true,
       note:"Exterior alterations may require historic review." },
 
-    { key:"ccoz", group:"Zoning", label:"City Center Overlay (CCOZ)",
-      url:"/Zone_TCOZ/FeatureServer/0",
-      fields:{Name:"Overlay area", Descriptio:"Description"} },
+    { key:"ccoz", group:"Zoning", label:"In the City Center Overlay (CCOZ)",
+      url:"/Zone_TCOZ/FeatureServer/0", boolean:true,
+      note:"City Center Overlay standards apply, which affect permitted uses, "+
+           "building height, setbacks and site design." },
 
     // Cross-check only (hidden:true). The parcel record's `sensitive_land`
     // field is the authoritative determination because it is computed against
@@ -590,15 +591,78 @@ function say(msg, tone){
   if(tone) status$.dataset.tone = tone; else delete status$.dataset.tone;
 }
 
-/* --- REST helper ------------------------------------------------- */
-async function query(path, params){
+/* --- REST helper -------------------------------------------------
+   Errors are CLASSIFIED (err.kind) rather than collapsed into one
+   message. "The browser blocked the request", "the server rejected the
+   query" and "the network is down" need different words, and telling a
+   resident the service is unreachable when it is actually running is
+   worse than saying nothing.
+   Transient failures are retried once before being reported.
+   ----------------------------------------------------------------- */
+function svcError(kind, msg, detail){
+  const e = new Error(msg); e.kind = kind; e.detail = detail; return e;
+}
+
+// Opened straight off disk: cross-origin fetch is blocked by the browser,
+// not by the service. This is the single most likely cause of a spurious
+// "cannot reach the service" during local testing.
+const RUNNING_FROM_FILE = location.protocol === "file:";
+
+async function rawQuery(path, params){
   const u = new URL(CFG.org + path + "/query");
   u.search = new URLSearchParams({f:"json", returnGeometry:"false", ...params});
-  const r = await fetch(u, {headers:{Accept:"application/json"}});
-  if(!r.ok) throw new Error("Service returned HTTP " + r.status);
-  const j = await r.json();
-  if(j.error) throw new Error(j.error.message || "Service error");
+  let r;
+  try{
+    r = await fetch(u, {headers:{Accept:"application/json"}});
+  }catch(netErr){
+    // fetch() rejects for: offline, DNS failure, CORS block, CSP block.
+    throw svcError(RUNNING_FROM_FILE ? "file" : "network",
+      netErr.message || "Network request failed", String(u));
+  }
+  if(r.status===429) throw svcError("busy","Service is rate limiting requests (HTTP 429)");
+  if(r.status>=500)  throw svcError("server","Service error (HTTP "+r.status+")");
+  if(!r.ok)          throw svcError("http","Service returned HTTP "+r.status);
+  let j;
+  try{ j = await r.json(); }
+  catch{ throw svcError("server","Service returned a malformed response"); }
+  // ArcGIS returns HTTP 200 with an error body for a rejected query.
+  if(j.error) throw svcError("query", j.error.message || "Query rejected", j.error);
   return j;
+}
+
+async function query(path, params){
+  try{
+    return await rawQuery(path, params);
+  }catch(e){
+    // Retry once, only for failures that are plausibly transient.
+    if(["network","busy","server"].includes(e.kind)){
+      await new Promise(r=>setTimeout(r,700));
+      return await rawQuery(path, params);
+    }
+    throw e;
+  }
+}
+
+/* Turn a classified error into something worth reading. */
+function explain(e, what){
+  const call = " Call "+CFG.contact.phone+" and staff will look this up for you.";
+  switch(e && e.kind){
+    case "file":
+      return "This page was opened directly from a file, so the browser is blocking it from "+
+             "contacting the map service. Open it through a web address (http:// or https://) "+
+             "instead. Developers: run a local web server rather than double-clicking the file.";
+    case "busy":
+      return "The "+what+" is busy right now. Wait a few seconds and try again."+call;
+    case "network":
+      return "Could not reach the "+what+". Check your internet connection, then try again."+call;
+    case "server":
+    case "http":
+      return "The "+what+" is not responding correctly. This is a problem at our end, not yours."+call;
+    case "query":
+      return "That search could not be processed."+call;
+    default:
+      return "Something went wrong loading this."+call;
+  }
 }
 // Field aliases + coded-value domains, read from the service itself.
 async function schema(path){
@@ -721,15 +785,20 @@ async function suggest(term){
     say("Looks like a parcel number. Choose “Look up property”.");
     return;
   }
+  let found, note;
   try{
-    const {items:found, note} = await findAddresses(term);
-    if(mine!==seq) return;                        // stale response
-    items = found;
-    render(note);
+    ({items:found, note} = await findAddresses(term));
   }catch(e){
     if(mine!==seq) return;
-    closeList(); say("Could not reach the address service. "+e.message, "error");
+    console.error("[lookup] address search failed:", e.kind, e.message, e.detail||"");
+    closeList(); say(explain(e,"address service"), "error");
+    return;
   }
+  if(mine!==seq) return;                          // stale response
+  // render() is OUTSIDE the try on purpose: a rendering bug must not be
+  // reported to the user as a network failure.
+  items = found;
+  render(note);
 }
 
 function render(note){
@@ -838,7 +907,10 @@ $("#lookup").addEventListener("submit", async e=>{
     }
     if(note) say(note);
     load(found[0][A.parcelField], found[0][A.searchField]);
-  }catch(err){ say("Search failed. "+err.message,"error"); }
+  }catch(err){
+    console.error("[lookup] submit search failed:", err.kind, err.message);
+    say(explain(err,"address service"),"error");
+  }
 });
 $("#clear").addEventListener("click", ()=>{
   q$.value=""; chosen=null; closeList(); say("");
@@ -868,8 +940,8 @@ async function load(parcelId, label){
     draw(rec,pSchema,overlays,label,lat,lon);
   }catch(err){
     if(mine!==seq) return;
-    say("Could not load property details. "+err.message+
-        " Please call "+CFG.contact.phone+" and staff will look this up for you.","error");
+    console.error("[lookup] property load failed:", err.kind, err.message, err.detail||"");
+    say(explain(err,"property service"),"error");
   }
 }
 
@@ -1151,6 +1223,14 @@ $("#copy").addEventListener("click", async ()=>{
   }
 });
 $("#print").addEventListener("click",()=>window.print());
+
+/* Tell the user up front if the page can never work in this context, rather
+   than letting them type an address and blaming the service. */
+if(RUNNING_FROM_FILE){
+  say(explain({kind:"file"}), "error");
+  console.warn("[lookup] Opened via file:// — cross-origin requests are blocked by the "+
+    "browser. Serve over http(s): e.g. `python3 -m http.server 8080`.");
+}
 $("#build").textContent="Accessible property lookup — WCAG 2.1 AA target build, "+
   new Date().toISOString().slice(0,10)+". Report a problem to gis@millcreekut.gov.";
 </script>

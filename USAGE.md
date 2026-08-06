@@ -299,7 +299,12 @@ To find the real street names:
 - [ ] Arrow keys move through the address list; <kbd>Esc</kbd> closes it.
 - [ ] Any new boolean layer shows Yes **or** No, never blank.
 - [ ] New third-party layer has a `GROUP_NOTES` entry.
-- [ ] Browser console is clean. A CSP error means a new host needs adding to `_headers`.
+- [ ] Test over `http://localhost`, **not** by double-clicking the file. Over `file://` the browser
+      blocks the ArcGIS request and every lookup fails even though nothing is wrong. The app warns
+      you on load if you do this.
+- [ ] Browser console is clean. Errors are logged as `[lookup] … <kind> <message>` — the kind tells
+      you whether it was the network, the browser, rate limiting, or a rejected query.
+- [ ] A CSP error means a new host needs adding to `_headers`.
 - [ ] Print preview still includes the disclaimer.
 
 ### Adding a layer from a different host

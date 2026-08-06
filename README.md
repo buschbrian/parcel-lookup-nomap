@@ -125,8 +125,10 @@ python3 -m http.server 8080     # or: npx serve .
 # open http://localhost:8080
 ```
 
-Opening `index.html` directly via `file://` also works for layout, but some browsers restrict
-`fetch` from `file://` origins, so use a local server to test lookups.
+> **Do not test by double-clicking `index.html`.** Over `file://` the browser blocks the
+> cross-origin request to ArcGIS, so every lookup fails even though the service is fine. The app
+> now detects this and says so on load, but you still need a local server to test lookups. Layout
+> and print styles are fine to check over `file://`.
 
 ### Deploying
 

@@ -160,11 +160,33 @@ values.
 Writes to the `role="status" aria-live="polite"` region. **Every asynchronous outcome goes through
 here** — that is 4.1.3 Status Messages. `tone="error"` switches styling; `:empty` hides the box.
 
-### `query(path, params)`
+### `rawQuery` / `query` / `explain` — classified errors
 
 All feature service calls. Always `f=json` and `returnGeometry=false` — the app never needs
-geometry, which keeps responses small and makes it obvious no map is coming. Throws on HTTP errors
-and on ArcGIS's `{"error":…}` body, which returns HTTP 200 on failure and must be checked explicitly.
+geometry, which keeps responses small and makes it obvious no map is coming.
+
+Errors are **classified**, not collapsed into one message. `svcError(kind, msg, detail)` tags each
+failure with a `kind`, and `explain(err, what)` turns that into a sentence worth reading:
+
+| `kind` | Cause | Retried? |
+|:--|:--|:--:|
+| `file` | Page opened over `file://`; the browser blocks cross-origin fetch | no |
+| `network` | Offline, DNS failure, CORS or CSP block | yes |
+| `busy` | HTTP 429 rate limiting | yes |
+| `server` | HTTP 5xx, or a malformed JSON body | yes |
+| `http` | Any other non-OK status | no |
+| `query` | ArcGIS rejected the SQL — **HTTP 200 with an `{"error":…}` body** | no |
+
+`query()` wraps `rawQuery()` and retries once after 700 ms for the plausibly transient kinds. Rapid
+typing against a public ArcGIS service can hit a momentary limit; one retry absorbs it.
+
+> **Why this exists.** The original single message — "Could not reach the address service" — was
+> reported for *any* thrown error. It appeared most often when someone opened the file directly from
+> disk, where the service is perfectly healthy and the browser is the thing refusing. Telling a user
+> the service is down when it is running wastes their time and hides the real fault. `RUNNING_FROM_FILE`
+> is checked at startup so that case is announced immediately rather than after a failed search.
+
+`console.error("[lookup] …")` carries the kind, message and failing URL for debugging.
 
 ### `schema(path)`
 

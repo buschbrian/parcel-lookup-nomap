@@ -395,10 +395,20 @@ Builds one `<dt>`/`<dd>` row and type-switches the value:
 
 ### Row shape
 
-Both the configured and fallback branches emit the same shape: first row
-`<Layer label> — <Field label>`, later rows just `<Field label>`. An earlier version prefixed
-fallback rows with `↳`, which made unconfigured layers (electrical) look different from configured
-ones. Removed for congruence.
+Both branches emit `<Layer label> — <Field label>` for **every** row, via the local
+`row(lab)` helper.
+
+Two earlier versions were wrong here:
+
+1. The fallback branch prefixed rows with `↳`, so unconfigured layers (electrical) looked different
+   from configured ones.
+2. Only the *first* row of each layer carried the layer label. With four utilities in the Services
+   card that produced four consecutive rows labelled just "Phone". Visually you could infer ownership
+   from position; with a screen reader you could not, because rows are read one at a time. Ambiguity
+   that depends on remembering row order is an accessibility defect, not a cosmetic one.
+
+Because the layer label is prepended to every row, **layer and field labels are kept short** —
+"Electrical — Phone", not "Electrical service provider area — Provider Telephone".
 
 ### `ownerPair(raw, careOf)`
 

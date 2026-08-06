@@ -241,11 +241,19 @@ explicitly for anything resident-facing.
 
 ### Row shape is the same for every layer
 
-The first row of a layer reads `<Layer label> — <Field label>`; every later row is just
-`<Field label>`. No arrows or indent markers. **Always configure `fields`** for anything
-resident-facing — the unconfigured fallback grabs the first three attributes it finds, which is how
-an irrelevant Salt Lake County contact once appeared under Services (it came from the fireworks
-layer, since removed).
+**Every** row reads `<Layer label> — <Field label>` — not just the first. Four utilities each
+contributing a row labelled simply "Phone" is ambiguous on screen, and worse with a screen reader,
+which reads rows one at a time with no memory of which block they belong to. Every row has to stand
+on its own.
+
+**So keep `label` short.** It is prepended to every row of that layer. "Electrical" gives
+"Electrical — Phone"; "Electrical service provider area" would give
+"Electrical service provider area — Phone". Keep field labels short for the same reason — the layer
+label already carries the context.
+
+**Always configure `fields`** for anything resident-facing. The unconfigured fallback grabs the first
+three attributes it finds, which is how an irrelevant Salt Lake County contact once appeared under
+Services (it came from the fireworks layer, since removed).
 
 ### Links and phone numbers
 

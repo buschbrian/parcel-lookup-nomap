@@ -431,9 +431,10 @@ const CFG = {
   LAYERS: [
     { key:"zone",  group:"Zoning", label:"Base zoning district",
       url:"/zoneupdate2024/FeatureServer/0",
-      fields:{ZONE_:"Zone code", ZONE_DESC:"Zone category",
+      // Field labels stay short: the layer label is prepended to every row.
+      fields:{ZONE_:"Code", ZONE_DESC:"Category",
               Res_Max_De:"Max residential density (units/acre)",
-              Zone_Desc1:"Zoning ordinance"} },
+              Zone_Desc1:"Ordinance"} },
 
     // NOTE: FCOZ (Zone_FCOZ) and RCOZ (Zone_RCOZ) were removed August 2026 —
     // both are superseded by the Sensitive Land Areas regulation. Do not
@@ -441,8 +442,8 @@ const CFG = {
 
     { key:"futureland", group:"Zoning", label:"Future land use",
       url:"/Future_Land_Use_2019/FeatureServer/0",
-      fields:{LandUse:"General Plan designation", GENPLAN_WEBSITE:"General Plan",
-              GENPLAN_DOCUMENT:"General Plan document"} },
+      fields:{LandUse:"Designation", GENPLAN_WEBSITE:"General Plan",
+              GENPLAN_DOCUMENT:"Plan document"} },
 
     { key:"hist", group:"Zoning", label:"In a historic district",
       url:"/HistoricDistricts/FeatureServer/0", boolean:true,
@@ -463,31 +464,32 @@ const CFG = {
     // attachments:true -> also fetch the recorded plat PDF attached to the feature.
     { key:"subdiv", group:"Subdivision and plat", label:"Recorded subdivision",
       url:"/Subdivision_Dissovle_3/FeatureServer/7",
-      fields:{SUB_PLAT:"Subdivision or plat name", PLAT_NUM:"Plat number"},
+      fields:{SUB_PLAT:"Name", PLAT_NUM:"Plat number"},
       attachments:true, attachmentLabel:"Recorded plat" },
 
     { key:"flood", group:"Natural hazards", label:"FEMA flood hazard zone",
       url:"/Flood_Hazard_Zones_Final_Update/FeatureServer/0",
-      fields:{FLD_ZONE:"Flood zone", ZONE_SUBTY:"Zone subtype",
+      fields:{FLD_ZONE:"Zone", ZONE_SUBTY:"Subtype",
               SFHA_TF:"Special Flood Hazard Area", STATIC_BFE:"Base flood elevation (ft)"} },
     { key:"fault", group:"Natural hazards", label:"In a geologic fault study area",
       url:"/Fault_Study_Area/FeatureServer/0", boolean:true,
       note:"A site-specific geologic study may be required before building." },
 
-    { key:"council", group:"Representation", label:"City Council district",
+    { key:"council", group:"Representation", label:"City Council",
       url:"/Millcreek_City_Council_Dist_2022/FeatureServer/2",
-      fields:{DIST:"District", COUNCILMEMBER:"Council Member", WEB:"Council Member page"} },
+      fields:{DIST:"District", COUNCILMEMBER:"Member", WEB:"Member page"} },
     // NOTE: Community councils (Community_Council) were removed August 2026 —
     // no longer a City responsibility.
 
+    // Layer labels are kept SHORT because every row is prefixed with them.
     // No name field in this layer, so linkName supplies the link wording.
-    { key:"trash", group:"Services", label:"Waste & recycling pickup",
+    { key:"trash", group:"Services", label:"Waste & recycling",
       url:"/TrashPickupDays/FeatureServer/0",
       linkName:"Wasatch Front Waste & Recycling District",
-      fields:{PickupDay:"Collection day", PhoneNumber:"Phone", websitelink:"Provider website"} },
-    { key:"sewer", group:"Services", label:"Sewer district",
+      fields:{PickupDay:"Collection day", phonenumberfix:"Phone", websitelink:"Website"} },
+    { key:"sewer", group:"Services", label:"Sewer",
       url:"/SewerDistrictsUpdated/FeatureServer/0", nameField:"District",
-      fields:{District:"District", Phone:"Phone", address:"Office address"} },
+      fields:{District:"District", Phone:"Phone"} },
     // Millcreek is served by several retail (culinary) water companies —
     // Salt Lake City Water, Holliday Water, Boundary Spring and others.
     // Derived from the PARCEL CENTROID, returning a single provider.
@@ -499,18 +501,17 @@ const CFG = {
     // property. One answer plus the disclaimer below is the honest treatment.
     // nameField -> the organisation's name, used as the link text so a link
     // reads "Salt Lake City Water System", not "Provider website".
-    { key:"water", group:"Services", label:"Culinary (retail) water provider",
+    { key:"water", group:"Services", label:"Culinary water",
       url:"/Water_Services_2021/FeatureServer/3", nameField:"DWNAME",
-      fields:{DWNAME:"Provider", phone:"Phone", webpublic:"Provider website",
-              WHOLESALER:"Wholesale supplier"} },
+      fields:{DWNAME:"Provider", phone:"Phone", webpublic:"Website"} },
     // Every layer below is explicitly configured. Do not rely on the
     // self-configuring fallback for anything resident-facing: it picks the
     // first three attributes it finds, which is how a Salt Lake County Council
     // contact ended up under Services (it came from the fireworks layer).
-    { key:"power", group:"Services", label:"Electrical provider",
+    { key:"power", group:"Services", label:"Electrical",
       url:"/Electrical_Service/FeatureServer/0", nameField:"PROVIDER",
       fields:{PROVIDER:"Provider", TELEPHONE:"Phone",
-              WEBLINK:"Provider website", NOTES:"Note"} }
+              WEBLINK:"Website", NOTES:"Note"} }
 
     // REMOVED August 2026: Firework restriction area
     // (/Firework_Restrictions_2019/FeatureServer/5). Seasonal, and its
@@ -1150,15 +1151,20 @@ function draw(rec,sch,overlays,label,lat,lon){
         ? decode(o.sch[o.nameField], o.attrs[o.nameField])
         : (o.linkName || null);
 
-      /* Both branches below use the SAME row shape so cards stay congruent:
-         the first row is "<Layer label> — <Field label>", every later row is
-         just "<Field label>". No arrows, no indent markers. */
+      /* EVERY row is labelled "<Layer label> — <Field label>", not just the
+         first. Four utilities each contributing a row called simply "Phone"
+         is ambiguous on screen, and worse with a screen reader, where rows are
+         read one at a time with no memory of which block they belong to.
+         Every row therefore has to stand on its own. Both branches use the
+         same shape so cards stay congruent. */
+      const row = lab => o.label+" — "+lab;
+
       if(o.fields){
         let printed=0;
         for(const [f,lab] of Object.entries(o.fields)){
           const v=decode(o.sch[f],o.attrs[f]);
           if(v==null||v===""||v===0) continue;
-          dl.append(pair(printed===0?o.label+" — "+lab:lab, v, null, linkText));
+          dl.append(pair(row(lab), v, null, linkText));
           printed++;
         }
         if(!printed) dl.append(pair(o.label,"In this area"));
@@ -1169,10 +1175,8 @@ function draw(rec,sch,overlays,label,lat,lon){
           .filter(([f,v])=>v!=null&&String(v).trim()!==""&&!CFG.JUNK.test(f))
           .slice(0,3);
         if(!useful.length){ dl.append(pair(o.label,"Yes — this property is in this area")); return; }
-        useful.forEach(([f,v],i)=>{
-          const nice=decode(o.sch[f],v);
-          const lab=o.sch[f]?.alias||f;
-          dl.append(pair(i===0?o.label+" — "+lab:lab, nice, null, linkText));
+        useful.forEach(([f,v])=>{
+          dl.append(pair(row(o.sch[f]?.alias||f), decode(o.sch[f],v), null, linkText));
         });
       }
 

@@ -480,11 +480,13 @@ const CFG = {
     // NOTE: Community councils (Community_Council) were removed August 2026 —
     // no longer a City responsibility.
 
+    // No name field in this layer, so linkName supplies the link wording.
     { key:"trash", group:"Services", label:"Waste & recycling pickup",
       url:"/TrashPickupDays/FeatureServer/0",
-      fields:{PickupDay:"Collection day", PhoneNumber:"Phone", websitelink:"Wasatch Front Waste & Recycling"} },
+      linkName:"Wasatch Front Waste & Recycling District",
+      fields:{PickupDay:"Collection day", PhoneNumber:"Phone", websitelink:"Provider website"} },
     { key:"sewer", group:"Services", label:"Sewer district",
-      url:"/SewerDistrictsUpdated/FeatureServer/0",
+      url:"/SewerDistrictsUpdated/FeatureServer/0", nameField:"District",
       fields:{District:"District", Phone:"Phone", address:"Office address"} },
     // Millcreek is served by several retail (culinary) water companies —
     // Salt Lake City Water, Holliday Water, Boundary Spring and others.
@@ -495,14 +497,24 @@ const CFG = {
     // error in the source data rather than two real providers. Reporting both
     // would present a data defect to the resident as a fact about their
     // property. One answer plus the disclaimer below is the honest treatment.
+    // nameField -> the organisation's name, used as the link text so a link
+    // reads "Salt Lake City Water System", not "Provider website".
     { key:"water", group:"Services", label:"Culinary (retail) water provider",
-      url:"/Water_Services_2021/FeatureServer/3",
+      url:"/Water_Services_2021/FeatureServer/3", nameField:"DWNAME",
       fields:{DWNAME:"Provider", phone:"Phone", webpublic:"Provider website",
               WHOLESALER:"Wholesale supplier"} },
-    { key:"power", group:"Services", label:"Electrical service area",
-      url:"/Electrical_Service/FeatureServer/0" },
-    { key:"fire",  group:"Services", label:"Firework restriction area",
-      url:"/Firework_Restrictions_2019/FeatureServer/5" }
+    // Every layer below is explicitly configured. Do not rely on the
+    // self-configuring fallback for anything resident-facing: it picks the
+    // first three attributes it finds, which is how a Salt Lake County Council
+    // contact ended up under Services (it came from the fireworks layer).
+    { key:"power", group:"Services", label:"Electrical provider",
+      url:"/Electrical_Service/FeatureServer/0", nameField:"PROVIDER",
+      fields:{PROVIDER:"Provider", TELEPHONE:"Phone",
+              WEBLINK:"Provider website", NOTES:"Note"} }
+
+    // REMOVED August 2026: Firework restriction area
+    // (/Firework_Restrictions_2019/FeatureServer/5). Seasonal, and its
+    // unconfigured attributes surfaced an irrelevant county contact.
   ],
 
   // Plain-language determinations read straight off the parcel record.
@@ -975,16 +987,35 @@ async function hits(lon,lat,mine){
 }
 
 const isUrl = v => typeof v==="string" && /^https?:\/\//i.test(v.trim());
-const isPhone = v => typeof v==="string" && /^[\d\s()+.-]{7,}$/.test(v.trim());
 
-function pair(dt,dd,cls){
+/* Phone handling. A tel: link is only created for a number that can actually
+   be dialled — 10 digits, or 11 starting with 1. Source data contains
+   malformed values (the waste district's number is stored as 9 digits), and a
+   tel: link that fails to connect is worse than plain text, especially for
+   someone who cannot easily see that the number looks wrong. */
+const phoneShaped = v => typeof v==="string" && /^[\d\s()+.\-]{7,}$/.test(v.trim());
+function dialable(v){
+  const d = String(v).replace(/\D/g,"");
+  if(d.length===10) return {tel:"+1"+d,
+    text:"("+d.slice(0,3)+") "+d.slice(3,6)+"-"+d.slice(6)};
+  if(d.length===11 && d[0]==="1") return {tel:"+"+d,
+    text:"("+d.slice(1,4)+") "+d.slice(4,7)+"-"+d.slice(7)};
+  return null;   // not dialable — render as plain text
+}
+
+/* linkText: preferred wording for a link, normally the name of the organisation
+   being linked to ("Rocky Mountain Power") rather than the generic field label
+   ("Provider website"). Falls back to the field label. Never a bare URL — that
+   fails 2.4.4 Link Purpose. */
+function pair(dt,dd,cls,linkText){
   const d=el("dd",{class:cls});
   if(isUrl(dd)){
-    // A bare URL is not descriptive link text (2.4.4). Label it by its field.
-    d.append(el("a",{href:String(dd).trim(),rel:"noopener",text:dt}));
-  } else if(isPhone(dd)){
-    const t=String(dd).trim();
-    d.append(el("a",{href:"tel:+1"+t.replace(/\D/g,"").replace(/^1/,""),text:t}));
+    d.append(el("a",{href:String(dd).trim(),rel:"noopener",
+      text:(linkText && String(linkText).trim()) ? String(linkText).trim() : dt}));
+  } else if(phoneShaped(dd)){
+    const p=dialable(dd);
+    if(p) d.append(el("a",{href:"tel:"+p.tel,text:p.text}));
+    else  d.textContent=String(dd).trim();   // malformed: show it, don't link it
   } else {
     d.textContent=dd;
   }
@@ -1113,26 +1144,35 @@ function draw(rec,sch,overlays,label,lat,lon){
       }
       if(!o.attrs){ dl.append(pair(o.label,"Not in this area","none")); return; }
 
+      /* Link wording: the organisation's own name where the layer exposes one,
+         so a link reads "Rocky Mountain Power" rather than "Provider website". */
+      const linkText = o.nameField
+        ? decode(o.sch[o.nameField], o.attrs[o.nameField])
+        : (o.linkName || null);
+
+      /* Both branches below use the SAME row shape so cards stay congruent:
+         the first row is "<Layer label> — <Field label>", every later row is
+         just "<Field label>". No arrows, no indent markers. */
       if(o.fields){
-        // Explicitly configured fields.
         let printed=0;
         for(const [f,lab] of Object.entries(o.fields)){
           const v=decode(o.sch[f],o.attrs[f]);
           if(v==null||v===""||v===0) continue;
-          dl.append(pair(printed===0?o.label+" — "+lab:lab, v));
+          dl.append(pair(printed===0?o.label+" — "+lab:lab, v, null, linkText));
           printed++;
         }
         if(!printed) dl.append(pair(o.label,"In this area"));
       }else{
-        // Self-configuring: use the service's own field aliases.
+        // Fallback for a layer added without `fields`. Kept congruent with the
+        // configured branch, but configure `fields` for anything public-facing.
         const useful=Object.entries(o.attrs)
-          .filter(([f,v])=>v!=null&&v!==""&&!CFG.JUNK.test(f))
+          .filter(([f,v])=>v!=null&&String(v).trim()!==""&&!CFG.JUNK.test(f))
           .slice(0,3);
         if(!useful.length){ dl.append(pair(o.label,"Yes — this property is in this area")); return; }
         useful.forEach(([f,v],i)=>{
           const nice=decode(o.sch[f],v);
           const lab=o.sch[f]?.alias||f;
-          dl.append(pair(i===0?o.label:"↳ "+lab, nice));
+          dl.append(pair(i===0?o.label+" — "+lab:lab, nice, null, linkText));
         });
       }
 

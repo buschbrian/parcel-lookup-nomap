@@ -236,9 +236,27 @@ explicitly for anything resident-facing.
 | `hidden: true` | Query it but don't display — used for cross-checks |
 | `attachments: true` | Also fetch attached files (the recorded plat) |
 | `attachmentLabel` | Link label for attachments |
+| `nameField` | Field holding the organisation's name. Used as **link text**, so a link reads "Rocky Mountain Power" rather than "Provider website" |
+| `linkName` | Same idea, but a fixed string — for layers with no name field (the waste district) |
 
-Values that look like URLs become links labelled by their field name — never a bare URL, which
-fails 2.4.4. Values that look like phone numbers become `tel:` links.
+### Row shape is the same for every layer
+
+The first row of a layer reads `<Layer label> — <Field label>`; every later row is just
+`<Field label>`. No arrows or indent markers. **Always configure `fields`** for anything
+resident-facing — the unconfigured fallback grabs the first three attributes it finds, which is how
+an irrelevant Salt Lake County contact once appeared under Services (it came from the fireworks
+layer, since removed).
+
+### Links and phone numbers
+
+URL values become links titled by `nameField` / `linkName`, falling back to the field label. Never a
+bare URL — that fails 2.4.4.
+
+Phone values become `tel:` links **only if they are actually dialable** — 10 digits, or 11 starting
+with 1 — and are reformatted as `(801) 483-6900`. Anything else renders as plain text. This matters:
+the waste district's number is stored in the data as `385468632` (9 digits), and a `tel:` link that
+fails to connect is worse than plain text for someone who cannot see that the number looks wrong.
+**If you see a number rendered as plain text, that is a data defect worth fixing at source.**
 
 ### Hazard flags
 

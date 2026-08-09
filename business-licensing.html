@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Short-Term Rental Licensing Lookup — Millcreek, Utah</title>
+<meta name="description" content="Check whether a Millcreek property appears in the published short-term-rental layer or within a published 400-foot licensing buffer.">
+<style>
+:root{
+  --ink:#1a1a1a;--soft:#4a4a4a;--bg:#fff;--surface:#f4f6f8;--line:#767676;
+  --line-soft:#d4d9de;--accent:#00558c;--accent-dk:#003d66;--yes:#1c5c2e;
+  --no:#4a4a4a;--warn-bg:#fff4e5;--warn:#7a3e00;--focus:#b5230f;--radius:6px
+}
+@media (prefers-color-scheme:dark){:root{
+  --ink:#f2f2f2;--soft:#c9c9c9;--bg:#121517;--surface:#1e2327;--line:#8d9499;
+  --line-soft:#333a40;--accent:#7fc4f2;--accent-dk:#a8d8f8;--yes:#7fd396;
+  --no:#b9c0c5;--warn-bg:#3a2a12;--warn:#ffd9a0;--focus:#ff8a70
+}}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:1rem/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+.wrap{max-width:52rem;margin:0 auto;padding:1rem}
+:focus{outline:none}:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:3px}
+.skip{position:absolute;left:-9999px;top:0;z-index:99;background:var(--bg);color:var(--ink);padding:.75rem 1rem;border:2px solid var(--focus);font-weight:700}
+.skip:focus{left:.5rem;top:.5rem}
+header{border-bottom:2px solid var(--line-soft);background:var(--surface)}header .wrap{padding-block:1.25rem}
+.eyebrow{margin:0 0 .15rem;font-size:.8125rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--soft)}
+h1{margin:0;font-size:1.75rem;line-height:1.25}h2{margin:2.1rem 0 .5rem;font-size:1.3rem;line-height:1.3}h3{margin:1.4rem 0 .4rem;font-size:1.0625rem}
+p{margin:.5rem 0}.lede{color:var(--soft);max-width:46rem}a{color:var(--accent);text-underline-offset:.15em}a:hover{color:var(--accent-dk)}
+.nav{margin:.65rem 0 0}.nav a{display:inline-block;min-height:2.75rem;padding:.45rem 0;font-weight:600}
+.notice,.note,.callout{margin:.85rem 0;padding:.75rem .9rem;border-radius:var(--radius)}
+.notice{background:var(--surface);border:1px solid var(--line-soft);border-left:4px solid var(--line)}
+.notice p,.note p,.callout p{margin:.2rem 0}.callout{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn);border-left-width:5px}
+.note{background:var(--surface);border:1px solid var(--line-soft);font-size:.9rem;color:var(--soft)}
+form{margin:1.5rem 0 0}fieldset{border:0;margin:0;padding:0}legend{padding:0;font-size:1.3rem;font-weight:700;margin-bottom:.5rem}
+label{display:block;font-weight:600;margin-bottom:.3rem}.hint{font-size:.9375rem;color:var(--soft);margin:.15rem 0 .5rem}
+.combo{position:relative}input[type=text]{width:100%;min-height:2.9rem;padding:.6rem .75rem;font-size:1.0625rem;font-family:inherit;color:var(--ink);background:var(--bg);border:2px solid var(--line);border-radius:var(--radius)}
+ul[role=listbox]{list-style:none;margin:.25rem 0 0;padding:0;position:absolute;inset-inline:0;z-index:20;background:var(--bg);border:2px solid var(--line);border-radius:var(--radius);max-height:17rem;overflow-y:auto;box-shadow:0 8px 20px rgba(0,0,0,.18)}
+ul[role=listbox][hidden]{display:none}li[role=option]{padding:.7rem .75rem;cursor:pointer;min-height:2.75rem;border-bottom:1px solid var(--line-soft)}
+li[role=option]:last-child{border-bottom:0}li[role=option][aria-selected=true]{background:var(--accent);color:#fff}li[role=option] .sub{display:block;font-size:.875rem;color:var(--soft)}li[role=option][aria-selected=true] .sub{color:#e8f2fa}
+.row{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.9rem}button{font:inherit;font-weight:600;min-height:2.9rem;padding:.6rem 1.15rem;border-radius:var(--radius);cursor:pointer;border:2px solid var(--accent);background:var(--accent);color:#fff}
+button:hover{background:var(--accent-dk);border-color:var(--accent-dk)}button.secondary{background:var(--bg);color:var(--accent)}button.secondary:hover{background:var(--surface)}
+@media (prefers-color-scheme:dark){button{color:#08222f}button.secondary{color:var(--accent)}}
+.status{margin:1rem 0 0;padding:.7rem .9rem;border-radius:var(--radius);background:var(--surface);border:1px solid var(--line-soft);font-size:.9375rem}.status:empty{display:none}.status[data-tone=error]{background:var(--warn-bg);color:var(--warn);border-color:var(--warn)}
+#results[hidden]{display:none}.card{border:1px solid var(--line-soft);border-radius:var(--radius);padding:1rem 1.15rem;margin:.75rem 0;background:var(--bg)}.card>h3:first-child{margin-top:0}
+dl{margin:0}.pair{display:grid;grid-template-columns:minmax(11rem,17rem) 1fr;gap:.15rem .9rem;padding:.5rem 0;border-bottom:1px solid var(--line-soft)}.pair:last-child{border-bottom:0}
+dt{font-weight:600}dd{margin:0}.flag{display:inline-flex;align-items:baseline;gap:.4rem;font-weight:700}.flag[data-v=yes]{color:var(--yes)}.flag[data-v=no]{color:var(--no);font-weight:600}.flag[data-v=unknown]{color:var(--warn)}
+footer{margin-top:3rem;border-top:2px solid var(--line-soft);background:var(--surface)}footer .wrap{padding-block:1.5rem;font-size:.9375rem;color:var(--soft)}footer h2{font-size:1.0625rem;margin:1.4rem 0 .35rem;color:var(--ink)}footer h2:first-child{margin-top:0}footer strong{color:var(--ink)}
+@media (max-width:34rem){.pair{grid-template-columns:1fr;gap:0}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media print{form,.skip,.nav,#actions,.status{display:none}header,footer{background:#fff;border-color:#000}.card{border-color:#000;break-inside:avoid}body{color:#000;background:#fff;font-size:11pt}a{color:#000}.callout,.notice,.note{border-color:#000;color:#000;background:#fff}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header role="banner"><div class="wrap">
+  <p class="eyebrow">Millcreek Business Licensing</p>
+  <h1>Short-Term Rental Licensing Lookup</h1>
+  <p class="nav"><a href="/index.html">Back to the general property lookup</a></p>
+</div></header>
+
+<main id="main" class="wrap" tabindex="-1">
+  <p class="lede">Use an address or parcel number to screen two published licensing-map questions: whether the parcel appears in Millcreek's June 2026 short-term-rental layer, and whether it touches the published 400-foot buffer around another listed property.</p>
+  <div class="notice">
+    <p><strong>This is an initial screen, not a license decision.</strong> A clear result does not reserve a license or show compliance with primary-residence, district-cap, parking, inspection, tax, or other requirements. Business Licensing makes the official determination.</p>
+  </div>
+
+  <form id="lookup" novalidate><fieldset>
+    <legend>Check a property</legend>
+    <label for="q">Street address or 14-digit parcel number</label>
+    <p class="hint" id="q-hint">Type at least 3 characters, then choose an address. Example: 3300 E Santa Rosa Ave.</p>
+    <div class="combo">
+      <input id="q" type="text" role="combobox" autocomplete="off" aria-expanded="false" aria-controls="sugg" aria-autocomplete="list" aria-describedby="q-hint" spellcheck="false" enterkeyhint="search">
+      <ul id="sugg" role="listbox" aria-label="Address matches" hidden></ul>
+    </div>
+    <div class="row">
+      <button type="submit">Check licensing buffers</button>
+      <button type="button" class="secondary" id="clear">Clear</button>
+    </div>
+  </fieldset></form>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+
+  <section id="results" hidden aria-labelledby="r-head">
+    <h2 id="r-head" tabindex="-1">Results</h2>
+    <div id="results-body"></div>
+    <div class="row" id="actions">
+      <button type="button" class="secondary" id="copy">Copy results as text</button>
+      <button type="button" class="secondary" id="print">Print results</button>
+    </div>
+  </section>
+
+  <h2>Before applying</h2>
+  <p>Millcreek's current Business Licensing page says a short-term-rental property must be the applicant's primary residence and requires a state sales tax certificate. It also lists a site plan, rental inspection checklist, compliance declaration, and business-name verification when applicable.</p>
+  <p><a href="https://www.millcreekut.gov/457/Business-Licensing" rel="noopener">Review the official requirements and application link</a> before relying on this screen.</p>
+
+  <h2>Ask Business Licensing</h2>
+  <p>For an official buffer or license determination, contact the staff currently listed by Millcreek:</p>
+  <ul>
+    <li>Alex Wendt, Business License Administrator: <a href="tel:+18012142759">801-214-2759</a> or <a href="mailto:awendt@millcreekut.gov">awendt@millcreekut.gov</a></li>
+    <li>Amy Barber, Deputy Business License Administrator: <a href="tel:+18012142718">801-214-2718</a> or <a href="mailto:abarber@millcreekut.gov">abarber@millcreekut.gov</a></li>
+  </ul>
+</main>
+
+<footer><div class="wrap">
+  <h2>Data source and interpretation</h2>
+  <p id="public-disclaimer">Results use the <strong>Short Term Rental Parcels - June 2026</strong> and <strong>Short Term Rental Buffer - June 2026</strong> layers published in Millcreek's public Planning web map. The lookup tests the full parcel polygon. A boundary touch counts as an intersection. When the selected parcel itself appears in the rental layer, its own buffer is excluded from the “another published rental” result.</p>
+  <p>The layers are a dated public-map snapshot and may lag a new license, renewal, expiration, revocation, parcel edit, or corrected record. The result is not proof that a property holds a current license and is not approval or denial of an application.</p>
+  <h2>Accessibility</h2>
+  <p>If this page prevents you from getting a licensing screen, call Business Licensing at <a href="tel:+18012142759">801-214-2759</a>. Staff can look up the property and provide the result in an accessible format.</p>
+  <p id="build"></p>
+</div></footer>
+
+<script>
+/* ==================================================================
+   CONFIGURATION — business licensing page only
+   ================================================================== */
+const CFG={
+  org:"https://services9.arcgis.com/XRrSFvEwSsReIxuA/arcgis/rest/services",
+  release:{version:"2026.08.09",publishedOn:"2026-08-09",sourceSnapshot:"June 2026"},
+  request:{timeoutMs:12000,retryDelayMs:700},
+  address:{
+    url:"/Address_Points/FeatureServer/0",searchField:"FullAdd",parcelField:"ParcelID",
+    numField:"AddNum",nameField:"StreetName",extra:["City","ZipCode","UnitType","UnitID"],max:10,
+    synonyms:{NORTH:"N",SOUTH:"S",EAST:"E",WEST:"W",AVENUE:"AVE",AV:"AVE",BOULEVARD:"BLVD",CIRCLE:"CIR",COURT:"CT",COVE:"CV",DRIVE:"DR",EXPRESSWAY:"EXPY",LANE:"LN",PARKWAY:"PKWY",PLACE:"PL",ROAD:"RD",SQUARE:"SQ",STREET:"ST",TERRACE:"TER"},
+    types:["AVE","BAY","BLVD","CIR","CT","CV","DR","EXPY","LN","PKWY","PL","RD","SQ","ST","TER","WAY"],dirs:["N","S","E","W"],
+    streetAliases:{"MILL CREEK":"MILLCREEK","DEER CREEK":"DEERCREEK"}
+  },
+  parcel:{url:"/Millcreek_Parcels/FeatureServer/0",idField:"parcel_id"},
+  rental:{url:"/Short_Term_Rentals_June_2026/FeatureServer/0",idField:"parcel_id"},
+  buffer:{url:"/Short_Term_Rentals_June_2026/FeatureServer/1",originField:"parcel_id",distanceField:"BUFF_DIST"}
+};
+/* ==================================================================
+   No further edits needed below this line.
+   ================================================================== */
+const $=selector=>document.querySelector(selector);
+const q$=$("#q"),list$=$("#sugg"),status$=$("#status"),results$=$("#results"),
+  body$=$("#results-body"),head$=$("#r-head");
+let items=[],active=-1,chosen=null,sequence=0,timer=null,suggestionMine=0,
+  controller=new AbortController();
+const esc=value=>String(value).replace(/'/g,"''");
+const regexEsc=value=>String(value).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+const layerUrl=path=>/^https?:\/\//i.test(path)?path:CFG.org+path;
+function say(message,tone){status$.textContent=message||"";if(tone)status$.dataset.tone=tone;else delete status$.dataset.tone}
+function startTask(){sequence++;controller.abort();controller=new AbortController();return{mine:sequence,signal:controller.signal}}
+function wait(ms,signal){return new Promise((resolve,reject)=>{const id=setTimeout(resolve,ms);signal.addEventListener("abort",()=>{clearTimeout(id);reject(new DOMException("Aborted","AbortError"))},{once:true})})}
+async function fetchJson(url,signal){
+  const requestController=new AbortController();let timedOut=false;
+  const timeout=setTimeout(()=>{timedOut=true;requestController.abort()},CFG.request.timeoutMs);
+  const cancel=()=>requestController.abort();signal?.addEventListener("abort",cancel,{once:true});
+  try{
+    const response=await fetch(url,{headers:{Accept:"application/json"},signal:requestController.signal});
+    if(!response.ok)throw new Error("HTTP "+response.status);
+    const json=await response.json();if(json.error)throw new Error(json.error.message||"ArcGIS query failed");return json;
+  }catch(error){if(signal?.aborted)throw new DOMException("Aborted","AbortError");if(timedOut)throw new Error("Request timed out");throw error}
+  finally{clearTimeout(timeout);signal?.removeEventListener("abort",cancel)}
+}
+async function withRetry(work,signal){try{return await work()}catch(error){if(error.name==="AbortError")throw error;await wait(CFG.request.retryDelayMs,signal);return work()}}
+async function query(path,params,signal){const url=new URL(layerUrl(path)+"/query");url.search=new URLSearchParams({f:"json",returnGeometry:"false",...params});return withRetry(()=>fetchJson(url,signal),signal)}
+
+function parseAddress(raw){
+  const A=CFG.address,dirs=new Set(A.dirs),types=new Set(A.types);let value=String(raw||"").toUpperCase().split(",")[0];
+  value=value.replace(/(?:\b(?:APT|APARTMENT|UNIT|STE|SUITE|BLDG|BUILDING|LOT)\b|#)\s*[\w-]*/g," ").replace(/[.,;:]/g," ").replace(/\s+/g," ").trim();
+  if(!value)return{num:null,street:"",normalized:""};let tokens=value.split(" ").map(token=>A.synonyms[token]||token);let joined=tokens.join(" ");
+  for(const[from,to]of Object.entries(A.streetAliases))joined=joined.replace(new RegExp("\\b"+regexEsc(from)+"\\b","g"),to);
+  tokens=joined.split(" ").filter(Boolean);const normalized=tokens.join(" "),work=[...tokens];let num=null;
+  if(/^\d+[A-Z]?$/.test(work[0]))num=work.shift();if(work.length>1&&dirs.has(work[0]))work.shift();if(work.length>1&&dirs.has(work.at(-1)))work.pop();if(work.length>1&&types.has(work.at(-1)))work.pop();
+  return{num,street:work.join(" "),normalized};
+}
+async function findAddresses(raw,signal){
+  const A=CFG.address,p=parseAddress(raw);if(!p.normalized)return[];const tiers=[`UPPER(${A.searchField}) LIKE '${esc(p.normalized)}%'`];
+  if(p.num&&p.street)tiers.push(`${A.numField}='${esc(p.num)}' AND UPPER(${A.nameField}) LIKE '${esc(p.street)}%'`);
+  if(!p.num&&p.street)tiers.push(`UPPER(${A.nameField}) LIKE '${esc(p.street)}%'`);
+  if(p.street.length>2)tiers.push(`UPPER(${A.searchField}) LIKE '%${esc(p.street)}%'`);
+  for(const where of [...new Set(tiers)]){
+    const response=await query(A.url,{where,outFields:[A.searchField,A.parcelField,...A.extra].join(","),orderByFields:A.searchField,resultRecordCount:String(A.max)},signal);
+    const found=(response.features||[]).map(feature=>feature.attributes);if(found.length)return found;
+  }
+  return[];
+}
+function closeList(){list$.hidden=true;list$.textContent="";q$.setAttribute("aria-expanded","false");q$.removeAttribute("aria-activedescendant");items=[];active=-1}
+function highlight(index){[...list$.children].forEach((item,i)=>item.setAttribute("aria-selected",i===index?"true":"false"));active=index;if(index>=0){const item=list$.children[index];q$.setAttribute("aria-activedescendant",item.id);item.scrollIntoView({block:"nearest"})}else q$.removeAttribute("aria-activedescendant")}
+function renderSuggestions(){
+  list$.textContent="";active=-1;q$.removeAttribute("aria-activedescendant");
+  if(!items.length){closeList();say("No addresses match. Try the house number and street name.");return}
+  items.forEach((address,index)=>{const item=document.createElement("li");item.id="opt-"+index;item.setAttribute("role","option");item.setAttribute("aria-selected","false");item.append(document.createTextNode(address[CFG.address.searchField]));const sub=document.createElement("span");sub.className="sub";sub.textContent=[address.City,address.ZipCode].filter(Boolean).join(", ");item.append(sub);list$.append(item)});
+  list$.hidden=false;q$.setAttribute("aria-expanded","true");say(items.length+" address "+(items.length===1?"match":"matches")+". Use arrow keys to review.")
+}
+async function suggest(){
+  const raw=q$.value.trim();chosen=null;if(raw.length<3){closeList();say("");return}if(/^\d{9,14}$/.test(raw)){closeList();say("Looks like a parcel number. Choose Check licensing buffers.");return}
+  const task=startTask();suggestionMine=task.mine;say("Searching…");try{items=await findAddresses(raw,task.signal);if(task.mine!==sequence)return;renderSuggestions()}catch(error){if(error.name!=="AbortError"&&task.mine===sequence){closeList();say("The address service is temporarily unavailable. Try again or contact Business Licensing.","error")}}finally{if(task.mine===sequence)suggestionMine=0}
+}
+q$.addEventListener("input",()=>{clearTimeout(timer);timer=setTimeout(suggest,250)});
+q$.addEventListener("keydown",event=>{const open=!list$.hidden&&items.length;if(event.key==="ArrowDown"&&open){event.preventDefault();highlight(active>=items.length-1?0:active+1)}else if(event.key==="ArrowUp"&&open){event.preventDefault();highlight(active<=0?items.length-1:active-1)}else if(event.key==="Home"&&open){event.preventDefault();highlight(0)}else if(event.key==="End"&&open){event.preventDefault();highlight(items.length-1)}else if(event.key==="Escape"&&open){event.preventDefault();closeList();say("")}else if(event.key==="Enter"&&open&&active>=0){event.preventDefault();pick(active)}});
+list$.addEventListener("mousedown",event=>{if(event.target.closest("li[role=option]"))event.preventDefault()});
+list$.addEventListener("click",event=>{const item=event.target.closest("li[role=option]");if(item)pick([...list$.children].indexOf(item))});
+list$.addEventListener("mousemove",event=>{const item=event.target.closest("li[role=option]");if(item)highlight([...list$.children].indexOf(item))});
+function dismissSuggestions(){clearTimeout(timer);if(suggestionMine){startTask();suggestionMine=0}closeList()}
+document.addEventListener("focusin",event=>{if(!event.target.closest(".combo"))dismissSuggestions()});
+document.addEventListener("click",event=>{if(!event.target.closest(".combo"))dismissSuggestions()});
+function pick(index){const address=items[index];if(!address)return;q$.value=address[CFG.address.searchField];chosen=address[CFG.address.parcelField];closeList();q$.focus();load(chosen,q$.value)}
+
+function pair(term,value){const row=document.createElement("div");row.className="pair";const dt=document.createElement("dt");dt.textContent=term;const dd=document.createElement("dd");dd.textContent=value;row.append(dt,dd);return row}
+function flagPair(term,state){const row=document.createElement("div");row.className="pair";const dt=document.createElement("dt");dt.textContent=term;const dd=document.createElement("dd");const span=document.createElement("span");span.className="flag";span.dataset.v=state;span.textContent=(state==="yes"?"● Yes":state==="no"?"○ No":"? Unknown — verify with staff");dd.append(span);row.append(dt,dd);return row}
+function card(title){const section=document.createElement("div");section.className="card";const heading=document.createElement("h3");heading.textContent=title;section.append(heading);return section}
+function paragraphBox(className,strong,text){const box=document.createElement("div");box.className=className;const p=document.createElement("p");const b=document.createElement("strong");b.textContent=strong;p.append(b,document.createTextNode(text));box.append(p);return box}
+function renderResult(record,parcelId,activeResult,bufferResult,label){
+  body$.textContent="";head$.textContent="Results for "+(record.prop_location||label);
+  const property=card("Selected property"),propertyList=document.createElement("dl");propertyList.append(pair("Property address",record.prop_location||label),pair("Parcel number",parcelId));property.append(propertyList);body$.append(property);
+  const screen=card("Short-term-rental licensing screen"),list=document.createElement("dl");
+  const activeState=activeResult.status==="fulfilled"?(activeResult.value.features.length?"yes":"no"):"unknown";
+  let nearbyState="unknown",nearby=[];
+  if(bufferResult.status==="fulfilled"){
+    nearby=(bufferResult.value.features||[]).map(feature=>feature.attributes).filter(attributes=>String(attributes[CFG.buffer.originField]||"")!==String(parcelId));
+    nearbyState=nearby.length?"yes":"no";
+  }
+  list.append(flagPair("Appears in the June 2026 published STR parcel layer",activeState),flagPair("Within 400 feet of another published STR",nearbyState));screen.append(list);
+  let meaning;
+  if(activeState==="unknown"||nearbyState==="unknown")meaning="At least one source did not return a result. Business Licensing must verify both the listing and separation screen.";
+  else if(activeState==="yes"&&nearbyState==="yes")meaning="The selected parcel appears in the published STR layer and also intersects one or more buffers belonging to other published STR parcels. Existing-license treatment and any future application must be confirmed by Business Licensing.";
+  else if(activeState==="yes")meaning="The selected parcel appears in the published STR layer. That is a dated map record, not proof of current license status; confirm renewals or changes with Business Licensing.";
+  else if(nearbyState==="yes")meaning="The selected parcel intersects at least one 400-foot buffer from another published STR parcel. The separation requirement may affect a new application; Business Licensing makes the official measurement and decision.";
+  else meaning="No listed STR parcel or other published STR buffer intersected this parcel in the June 2026 snapshot. Other licensing requirements and newer records are not evaluated here.";
+  screen.append(paragraphBox("callout","What this means. ",meaning));
+  screen.append(paragraphBox("note","About this data. ","The full parcel boundary is compared with the two published June 2026 map layers. A parcel's own buffer is excluded from the second answer. This is not a current-license certificate, distance survey, approval, denial, or reservation of an available license."));body$.append(screen);
+  results$.hidden=false;head$.focus();say(activeState==="unknown"||nearbyState==="unknown"?"Results ready with an unavailable data source. Verify with Business Licensing.":"Results ready. Two licensing-map checks completed.")
+}
+async function load(parcelId,label){
+  const task=startTask();closeList();say("Checking "+label+"…");results$.hidden=true;body$.textContent="";
+  try{
+    const parcelResponse=await query(CFG.parcel.url,{where:`${CFG.parcel.idField}='${esc(parcelId)}'`,outFields:"parcel_id,prop_location",returnGeometry:"true",outSR:"4326"},task.signal);
+    if(task.mine!==sequence)return;const feature=parcelResponse.features?.[0];if(!feature){say("No Millcreek parcel was found. Check the address or contact Business Licensing.","error");return}
+    const activePromise=query(CFG.rental.url,{where:`${CFG.rental.idField}='${esc(parcelId)}'`,outFields:CFG.rental.idField},task.signal);
+    const geometry=feature.geometry;const bufferPromise=geometry?query(CFG.buffer.url,{where:"1=1",geometry:JSON.stringify(geometry),geometryType:"esriGeometryPolygon",inSR:"4326",spatialRel:"esriSpatialRelIntersects",outFields:[CFG.buffer.originField,CFG.buffer.distanceField].join(",")},task.signal):Promise.reject(new Error("Parcel geometry unavailable"));
+    const[activeResult,bufferResult]=await Promise.allSettled([activePromise,bufferPromise]);if(task.mine!==sequence)return;renderResult(feature.attributes,parcelId,activeResult,bufferResult,label)
+  }catch(error){if(error.name!=="AbortError"&&task.mine===sequence)say("The property service is temporarily unavailable. Try again or contact Business Licensing.","error")}
+}
+$("#lookup").addEventListener("submit",async event=>{
+  event.preventDefault();const term=q$.value.trim();if(!term){say("Enter an address or parcel number first.","error");q$.focus();return}if(chosen){load(chosen,term);return}if(/^\d{9,14}$/.test(term)){load(term.padStart(14,"0"),term);return}
+  const task=startTask();say("Searching…");try{const found=await findAddresses(term,task.signal);if(task.mine!==sequence)return;if(found.length===1){load(found[0][CFG.address.parcelField],found[0][CFG.address.searchField])}else if(found.length>1){items=found;renderSuggestions();q$.focus()}else say("No property matches that address. Try the house number and street name.","error")}catch(error){if(error.name!=="AbortError")say("The address service is temporarily unavailable.","error")}
+});
+$("#clear").addEventListener("click",()=>{startTask();clearTimeout(timer);q$.value="";chosen=null;closeList();say("");results$.hidden=true;body$.textContent="";q$.focus()});
+$("#copy").addEventListener("click",async()=>{const text=head$.textContent+"\n\n"+body$.innerText+"\n\nSource: "+CFG.release.sourceSnapshot+" public short-term-rental parcel and 400-foot buffer layers. Screening result only; verify with Millcreek Business Licensing.";try{await navigator.clipboard.writeText(text);say("Results copied.")}catch{say("Copy was blocked. Select the results text and copy it manually.","error")}});
+$("#print").addEventListener("click",()=>window.print());
+if(location.protocol==="file:")say("Open this page through http:// or https:// so the ArcGIS services can respond.","error");
+$("#build").textContent="Licensing lookup release "+CFG.release.version+" · published "+CFG.release.publishedOn+" · source snapshot "+CFG.release.sourceSnapshot+".";
+</script>
+</body>
+</html>

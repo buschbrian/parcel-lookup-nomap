@@ -22,6 +22,11 @@ coverage and results, update `CFG`, this register and tests together, and record
 | FEMA flood detail | `https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28` | Live full-parcel intersection; displays all matches and selects the highest classification by documented conservative precedence | Federal Emergency Management Agency | Live contract check; review display precedence after FEMA schema or terminology changes |
 | FEMA flood cross-check | `Flood_Hazard_Zones_Final_Update/0` | Hidden full-parcel comparison with live FEMA; minimal-X omission is normalized | FEMA data published in Millcreek's public Planning web map | Surface mismatches and run known-parcel plus web-map parity checks |
 | Surface fault rupture special-study area | `Fault_Study_Area/0` | Full-parcel Yes/No intersection | Salt Lake County data clipped/published by Millcreek; public item updated 6 January 2026 | Confirm continued use in the public Planning map and review after County/UGS mapping changes |
+| Liquefaction potential | `LiquefactionPotential/0` | Full-parcel intersection; if categories overlap, displays the highest configured category | UGS/UGRC digitization published by Millcreek; service description traces the mapping to 1994 UGS contract reports | Informational only; compare with a current authoritative UGS source before any authoritative use |
+| Debris-flow screening | `DebrisFlow_WasatchFront_ClipBuffer/0` | Full-parcel Yes/No intersection | Millcreek-published debris study-area item; no external steward is identified in its metadata | Informational only; do not infer an ordinance or study requirement from the source field; find a current authoritative replacement |
+| Alluvial-fan deposits | `AlluvialFans/0` | Full-parcel Yes/No intersection | Millcreek-published geologic item; no external steward is identified in its metadata | Informational geologic context; do not treat as a parcel-scale hazard determination; find a current authoritative replacement |
+| Published short-term-rental parcel | `Short_Term_Rentals_June_2026/0` | Exact parcel-ID match on the separate licensing page | Millcreek Business Licensing data published by Millcreek GIS | Dated June 2026 snapshot; confirm current license status with Business Licensing |
+| Published short-term-rental buffer | `Short_Term_Rentals_June_2026/1` | Full-parcel intersection; excludes the selected parcel's own buffer by `parcel_id` | Millcreek Business Licensing data published by Millcreek GIS | Verify the geometry remains 400 feet, snapshot date, renewals and source cadence before licensing use; `BUFF_DIST` currently stores 121.92024384 (400 feet in metres) despite a feet alias |
 | City Council | `Millcreek_City_Council_Dist_2022/2` | Parcel-centroid intersection | Millcreek GIS | Verify after annexation or redistricting |
 | Waste collection | `TrashPickupDays/0` | Parcel-centroid intersection | Wasatch Front Waste & Recycling District; Millcreek GIS service steward | Confirm route/provider updates |
 | Sewer | `SewerDistrictsUpdated/0` | Parcel-centroid intersection | Utility providers; Millcreek GIS service steward | Confirm provider boundary updates |
@@ -37,6 +42,10 @@ source URLs used by this lookup are also checked against the public Planning web
 - `zoneupdate2024/0` → `Zone_Update_2025___Related_Master/2`.
 - Direct UGS fault-trace proximity → `Fault_Study_Area/0` surface-fault-rupture
   special-study-area determination.
+- Added liquefaction, debris-flow and alluvial-fan layers as a separate informational,
+  non-regulatory group.
+- Added a separate Business Licensing lookup for the published STR parcels and 400-foot buffers;
+  no owner or mailing-address attributes are exposed.
 
 See [WEB-MAP-REVIEW.md](WEB-MAP-REVIEW.md) for the complete 96-layer inventory, implemented
 parity decisions and prioritized candidates.

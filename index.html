@@ -218,7 +218,8 @@ details > *:not(summary){font-size:.9063rem}
   <p class="lede">
     Enter an address or parcel number to get key zoning, flood hazard, overlay
     zone, district and service information as text. This lookup does not require
-    a map, a mouse, or vision.
+    a map, a mouse, or vision. For short-term-rental licensing, use the separate
+    <a href="/business-licensing.html">business licensing and 400-foot buffer lookup</a>.
   </p>
 
   <form id="lookup" novalidate>
@@ -535,6 +536,28 @@ const CFG = {
       reviewedOn:"2026-08-09",
       note:"A site-specific geologic investigation may be required before development." },
 
+    // These layers reproduce useful geologic context from the public Planning
+    // map. They are intentionally separated from regulatory designations: an
+    // intersection is a map-screening result, not an ordinance determination.
+    { key:"liquefaction", group:"Informational hazard screening",
+      label:"Highest mapped liquefaction potential", geometryMode:"parcel",
+      url:"/LiquefactionPotential/FeatureServer/0", cardinality:"many",
+      rankField:"POTENTIAL", rankOrder:["Very Low","Moderate","High"],
+      sourceOwner:"UGS/UGRC liquefaction mapping published by Millcreek",
+      reviewedOn:"2026-08-09",
+      fields:{POTENTIAL:"Category", Lqf_Desc:"Published description"} },
+    { key:"debris_flow", group:"Informational hazard screening",
+      label:"Intersects a mapped debris-flow screening area", boolean:true,
+      geometryMode:"parcel",
+      url:"/DebrisFlow_WasatchFront_ClipBuffer/FeatureServer/0", cardinality:"many",
+      sourceOwner:"Debris study-area data published by Millcreek; external steward not identified in the item",
+      reviewedOn:"2026-08-09" },
+    { key:"alluvial_fan", group:"Informational hazard screening",
+      label:"Intersects mapped alluvial-fan deposits", boolean:true,
+      geometryMode:"parcel", url:"/AlluvialFans/FeatureServer/0", cardinality:"many",
+      sourceOwner:"Geologic mapping published by Millcreek; external steward not identified in the item",
+      reviewedOn:"2026-08-09" },
+
     { key:"council", group:"Representation", label:"City Council",
       url:"/Millcreek_City_Council_Dist_2022/FeatureServer/2",
       sourceOwner:"Millcreek GIS", reviewedOn:"2026-08-09", cardinality:"one",
@@ -620,6 +643,11 @@ const CFG = {
       "map. Surface fault rupture uses the special-study-area polygon from that same public map. "+
       "These screening results are not a site survey, site-specific geologic investigation, or "+
       "flood determination for lending or insurance.",
+    "Informational hazard screening":
+      "These public-map layers provide generalized geologic context only. They do not drive a "+
+      "Millcreek ordinance in this lookup, establish that a hazard is or is not present on a "+
+      "specific site, replace a site investigation, or determine whether development may proceed. "+
+      "Mapped boundaries and categories can change as source data are revised.",
     "Historic designation":
       "Designation type distinguishes a National Register listing from a Millcreek local "+
       "ordinance designation. Use the Local ordinance field to determine which is shown, and "+
@@ -814,6 +842,12 @@ function floodRank(a){
 function selectHighestFlood(features){
   return [...features].sort((a,b)=>floodRank(b)-floodRank(a)||
     String(a.FLD_ZONE||"").localeCompare(String(b.FLD_ZONE||"")))[0]||null;
+}
+function selectHighestCategory(features,field,order=[]){
+  const ranks=new Map(order.map((value,index)=>[String(value).trim().toUpperCase(),index]));
+  const rank=feature=>ranks.get(String(feature?.[field]||"").trim().toUpperCase())??-1;
+  return [...features].sort((a,b)=>rank(b)-rank(a)||
+    String(a?.[field]||"").localeCompare(String(b?.[field]||"")))[0]||null;
 }
 function floodDescription(a){
   return [a?.FLD_ZONE&&("Zone "+a.FLD_ZONE),a?.ZONE_SUBTY].filter(Boolean).join(" — ");
@@ -1160,7 +1194,8 @@ async function hits(lon,lat,parcelGeometry,task){
       if(schemaResult.status==="rejected")
         console.warn("[lookup] schema unavailable:",L.key,schemaResult.reason?.kind||"unknown");
       const feats = (j.features||[]).map(f=>f.attributes);
-      let selected=L.kind==="femaFlood"?selectHighestFlood(feats):(feats[0]||null);
+      let selected=L.kind==="femaFlood"?selectHighestFlood(feats):
+        (L.rankField?selectHighestCategory(feats,L.rankField,L.rankOrder):(feats[0]||null));
       if(L.kind==="femaFlood"&&selected){
         selected={...selected};
         for(const f of ["STATIC_BFE","DEPTH","VELOCITY"])
@@ -1392,6 +1427,11 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
       const row = lab => o.label+" — "+lab;
 
       if(o.ambiguous) gnotes.push(o.label+": multiple source polygons matched the parcel point. The first value is shown; verify it with staff.");
+      if(o.rankField && o.all.length>1){
+        const categories=[...new Set(o.all.map(a=>String(a[o.rankField]||"").trim()).filter(Boolean))];
+        if(categories.length>1) gnotes.push(o.label+": the parcel touches "+categories.join(", ")+
+          " categories. The highest configured category is displayed; this is a screening precedence, not a site-specific risk score.");
+      }
       if(o.schemaFailed) gnotes.push(o.label+": field descriptions were temporarily unavailable, so coded values may not be expanded.");
 
       if(o.fields){

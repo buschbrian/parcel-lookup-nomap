@@ -9,9 +9,15 @@
 # that site's own routing configuration. Deployment and rollback notes live in README.md.
 
 [build]
-  # No build step. The app is a single static HTML document by design.
+  # No build step. Both lookup pages are static, self-contained HTML by design.
   publish = "."
   command = ""
+
+[[redirects]]
+  # A readable URL for the focused short-term-rental licensing screen.
+  from = "/business-licensing"
+  to = "/business-licensing.html"
+  status = 200
 
 [[redirects]]
   # Send unknown paths to the app rather than a Netlify 404, so a mistyped

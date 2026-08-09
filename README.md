@@ -1,8 +1,9 @@
 # Millcreek Property Lookup
 
-An accessible, text-only property lookup for Millcreek, Utah. Enter an address or parcel number and
-get zoning, future land use, subdivision, hazard, district and utility information as structured
-text — **no map, no mouse, and no vision required.**
+Two accessible, text-only lookups for Millcreek, Utah. The general property report returns zoning,
+future land use, subdivision, hazard, district and utility information. A separate business-
+licensing page screens published short-term-rental parcels and 400-foot buffers. Neither requires a
+map, mouse, or vision.
 
 Live: <https://parcel-lookup-millcreek.netlify.app/>
 
@@ -60,10 +61,17 @@ Enter an address (`3300 East Santa Rosa Avenue`) or a 14-digit parcel number, an
 - **Subdivision and plat** — plat name, plat number, and a link to the recorded plat PDF
 - **Natural hazards** — live FEMA NFHL zone/subtype detail, comparison with Millcreek's public-map
   flood layer, and the surface fault rupture special-study-area designation
+- **Informational hazard screening** — mapped liquefaction potential, debris-flow screening areas
+  and alluvial-fan deposits, explicitly separated from ordinance-driven determinations
 - **Representation** — City Council district and council member
 - **Services** — culinary water provider, sewer district, electrical provider and waste collection day
 
 Plus **copy as plain text**, **print**, and a staffed fallback with a published response time.
+
+`business-licensing.html` is deliberately narrower. It reports only whether the selected parcel
+appears in the June 2026 published short-term-rental layer and whether the full parcel intersects a
+400-foot buffer belonging to another published rental. It excludes the selected parcel's own
+buffer and directs applicants to Business Licensing for a current, official determination.
 
 ---
 
@@ -99,7 +107,8 @@ to a broken page.
 ## Repository layout
 
 ```
-index.html      The entire application. One file by design — see below.
+index.html      The general property lookup, self-contained by design.
+business-licensing.html The focused short-term-rental and 400-foot buffer lookup.
 _headers        Netlify security headers, including the CSP.
 netlify.toml    Netlify build/redirect configuration.
 README.md       This file.
@@ -111,17 +120,16 @@ tests/          Developer-only deterministic unit, browser and accessibility tes
 scripts/        Live service-contract and deployment checks.
 ```
 
-### Why one file
+### Why each page is self-contained
 
 Deliberate. The people who maintain production configuration are GIS staff, not JavaScript
-developers. A single file
-with a clearly marked configuration block at the top means adding a layer or changing a phone
-number is a text edit and a commit — no build step, no bundler, no dependency tree, nothing to
-install, nothing to break in six months when a package deprecates.
+developers. Each page keeps its own clearly marked configuration block and has no runtime build
+step, bundler, or dependency tree. The licensing page is separate so its purpose, contacts, data
+snapshot and maintenance cycle do not become entangled with the general property report.
 
 The deployed app still has no runtime dependencies or build step. Developer-only packages run the
-test suite and are not shipped. The single-file choice means the CSP needs `'unsafe-inline'` for the
-inline `<style>` and `<script>`; that accepted tradeoff is documented in `_headers`.
+test suite and are not shipped. The self-contained-page choice means the CSP needs `'unsafe-inline'`
+for inline `<style>` and `<script>`; that accepted tradeoff is documented in `_headers`.
 
 ---
 
@@ -220,6 +228,8 @@ origins; adding another host requires adding its origin to `_headers`.
 | Zoning, overlays, future land use, subdivisions | Millcreek |
 | Flood hazard | FEMA |
 | Surface fault rupture special-study area | Salt Lake County data published by Millcreek |
+| Liquefaction, debris flow and alluvial fans | Public-map geologic layers; only liquefaction explicitly credits UGS/UGRC |
+| Short-term-rental parcels and 400-foot buffers | Millcreek Business Licensing data published in the Planning web map |
 | Utility service areas | Utah Division of Drinking Water, UGRC, providers |
 
 ### On data quality
@@ -229,9 +239,10 @@ topological defects. Utility results still use the stored parcel point. FEMA flo
 special-study area, WUI, Sensitive Land and historic results use the **full parcel boundary**, so partial
 intersection is no longer missed by a centroid-only query.
 
-Standing disclaimers to that effect are shown with every Services and Natural hazards result. They
-are in `CFG.GROUP_NOTES` and should not be removed. This tool is a starting point, not proof of
-service, and not a flood determination for lending or insurance.
+Standing disclaimers are shown with every Services, Natural hazards and Informational hazard
+screening result. They are in `CFG.GROUP_NOTES` and should not be removed. The informational public-
+map layers are generalized context and are not presented as ordinance determinations. The
+licensing page has its own permanent dated-snapshot and decision caveat.
 
 Every configured service, field and ownership contact is recorded in
 [DATA-SOURCES.md](DATA-SOURCES.md). Older-named zoning, future-land-use and WUI sources must not be

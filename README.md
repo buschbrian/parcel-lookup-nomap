@@ -52,12 +52,14 @@ Enter an address (`3300 East Santa Rosa Avenue`) or a 14-digit parcel number, an
 
 - **Property record** — address, parcel number, acreage, property type, year built, building area,
   housing units, tax district, owner of record
-- **Hazard and special designations** — FEMA flood, Wildland-Urban Interface, Sensitive Land Area,
-  historic, each as an explicit Yes/No with a plain-language explanation of what it means
-- **Zoning** — base zone, future land use / General Plan designation, City Center Overlay, historic
-  district
+- **Hazard and special designations** — current Wildland-Urban Interface and Sensitive Land Area,
+  queried against the full parcel as explicit Yes/No results
+- **Zoning** — base zone, future land use / General Plan designation and City Center Overlay
+- **Historic designation** — district name, National Register status/listing year, and whether a
+  separate Millcreek local ordinance designation applies
 - **Subdivision and plat** — plat name, plat number, and a link to the recorded plat PDF
-- **Natural hazards** — FEMA flood zone detail, geologic fault study area
+- **Natural hazards** — live FEMA NFHL zone/subtype detail and proximity to UGS mapped Quaternary
+  fault traces
 - **Representation** — City Council district and council member
 - **Services** — culinary water provider, sewer district, electrical provider and waste collection day
 
@@ -143,6 +145,16 @@ npm run check:services       # live public ArcGIS contract check
 npm run check:deployment     # after Netlify has deployed the commit
 ```
 
+GIS staff can reproduce the FEMA full-parcel selection in ArcGIS Pro, ArcGIS Online Notebook, or
+another environment with ArcGIS API for Python installed:
+
+```bash
+python scripts/fema_highest_hazard.py 16264570030000
+```
+
+The JSON output includes the selected highest classification and every classification touching the
+parcel. The selection is a documented display precedence, not a FEMA risk score.
+
 > **Do not test by double-clicking `index.html`.** Over `file://` the browser blocks the
 > cross-origin request to ArcGIS, so every lookup fails even though the service is fine. The app
 > now detects this and says so on load, but you still need a local server to test lookups. Layout
@@ -175,7 +187,7 @@ Common edits:
 | Phone, email, response-time promise | `CFG.contact` |
 | Show/hide owner of record | `CFG.parcel.showOwner` |
 | Add or remove a data layer | `CFG.LAYERS` |
-| Hazard flags and their explanations | `CFG.PARCEL_FLAGS` |
+| Hazard and designation source layers | `CFG.LAYERS` |
 | Which parcel fields display | `CFG.PARCEL_FACTS` |
 | Standing data-quality disclaimers | `CFG.GROUP_NOTES` |
 | Address abbreviations and local street variants | `CFG.address.synonyms`, `.streetAliases` |
@@ -193,10 +205,10 @@ displayed.
 
 ## Data sources
 
-All queries go to Millcreek's ArcGIS Online feature services at
-`services9.arcgis.com/XRrSFvEwSsReIxuA`. The CSP restricts `connect-src` to that origin only — if
-you add a layer from another host you must add that origin to `_headers` or every query will fail
-silently in the console.
+Most local queries go to Millcreek's ArcGIS Online feature services at
+`services9.arcgis.com/XRrSFvEwSsReIxuA`. Flood classifications are queried directly from FEMA's
+National Flood Hazard Layer, and fault traces are queried directly from the Utah Geological Survey.
+The CSP permits those three origins; adding another host requires adding its origin to `_headers`.
 
 | Data | Origin |
 |:--|:--|
@@ -204,15 +216,15 @@ silently in the console.
 | Addresses | Utah Geospatial Resource Center (UGRC), Salt Lake County |
 | Zoning, overlays, future land use, subdivisions | Millcreek |
 | Flood hazard | FEMA |
-| Fault study areas | Utah Geological Survey |
+| Quaternary fault traces | Utah Geological Survey |
 | Utility service areas | Utah Division of Drinking Water, UGRC, providers |
 
 ### On data quality
 
-Utility and hazard boundaries are third-party regulatory products. They contain gaps, overlaps and
-other topological defects, and they are not always current when a provider's service area changes.
-The application derives them from a **single point inside the parcel**, so a property can be partly
-within an area that this reports as "No."
+Utility boundaries are compiled from third-party products and can contain gaps, overlaps and other
+topological defects. Utility results still use the stored parcel point. FEMA flood, UGS fault
+proximity, WUI, Sensitive Land and historic results use the **full parcel boundary**, so partial
+intersection is no longer missed by a centroid-only query.
 
 Standing disclaimers to that effect are shown with every Services and Natural hazards result. They
 are in `CFG.GROUP_NOTES` and should not be removed. This tool is a starting point, not proof of
@@ -227,10 +239,9 @@ comparison are required first.
 
 ## Known limitations
 
-1. **Centroid-based determination.** All non-parcel layers are tested against the parcel centroid,
-   not the parcel boundary. A parcel can be partly inside an area while its centroid is outside.
-   The exception is Sensitive Land Areas, where the parcel record's precomputed field is used
-   instead and the centroid test runs only as a cross-check that surfaces disagreement.
+1. **Some results remain centroid-based.** Zoning, future land use, subdivisions, representation
+   and utilities use the stored parcel point. FEMA flood, UGS fault proximity, WUI, Sensitive Land
+   and historic designations use the full parcel boundary.
 2. **The currently linked recorded plat PDFs are scanned drawings** and are not screen-reader
    accessible. The app identifies that limitation and offers staff to read or describe the needed
    dimensions and easements.
@@ -258,7 +269,9 @@ Bugs and enhancements: open an issue in this repository.
 
 This tool reports the data of record. It is **not** a zoning verification letter, **not** a flood
 determination for lending or insurance purposes, and **not** a determination that a property can be
-developed. For a binding determination contact Planning and Development Services at 801-214-2754.
+developed. For a binding determination contact
+[Planning & Zoning](https://millcreekut.gov/151/Planning-Zoning) at **801-214-2700** or
+**planner@millcreekut.gov**. The GIS accessibility/help contact remains 801-214-2754.
 
 Full disclaimer of warranty and liability is published in the application footer and follows
 Millcreek's adopted data disclaimer.

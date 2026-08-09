@@ -14,7 +14,7 @@ function pureApp(){
   const helperEnd = script.indexOf("/* Tiered search");
   return vm.runInNewContext(
     script.slice(cfgStart,cfgEnd)+"\n"+script.slice(helperStart,helperEnd)+
-    "\n;({CFG,parseAddress,decode});"
+    "\n;({CFG,parseAddress,decode,floodRank,selectHighestFlood});"
   );
 }
 
@@ -33,14 +33,15 @@ test("address normalization handles words, locality suffixes, and units",()=>{
     {num:"2760",street:"2100",normalized:"2760 S 2100 E"});
 });
 
-test("parcel determinations distinguish unknown from no",()=>{
-  const {CFG}=pureApp();
-  for(const flag of CFG.PARCEL_FLAGS){
-    assert.equal(flag.classify(null),"unknown",flag.field);
-    assert.equal(flag.classify(""),"unknown",flag.field);
-  }
-  assert.equal(CFG.PARCEL_FLAGS.find(f=>f.field==="in_wui").classify("No"),"no");
-  assert.equal(CFG.PARCEL_FLAGS.find(f=>f.field==="in_wui").classify("Yes"),"yes");
+test("hazards use live source layers and select the highest FEMA subtype",()=>{
+  const {CFG,floodRank,selectHighestFlood}=pureApp();
+  assert.deepEqual([...CFG.PARCEL_FLAGS],[]);
+  assert.match(CFG.LAYERS.find(layer=>layer.kind==="femaFlood").url,/hazards\.fema\.gov/);
+  assert.match(CFG.LAYERS.find(layer=>layer.kind==="ugsFaultProximity").url,/geology\.utah\.gov/);
+  const minimal={FLD_ZONE:"X",ZONE_SUBTY:"AREA OF MINIMAL FLOOD HAZARD",SFHA_TF:"F"};
+  const floodway={FLD_ZONE:"AE",ZONE_SUBTY:"FLOODWAY",SFHA_TF:"T"};
+  assert.ok(floodRank(floodway)>floodRank(minimal));
+  assert.equal(selectHighestFlood([minimal,floodway]),floodway);
 });
 
 test("configured fields retain valid numeric zero values",()=>{
@@ -60,10 +61,17 @@ test("every displayed layer carries source-governance metadata",()=>{
   }
 });
 
+test("security policy permits authoritative sources and Planning uses its own contact",async()=>{
+  const headers=await readFile(new URL("../_headers",import.meta.url),"utf8");
+  assert.match(headers,/connect-src[^\n]+https:\/\/hazards\.fema\.gov/);
+  assert.match(headers,/connect-src[^\n]+https:\/\/webmaps\.geology\.utah\.gov/);
+  assert.match(html,/Planning &amp; Zoning[\s\S]{0,200}801-214-2700/);
+  assert.doesNotMatch(html,/Planning and Development Services[\s\S]{0,100}801-214-2754/);
+});
+
 test("current documentation does not advertise removed features or stale deployment state",async()=>{
   const readme=await readFile(new URL("../README.md",import.meta.url),"utf8");
   const changes=await readFile(new URL("../CHANGES-2026-08-06.md",import.meta.url),"utf8");
   assert.doesNotMatch(readme,/firework restrictions/i);
   assert.match(changes,/resolved/i);
 });
-

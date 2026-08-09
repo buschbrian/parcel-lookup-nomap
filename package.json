@@ -4,8 +4,9 @@
   "private": true,
   "description": "Developer-only checks for the dependency-free Millcreek Property Lookup.",
   "scripts": {
-    "test": "npm run test:unit && npm run test:e2e",
+    "test": "npm run test:unit && npm run test:python && npm run test:e2e",
     "test:unit": "node --test tests/unit.test.mjs",
+    "test:python": "python -m unittest tests/test_flood_rank.py",
     "test:e2e": "playwright test",
     "check:services": "node scripts/check-services.mjs",
     "check:deployment": "node scripts/check-deployment.mjs"

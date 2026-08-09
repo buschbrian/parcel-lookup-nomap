@@ -23,9 +23,15 @@ const layerFeatures={
     Zone_Desc1:"https://example.test/zoning"}],
   Future_Land_Use_2019:[{LandUse:"Neighborhood 1",GENPLAN_WEBSITE:"https://example.test/plan",
     GENPLAN_DOCUMENT:"https://example.test/document"}],
-  HistoricDistricts:[], Zone_TCOZ:[], Sensitive_Land_Areas__Feb24:[],
+  HistoricDistricts:[], Zone_TCOZ:[], WUI:[], Sensitive_Land_Areas__Feb24:[],
   Subdivision_Dissovle_3:[{OBJECTID:7,SUB_PLAT:"EL SERRITO 2",PLAT_NUM:"22"}],
-  Flood_Hazard_Zones_Final_Update:[], Fault_Study_Area:[],
+  FEMA_NFHL:[
+    {FLD_ZONE:"X",ZONE_SUBTY:"AREA OF MINIMAL FLOOD HAZARD",SFHA_TF:"F",
+      STATIC_BFE:-9999,LEN_UNIT:"Feet",SOURCE_CIT:"Mock FIRM"},
+    {FLD_ZONE:"AE",ZONE_SUBTY:"FLOODWAY",SFHA_TF:"T",
+      STATIC_BFE:4387,LEN_UNIT:"Feet",SOURCE_CIT:"Mock FIRM"}
+  ],
+  UGS_FAULTS:[],
   Millcreek_City_Council_Dist_2022:[{DIST:"1",COUNCILMEMBER:"Example Member",
     WEB:"https://example.test/council"}],
   TrashPickupDays:[{PickupDay:"Tuesday",phonenumberfix:"385-468-6325",
@@ -38,12 +44,15 @@ const layerFeatures={
 };
 
 function serviceName(pathname){
+  if(pathname.includes("/public/NFHL/MapServer/28")) return "FEMA_NFHL";
+  if(pathname.includes("/Hazards/Faults_Quaternary/MapServer/2")) return "UGS_FAULTS";
+  if(pathname.includes("Millcreek_Wildland_Urban_Interface")) return "WUI";
   const match=pathname.match(/\/services\/([^/]+)\/FeatureServer/i);
   return match?.[1]||"";
 }
 
 async function mockArcGIS(page,state={}){
-  await page.route("https://services9.arcgis.com/**",async route=>{
+  await page.route("**/arcgis/rest/services/**",async route=>{
     const url=new URL(route.request().url());
     const path=url.pathname;
     const name=serviceName(path);
@@ -57,9 +66,15 @@ async function mockArcGIS(page,state={}){
       if(name==="Address_Points") return json({features:[{attributes:address}]});
       if(name==="Millcreek_Parcels"){
         if(state.delayParcel) await new Promise(resolve=>setTimeout(resolve,state.delayParcel));
-        return json({features:[{attributes:parcel(state.parcel)}]});
+        return json({features:[{attributes:parcel(state.parcel),geometry:{rings:[[
+          [-111.816,40.698],[-111.814,40.698],[-111.814,40.700],
+          [-111.816,40.700],[-111.816,40.698]
+        ]],spatialReference:{wkid:4326}}}]});
       }
       let features=[...(layerFeatures[name]||[])];
+      if(name==="FEMA_NFHL" && state.femaFeatures) features=[...state.femaFeatures];
+      if(name==="HistoricDistricts" && state.historicFeatures) features=[...state.historicFeatures];
+      if(name==="UGS_FAULTS" && state.faultFeatures) features=[...state.faultFeatures];
       if(name==="Water_Services_2021" && state.multipleWater)
         features.push({DWNAME:"Overlapping Provider",phone:"801-555-0100",webpublic:"https://example.test/overlap"});
       return json({features:features.map(attributes=>({attributes}))});
@@ -112,13 +127,45 @@ test("lookup preserves zeroes and copy includes links, notes, and disclaimer",as
   expect(copied).toContain("not a zoning verification letter");
 });
 
-test("unknown source values are not rendered as No",async({page})=>{
+test("a missing FEMA classification is Unknown rather than No",async({page})=>{
   await page.unrouteAll({behavior:"wait"});
-  await mockArcGIS(page,{parcel:{in_wui:""}});
+  await mockArcGIS(page,{femaFeatures:[]});
   await page.reload();
   await loadKnownProperty(page);
-  const row=page.locator(".pair",{hasText:"Wildland-Urban Interface"});
+  const row=page.locator(".pair",{hasText:"In FEMA Special Flood Hazard Area"});
   await expect(row).toContainText("Unknown — verify with staff");
+});
+
+test("FEMA results display the highest intersecting flood subtype",async({page})=>{
+  await loadKnownProperty(page);
+  await expect(page.locator(".pair",{hasText:"Highest FEMA flood zone"})).toContainText("AE");
+  await expect(page.locator(".pair",{hasText:"Highest FEMA flood subtype"})).toContainText("FLOODWAY");
+  await expect(page.locator(".pair",{hasText:"In FEMA Special Flood Hazard Area"})).toContainText("Yes");
+  await expect(page.locator("#results-body")).toContainText("AREA OF MINIMAL FLOOD HAZARD");
+});
+
+test("historic results distinguish local ordinance and National Register status",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{historicFeatures:[{name:"Mountair Acres Subdivision Historic District",
+    designation_type:"Federal",local_ordinance:"No",listyear:2025,
+    maplink:"https://example.test/mountair"}]});
+  await page.reload();
+  await loadKnownProperty(page);
+  const historic=page.locator(".card",{has:page.locator("h3",{hasText:"Historic designation"})});
+  await expect(historic).toContainText("Designation typeFederal");
+  await expect(historic).toContainText("Local ordinance appliesNo");
+  await expect(historic).toContainText("National Register listing year2025");
+
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{historicFeatures:[{name:"Evergreen Avenue Historic District",
+    designation_type:"Federal and Local",local_ordinance:"Yes",listyear:2007,
+    maplink:"https://example.test/evergreen"}]});
+  await page.reload();
+  await loadKnownProperty(page);
+  const localHistoric=page.locator(".card",{has:page.locator("h3",{hasText:"Historic designation"})});
+  await expect(localHistoric).toContainText("Designation typeFederal and Local");
+  await expect(localHistoric).toContainText("Local ordinance appliesYes");
+  await expect(localHistoric).toContainText("National Register listing year2007");
 });
 
 test("leaving the combobox closes its suggestions",async({page})=>{
@@ -127,6 +174,14 @@ test("leaving the combobox closes its suggestions",async({page})=>{
   await page.locator("#q").press("Tab");
   await expect(page.locator("#sugg")).toBeHidden();
   await expect(page.locator("#q")).toHaveAttribute("aria-expanded","false");
+});
+
+test("a pointer click on an address suggestion loads that property",async({page})=>{
+  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await expect(page.locator("#sugg li")).toHaveCount(1);
+  await page.locator("#sugg li").click();
+  await expect(page.locator("#results")).toBeVisible();
+  await expect(page.locator("#r-head")).toContainText("3300 E SANTA ROSA AVE");
 });
 
 test("Clear invalidates a slow property response",async({page})=>{

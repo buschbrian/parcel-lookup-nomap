@@ -16,8 +16,8 @@ as the file changes.
 2. **Production stays one file.** GIS staff can change the marked `CFG` block without a bundler.
 3. **Third-party values are untrusted.** Rendering uses `textContent`; only validated HTTP(S) URLs
    and dialable North American phone numbers become links.
-4. **Missing data is not a negative answer.** Parcel flags are Yes, No or Unknown. Service failures
-   and unexpected overlaps remain visible.
+4. **Missing data is not a negative answer.** A missing FEMA classification is Unknown. Service
+   failures and unexpected overlaps remain visible.
 5. **A partial answer is better than a blank page.** Independent layer failures are contained and
    reported while successful results render normally.
 
@@ -61,8 +61,8 @@ Everything above the `No further edits needed below this line` marker is the mai
 | `address` | Address service, field names, synonyms and safe local aliases |
 | `parcel` | Parcel service, identifier, centroid fields and owner visibility |
 | `contact` | Phone, email and staffed response commitment |
-| `LAYERS` | Point-in-polygon sources and their display rules |
-| `PARCEL_FLAGS` | Whole-parcel Yes/No/Unknown classifications and explanations |
+| `planning` | Planning & Zoning contact for binding determinations |
+| `LAYERS` | Local or absolute ArcGIS sources, spatial method and display rules |
 | `PARCEL_FACTS` | Ordered parcel-record facts and field-specific formatting |
 | `GROUP_NOTES` | Standing limitations for third-party result groups |
 
@@ -71,14 +71,14 @@ Every displayed layer carries:
 - `sourceOwner` and `reviewedOn` for governance;
 - `cardinality`, normally `"one"`, so an unexpected overlap becomes a warning;
 - an explicit `fields` map for resident-facing output;
-- optional `boolean`, `note`, `nameField`, `linkName` or attachment settings.
+- optional `boolean`, `note`, `geometryMode`, `kind`, distance, link or attachment settings.
 
 Layer indices are service-specific and are not assumed to be zero. `DATA-SOURCES.md` is the review
 register; a newer-looking ArcGIS item is not adopted without data-owner approval and comparison.
 
-Parcel flags use `classify(value)` and return exactly `"yes"`, `"no"` or `"unknown"`. A blank,
-null or unfamiliar value must return Unknown. Boolean polygon layers differ: a successful spatial
-query either intersects (Yes) or does not (No); a failed query renders Unavailable.
+The parcel's denormalized hazard/designation flags are deliberately not displayed. Boolean source
+layers use a successful spatial query as Yes/No; a failed query renders Unavailable. FEMA is
+specialized: no returned classification renders Unknown rather than No.
 
 ---
 
@@ -104,8 +104,9 @@ This prevents a slow response from reopening cleared suggestions or repopulating
 queries, ordinary HTTP errors or cancelled work. `explain()` turns the classification into public
 language and always includes the staffed route where appropriate.
 
-`query()` builds ArcGIS `/query` URLs. `schema()` reads aliases and coded-value domains through the
-same classified helper and caches only successful metadata. A schema failure does not erase feature
+`layerUrl()` supports both Millcreek-relative and authoritative absolute service URLs. `query()`
+builds ArcGIS `/query` URLs. `schema()` reads aliases and coded-value domains through the same
+classified helper and caches only successful metadata. A schema failure does not erase feature
 values; it marks the layer as degraded and leaves codes undecoded.
 
 `decode()` expands coded domains, trims strings and treats whitespace-only values as absent. It does
@@ -149,8 +150,10 @@ left-padded to the stored 14-digit form.
 ## 6. Loading and rendering a property
 
 `load(parcelId, label)` fetches the parcel record and schema together. It requires the parcel
-record but treats individual overlay services independently. If centroid coordinates are present,
-`hits()` runs configured point-in-polygon queries in parallel.
+record and geometry but treats individual overlay services independently. If centroid coordinates
+are present, `hits()` runs all configured spatial queries in parallel. Layers marked
+`geometryMode: "parcel"` receive the full boundary; others receive the stored point. A layer can
+also define an ArcGIS search distance and units.
 
 For each layer, `hits()`:
 
@@ -164,11 +167,15 @@ For each layer, `hits()`:
 `draw()` emits cards in this order:
 
 1. **Property record** — formatted facts, owners and a validated Assessor link.
-2. **Hazard and special designations** — tri-state parcel flags, Yes explanations and Unknown
-   guidance. The hidden Sensitive Land polygon remains a centroid cross-check only.
-3. **Configured groups** — explicit values, booleans, attachments, overlap/schema warnings and
+2. **Configured groups** — explicit values, booleans, attachments, overlap/schema warnings and
    standing data notes.
-4. **Location** — centroid coordinates and an optional visual-map link.
+3. **Location** — centroid coordinates and an optional visual-map link.
+
+FEMA's specialized renderer shows SFHA status, the selected highest zone/subtype and all
+intersecting classifications. Its conservative precedence is not presented as a FEMA risk score.
+The UGS renderer shows a 1,000-foot direct fault-trace screen and explicitly disclaims any local
+special-study-area or site-specific determination. Historic fields preserve the distinction
+between National Register and local-ordinance designations.
 
 Every configured row is labelled `<Layer label> — <Field label>` so repeated labels such as
 "Phone" remain self-describing outside their visual context. URLs use the provider name where
@@ -201,9 +208,10 @@ date.
 
 ## 8. Verification and operations
 
-`npm test` runs pure-function checks and deterministic Playwright/axe browser tests with mocked
-ArcGIS responses. Those tests cover parser forms, tri-state data, zeroes, cancellation races,
-combobox focus, attachments, overlap warnings, copied output and automated accessibility rules.
+`npm test` runs JavaScript and Python pure-function checks plus deterministic Playwright/axe browser
+tests with mocked ArcGIS responses. Those tests cover parser forms, FEMA ordering, historic
+designation wording, zeroes, cancellation races, pointer/keyboard combobox selection, attachments,
+overlap warnings, copied output and automated accessibility rules.
 
 `npm run check:services` is intentionally separate because it calls public production services. It
 verifies configured endpoints and fields plus a known address. CI runs it on a schedule or manual

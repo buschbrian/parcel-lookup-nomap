@@ -53,9 +53,10 @@ The page announces the number of matches as you type, tells you if it had to bro
 and moves focus to the **Results** heading when your property loads, so you land directly on the
 information rather than having to hunt for it.
 
-Results are organised under headings — Property record, Hazard and special designations, Zoning,
-Subdivision and plat, Natural hazards, Representation, Services — so you can jump between them by
-heading. Each item is a description list, so labels and values are correctly associated.
+Results are organised under headings — Property record, Zoning, Historic designation, Hazard and
+special designations, Subdivision and plat, Natural hazards, Representation, Services — so you can
+jump between them by heading. Each item is a description list, so labels and values are correctly
+associated.
 
 Determinations are spoken as "Yes", "No", or "Unknown", never conveyed by colour alone. Unknown
 means the authoritative source did not contain a definite value and staff should verify it.
@@ -73,10 +74,12 @@ property:
 
 | Flag | What it means |
 |:--|:--|
-| FEMA flood hazard area | Flood insurance may be required by your lender; extra building standards apply |
 | Wildland-Urban Interface | Wildfire-resistant construction and defensible space may be required |
 | Sensitive Land Area | Additional review; slope, vegetation, stream corridor or wetland constraints may apply. Replaced the former FCOZ and RCOZ overlay zones |
-| Historic designation | Exterior alterations may need historic review |
+
+**Natural hazards** reports FEMA's live flood zone and subtype, plus whether a UGS mapped
+Quaternary fault trace is within 1,000 feet of the parcel. **Historic designation** separately says
+whether the district is National Register only or also protected by a Millcreek local ordinance.
 
 **The recorded plat** is the surveyed subdivision drawing showing lot lines, dimensions and
 easements. The currently linked scanned files are not screen-reader accessible. Call
@@ -88,10 +91,11 @@ are looking for.
 This tool reports the data of record. It is **not** a zoning verification letter, **not** a flood
 determination for a lender or insurer, and **not** a decision about whether you can build.
 
-Utility and hazard boundaries come from state agencies and providers. They are approximate, they
-contain known gaps and overlaps, and this tool checks a single point inside your parcel — so a
-property can be partly inside an area that shows "No". **Your utility bill or meter is the real
-record of who serves you.** For anything binding, call Planning and Development Services.
+Utility boundaries come from state agencies and providers. They are approximate, contain known
+gaps and overlaps, and are checked at a stored point inside the parcel. Flood, fault proximity,
+WUI, Sensitive Land and historic designations use the full parcel boundary. **Your utility bill or
+meter is the real record of who serves you.** For anything binding, contact Planning & Zoning at
+**801-214-2700** or **planner@millcreekut.gov**.
 
 ### If something does not work
 
@@ -141,8 +145,8 @@ Route to GIS at **gis@millcreekut.gov**. The published commitment is **5 busines
 ### What not to say
 
 - Don't say the data is definitive. Utility and hazard boundaries are approximate.
-- Don't say a property is *not* in a hazard area based only on this. It checks one point inside the
-  parcel; part of the property may still be affected.
+- Don't present the FEMA or UGS screen as a lender's flood determination, a local fault
+  special-study-area decision, or a site-specific geologic assessment.
 - Don't tell someone to "just use the map instead" if they've said they can't. That is the whole
   problem this exists to solve.
 
@@ -170,6 +174,13 @@ contact: {
   phoneHref: "+18012142754",
   email: "gis@millcreekut.gov",
   sla: "within 5 business days"
+},
+
+planning: {
+  phone: "801-214-2700",
+  phoneHref: "+18012142700",
+  email: "planner@millcreekut.gov",
+  url: "https://millcreekut.gov/151/Planning-Zoning"
 }
 ```
 
@@ -244,6 +255,9 @@ explicitly for anything resident-facing.
 | `sourceOwner` | Organisation responsible for the source or local maintenance |
 | `reviewedOn` | Date GIS last checked the source and configured fields (`YYYY-MM-DD`) |
 | `cardinality` | `"one"` when one polygon should match; unexpected overlaps are flagged |
+| `geometryMode: "parcel"` | Intersect the full parcel boundary instead of its stored point |
+| `kind` | Select specialized rendering, currently `femaFlood` or `ugsFaultProximity` |
+| `distance`, `units` | Add an ArcGIS proximity distance to the spatial query |
 
 ### Row shape is the same for every layer
 
@@ -272,21 +286,21 @@ validation previously exposed and helped correct a nine-digit waste-district val
 link is worse than plain text for someone who cannot see that the number looks wrong.
 **If you see a number rendered as plain text, that is a data defect worth fixing at source.**
 
-### Hazard flags
+### Hazard and designation sources
 
-`CFG.PARCEL_FLAGS` reads precomputed fields on the parcel record. **Prefer these over polygon
-layers where the field exists** — they are calculated against the whole parcel boundary, whereas
-layer queries use only the centroid.
+Do not display the denormalized `flood_zone`, `in_wui`, `sensitive_land`, or `is_historic` fields
+from `Millcreek_Parcels`. They can lag behind their source layers. Current determinations are
+spatial queries in `CFG.LAYERS`: FEMA NFHL and UGS fault traces are queried from their agencies,
+while WUI, Sensitive Land and historic designations are queried from their current published City
+layers. All five use `geometryMode: "parcel"`.
 
-```js
-{ field:"in_wui", label:"In the Wildland-Urban Interface",
-  yes: v => /^y/i.test(v||""),
-  detail: v => "FEMA zone "+v,          // optional
-  note:"Wildfire-resistant construction may be required." }
+The FEMA handler preserves every classification touching the parcel and displays the highest using
+a documented conservative precedence. That ordering is an application display rule, not a FEMA
+risk score. Run the same logic in an ArcGIS Python environment with:
+
+```bash
+python scripts/fema_highest_hazard.py 16264570030000
 ```
-
-`note` is the plain-language explanation. **Write it for a resident, not a planner.** A code with no
-explanation is not an answer.
 
 ### Standing disclaimers
 
@@ -338,7 +352,8 @@ npm test
 - [ ] **Tab through with a keyboard only.** Every control reachable, focus always visible.
 - [ ] Arrow keys move through the address list; <kbd>Esc</kbd> closes it.
 - [ ] Any new boolean layer shows Yes **or** No, never blank.
-- [ ] A parcel field with no value shows **Unknown**, never an assumed No.
+- [ ] A successful boolean source query shows Yes or No; a missing FEMA classification shows
+      **Unknown**, never an assumed No.
 - [ ] New third-party layer has a `GROUP_NOTES` entry.
 - [ ] Each new layer has `sourceOwner`, `reviewedOn`, and `cardinality`.
 - [ ] Test over `http://localhost`, **not** by double-clicking the file. Over `file://` the browser
@@ -355,11 +370,11 @@ commit, run `npm run check:deployment` to compare the live HTML and security hea
 
 ### Adding a layer from a different host
 
-The CSP allows `services9.arcgis.com` only. Add the new origin to `connect-src` in `_headers` or
-every query fails silently:
+The CSP currently allows Millcreek ArcGIS Online, FEMA hazards, and UGS geology services. Add any
+new origin to `connect-src` in `_headers` or every query to it fails:
 
 ```
-Content-Security-Policy: … connect-src https://services9.arcgis.com https://newhost.example.gov; …
+Content-Security-Policy: … connect-src https://services9.arcgis.com https://hazards.fema.gov https://webmaps.geology.utah.gov https://newhost.example.gov; …
 ```
 
 ### What not to change without care

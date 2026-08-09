@@ -276,16 +276,19 @@ details > *:not(summary){font-size:.9063rem}
     <p>
       Parcel, ownership and valuation data originate with the
       <strong>Salt Lake County Recorder and Assessor</strong>. Zoning, overlay
-      zone, hazard and district data are maintained by <strong>Millcreek</strong>.
-      Address data originate with the Utah Geospatial Resource Center (UGRC) and
-      Salt Lake County.
+      zone and district data are maintained by <strong>Millcreek</strong>.
+      Flood data come from FEMA, and mapped Quaternary fault data come from the
+      Utah Geological Survey. Address data originate with the Utah Geospatial
+      Resource Center (UGRC) and Salt Lake County.
     </p>
     <p id="public-disclaimer">
       This tool reports the data of record. It is <strong>not</strong> a zoning
       verification letter, a flood determination for lending or insurance
       purposes, or a determination that a property can be developed. For a
-      binding determination, contact Planning and Development Services at
-      <a href="tel:+18012142754">801-214-2754</a>.
+      binding determination, contact <a href="https://millcreekut.gov/151/Planning-Zoning"
+      rel="noopener">Planning &amp; Zoning</a> at
+      <a href="tel:+18012142700">801-214-2700</a> or
+      <a href="mailto:planner@millcreekut.gov">planner@millcreekut.gov</a>.
     </p>
 
     <details>
@@ -438,8 +441,15 @@ const CFG = {
     email: "gis@millcreekut.gov",
     sla: "within 5 business days"
   },
+  planning: {
+    phone: "801-214-2700",
+    phoneHref: "+18012142700",
+    email: "planner@millcreekut.gov",
+    url: "https://millcreekut.gov/151/Planning-Zoning"
+  },
 
-  // Point-in-polygon lookups, run against the parcel centroid.
+  // Spatial lookups. `geometryMode:"parcel"` uses the full parcel boundary;
+  // other layers use the stored parcel point.
   // group: which heading the result appears under.
   LAYERS: [
     { key:"zone",  group:"Zoning", label:"Base zoning district",
@@ -460,24 +470,33 @@ const CFG = {
       fields:{LandUse:"Designation", GENPLAN_WEBSITE:"General Plan",
               GENPLAN_DOCUMENT:"Plan document"} },
 
-    { key:"hist", group:"Zoning", label:"In a historic district",
-      url:"/HistoricDistricts/FeatureServer/0", boolean:true,
-      sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"one",
-      note:"Exterior alterations may require historic review." },
-
     { key:"ccoz", group:"Zoning", label:"In the City Center Overlay (CCOZ)",
       url:"/Zone_TCOZ/FeatureServer/0", boolean:true,
       sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"one",
       note:"City Center Overlay standards apply, which affect permitted uses, "+
            "building height, setbacks and site design." },
 
-    // Cross-check only (hidden:true). The parcel record's `sensitive_land`
-    // field is the authoritative determination because it is computed against
-    // the whole parcel boundary; this centroid test exists to catch
-    // disagreement between the two, not to answer the question itself.
-    { key:"sens_poly", group:"Zoning", label:"Sensitive Land Areas cross-check",
-      url:"/Sensitive_Land_Areas__Feb24/FeatureServer/0", boolean:true, hidden:true,
-      sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"one" },
+    // The service contains two distinct kinds of designation: Mountair Acres
+    // is National Register (Federal), while Evergreen Avenue is Federal and
+    // Local and carries a Millcreek ordinance designation.
+    { key:"hist", group:"Historic designation", label:"Historic district",
+      url:"/HistoricDistricts/FeatureServer/0", geometryMode:"parcel",
+      sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"one",
+      nameField:"name", fields:{name:"Name", designation_type:"Designation type",
+        local_ordinance:"Local ordinance applies", listyear:"National Register listing year",
+        maplink:"Historic district record"} },
+
+    { key:"wui", group:"Hazard and special designations",
+      label:"In the 2026 Wildland-Urban Interface", geometryMode:"parcel",
+      url:"/Millcreek_Wildland_Urban_Interface_WUI_Boundary_%E2%80%93_2026/FeatureServer/0",
+      boolean:true, sourceOwner:"Millcreek Fire, Planning and GIS",
+      reviewedOn:"2026-08-09", cardinality:"one",
+      note:"Wildfire-resistant construction and defensible-space requirements may apply." },
+
+    { key:"sens_poly", group:"Hazard and special designations", label:"In a Sensitive Land Area",
+      url:"/Sensitive_Land_Areas__Feb24/FeatureServer/0", geometryMode:"parcel", boolean:true,
+      sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"one",
+      note:"Sensitive Land Area standards may require additional review for slope, vegetation, streams or wetlands." },
 
     // attachments:true -> also fetch the recorded plat PDF attached to the feature.
     { key:"subdiv", group:"Subdivision and plat", label:"Recorded subdivision",
@@ -486,15 +505,20 @@ const CFG = {
       fields:{SUB_PLAT:"Name", PLAT_NUM:"Plat number"},
       attachments:true, attachmentLabel:"Recorded plat" },
 
-    { key:"flood", group:"Natural hazards", label:"FEMA flood hazard zone",
-      url:"/Flood_Hazard_Zones_Final_Update/FeatureServer/0",
-      sourceOwner:"FEMA; maintained in this service by Millcreek GIS", reviewedOn:"2026-08-09", cardinality:"one",
-      fields:{FLD_ZONE:"Zone", ZONE_SUBTY:"Subtype",
-              SFHA_TF:"Special Flood Hazard Area", STATIC_BFE:"Base flood elevation (ft)"} },
-    { key:"fault", group:"Natural hazards", label:"In a geologic fault study area",
-      url:"/Fault_Study_Area/FeatureServer/0", boolean:true,
-      sourceOwner:"Utah Geological Survey; maintained in this service by Millcreek GIS", reviewedOn:"2026-08-09", cardinality:"one",
-      note:"A site-specific geologic study may be required before building." },
+    { key:"flood", group:"Natural hazards", label:"FEMA flood hazard",
+      url:"https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28",
+      kind:"femaFlood", geometryMode:"parcel", cardinality:"many",
+      sourceOwner:"Federal Emergency Management Agency (National Flood Hazard Layer)",
+      reviewedOn:"2026-08-09",
+      fields:{FLD_ZONE:"Zone", ZONE_SUBTY:"Subtype", SFHA_TF:"Special Flood Hazard Area",
+        STATIC_BFE:"Base flood elevation", LEN_UNIT:"Elevation unit", SOURCE_CIT:"FEMA source citation"} },
+    { key:"fault", group:"Natural hazards",
+      label:"UGS mapped Quaternary fault within 1,000 feet", kind:"ugsFaultProximity",
+      url:"https://webmaps.geology.utah.gov/arcgis/rest/services/Hazards/Faults_Quaternary/MapServer/2",
+      geometryMode:"parcel", distance:1000, units:"esriSRUnit_Foot", cardinality:"many",
+      sourceOwner:"Utah Geological Survey", reviewedOn:"2026-08-09",
+      fields:{FaultName:"Fault name", SectionName:"Section", FaultAge:"Mapped fault age",
+        MappingConstraint:"Mapping constraint", USGS_Link:"USGS fault record", Citation:"Citation"} },
 
     { key:"council", group:"Representation", label:"City Council",
       url:"/Millcreek_City_Council_Dist_2022/FeatureServer/2",
@@ -544,27 +568,9 @@ const CFG = {
     // unconfigured attributes surfaced an irrelevant county contact.
   ],
 
-  // Plain-language determinations read straight off the parcel record.
-  // A resident should not have to interpret a code.
-  PARCEL_FLAGS: [
-    { field:"flood_zone",     label:"In a FEMA flood hazard area",
-      classify:v=>String(v??"").trim()==="" ? "unknown" :
-        (/^(x|area of minimal)/i.test(String(v).trim()) ? "no" : "yes"),
-      detail:v=>"FEMA zone "+v,
-      note:"Flood insurance may be required by your lender, and additional building standards apply." },
-    { field:"in_wui",         label:"In the Wildland-Urban Interface",
-      classify:v=>/^y/i.test(v||"") ? "yes" : (/^n/i.test(v||"") ? "no" : "unknown"),
-      note:"Wildfire-resistant construction and defensible space requirements may apply." },
-    { field:"sensitive_land", label:"In a Sensitive Land Area",
-      classify:v=>/^y/i.test(v||"") ? "yes" : (/^n/i.test(v||"") ? "no" : "unknown"),
-      note:"Sensitive Land Area standards apply. These replaced the former Foothills "+
-           "and Canyons (FCOZ) and Residential Compatibility (RCOZ) overlay zones. "+
-           "Development may require additional review, and slope, vegetation, stream "+
-           "corridor or wetland constraints may apply. Contact Planning before designing." },
-    { field:"is_historic",    label:"Historic designation",
-      classify:v=>/^y/i.test(v||"") ? "yes" : (/^n/i.test(v||"") ? "no" : "unknown"),
-      note:"Exterior alterations may require historic review." }
-  ],
+  // Current determinations are read directly from their source layers. The
+  // denormalized parcel flags remain in the service but are not displayed.
+  PARCEL_FLAGS: [],
 
   // Parcel facts to display, in order.
   PARCEL_FACTS: [
@@ -594,11 +600,18 @@ const CFG = {
       "you. Confirm with the provider before relying on this for design, construction, "+
       "a property transaction, or a connection application.",
     "Natural hazards":
-      "Hazard boundaries are regulatory mapping products from FEMA and the Utah "+
-      "Geological Survey. They are approximate at parcel scale and are derived here from "+
-      "a single point inside the parcel, so a property may be partly within a hazard area "+
-      "even where this reports “No”. This is not a flood determination for lending "+
-      "or insurance purposes."
+      "Flood classifications are queried live from FEMA's National Flood Hazard Layer against "+
+      "the full parcel boundary. Fault proximity is queried live from Utah Geological Survey "+
+      "mapped Quaternary fault traces. These screening results are not a site survey, local "+
+      "special-study-area determination, or flood determination for lending or insurance.",
+    "Historic designation":
+      "Designation type distinguishes a National Register listing from a Millcreek local "+
+      "ordinance designation. Use the Local ordinance field to determine which is shown, and "+
+      "confirm binding requirements with Planning & Zoning.",
+    "Hazard and special designations":
+      "The WUI and Sensitive Land results are queried against the full parcel boundary from the "+
+      "current published Millcreek regulatory layers. A boundary intersection means requirements "+
+      "may apply; confirm project-specific requirements with Planning & Zoning."
   },
 
   // Field names never shown from generic layers.
@@ -706,8 +719,10 @@ async function withRetry(work, signal){
   }
 }
 
+const layerUrl = path => /^https?:\/\//i.test(path) ? path : CFG.org+path;
+
 async function rawQuery(path, params, signal){
-  const u = new URL(CFG.org + path + "/query");
+  const u = new URL(layerUrl(path) + "/query");
   u.search = new URLSearchParams({f:"json", returnGeometry:"false", ...params});
   return fetchJson(u,signal);
 }
@@ -742,7 +757,7 @@ function explain(e, what){
 // Field aliases + coded-value domains, read from the service itself.
 async function schema(path,signal){
   if(schemaCache.has(path)) return schemaCache.get(path);
-  const u=new URL(CFG.org+path); u.search="?f=json";
+  const u=new URL(layerUrl(path)); u.search="?f=json";
   const j=await withRetry(()=>fetchJson(u,signal),signal);
   const map = {};
   (j.fields||[]).forEach(f=>{
@@ -761,6 +776,32 @@ const decode = (fld,v) => {
 };
 const esc = s => String(s).replace(/'/g,"''");
 const regexEsc = s => String(s).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+
+/* Conservative display precedence for multiple FEMA classifications touching
+   one parcel. This is not a FEMA risk score; it only chooses which subtype the
+   lookup presents first while preserving every intersecting classification in
+   the explanatory note. */
+function floodRank(a){
+  const zone=String(a?.FLD_ZONE||"").trim().toUpperCase();
+  const sub=String(a?.ZONE_SUBTY||"").trim().toUpperCase();
+  if(sub.includes("FLOODWAY")) return 1200;
+  const zoneOrder={VE:1100,V:1080,AE:1040,AH:1020,AO:1010,A:1000,A99:990,AR:980};
+  if(zoneOrder[zone]!=null) return zoneOrder[zone];
+  if(String(a?.SFHA_TF||"").toUpperCase()==="T") return 950;
+  if(sub.includes("1 PCT")) return 800;
+  if(sub.includes("0.2 PCT")) return 600;
+  if(sub.includes("REDUCED FLOOD RISK")) return 500;
+  if(zone==="D") return 300;
+  if(sub.includes("MINIMAL FLOOD HAZARD")) return 100;
+  return 0;
+}
+function selectHighestFlood(features){
+  return [...features].sort((a,b)=>floodRank(b)-floodRank(a)||
+    String(a.FLD_ZONE||"").localeCompare(String(b.FLD_ZONE||"")))[0]||null;
+}
+function floodDescription(a){
+  return [a?.FLD_ZONE&&("Zone "+a.FLD_ZONE),a?.ZONE_SUBTY].filter(Boolean).join(" — ");
+}
 
 /* ---------------------------------------------------------------
    Address parsing.
@@ -938,6 +979,12 @@ list$.addEventListener("click", e=>{
   const li=e.target.closest("li[role=option]");
   if(li) pick([...list$.children].indexOf(li));
 });
+// Keep focus in the combobox until click selects the option. Without this,
+// some browsers move focus first; the focusout handler then removes the list
+// before the click event can reach it.
+list$.addEventListener("mousedown",e=>{
+  if(e.target.closest("li[role=option]")) e.preventDefault();
+});
 list$.addEventListener("mousemove", e=>{
   const li=e.target.closest("li[role=option]");
   if(li) highlight([...list$.children].indexOf(li));
@@ -1023,7 +1070,8 @@ async function load(parcelId, label){
     const P=CFG.parcel;
     const [schemaResult,queryResult] = await Promise.allSettled([
       schema(P.url,signal),
-      query(P.url,{ where:`${P.idField}='${esc(parcelId)}'`, outFields:"*" },signal)
+      query(P.url,{ where:`${P.idField}='${esc(parcelId)}'`, outFields:"*",
+        returnGeometry:"true", outSR:"4326" },signal)
     ]);
     if(queryResult.status==="rejected") throw queryResult.reason;
     if(schemaResult.status==="rejected" && schemaResult.reason?.kind==="aborted")
@@ -1033,14 +1081,15 @@ async function load(parcelId, label){
     if(schemaResult.status==="rejected")
       console.warn("[lookup] parcel schema unavailable:",schemaResult.reason?.kind||"unknown");
     if(mine!==seq) return;
-    const rec=(j.features||[])[0]?.attributes;
+    const parcelFeature=(j.features||[])[0];
+    const rec=parcelFeature?.attributes;
     if(!rec){
       say("No parcel found for “"+label+"”. It may be a new subdivision, or outside Millcreek. "+
           "Call "+CFG.contact.phone+" and staff will look it up.","error");
       return;
     }
     const lat=rec[P.latField], lon=rec[P.lonField];
-    const overlays = (lat!=null&&lon!=null) ? await hits(lon,lat,task) : [];
+    const overlays = (lat!=null&&lon!=null) ? await hits(lon,lat,parcelFeature.geometry,task) : [];
     if(mine!==seq) return;
     draw(rec,pSchema,overlays,label,lat,lon,schemaResult.status==="rejected");
     finishTask(task);
@@ -1052,13 +1101,19 @@ async function load(parcelId, label){
   }
 }
 
-// Point-in-polygon against every configured layer, in parallel.
-async function hits(lon,lat,task){
+// Spatially intersect the parcel boundary (or its stored point, as configured)
+// against every configured layer, in parallel.
+async function hits(lon,lat,parcelGeometry,task){
   const {signal}=task;
-  const geo = { geometry:`${lon},${lat}`, geometryType:"esriGeometryPoint",
-                inSR:"4326", spatialRel:"esriSpatialRelIntersects" };
   return Promise.all(CFG.LAYERS.map(async L=>{
     try{
+      const useParcel=L.geometryMode==="parcel"&&parcelGeometry;
+      const geo = {
+        geometry:useParcel?JSON.stringify(parcelGeometry):`${lon},${lat}`,
+        geometryType:useParcel?"esriGeometryPolygon":"esriGeometryPoint",
+        inSR:"4326", spatialRel:"esriSpatialRelIntersects",
+        ...(L.distance?{distance:String(L.distance),units:L.units||"esriSRUnit_Meter"}:{})
+      };
       const [queryResult,schemaResult] = await Promise.allSettled([
         query(L.url,{...geo,outFields:"*"},signal),
         schema(L.url,signal)
@@ -1071,7 +1126,13 @@ async function hits(lon,lat,task){
       if(schemaResult.status==="rejected")
         console.warn("[lookup] schema unavailable:",L.key,schemaResult.reason?.kind||"unknown");
       const feats = (j.features||[]).map(f=>f.attributes);
-      const out = {...L, attrs:feats[0]||null, all:feats, sch, failed:false,
+      let selected=L.kind==="femaFlood"?selectHighestFlood(feats):(feats[0]||null);
+      if(L.kind==="femaFlood"&&selected){
+        selected={...selected};
+        for(const f of ["STATIC_BFE","DEPTH","VELOCITY"])
+          if(Number(selected[f])<=-9999) selected[f]=null;
+      }
+      const out = {...L, attrs:selected, all:feats, sch, failed:false,
         schemaFailed:schemaResult.status==="rejected", ambiguous:false,
         files:[], attachmentsFailed:false};
       out.ambiguous = (L.cardinality||"one")==="one" && feats.length>1;
@@ -1080,10 +1141,10 @@ async function hits(lon,lat,task){
       if(L.attachments && out.attrs && out.attrs.OBJECTID!=null){
         try{
           const a = await withRetry(()=>fetchJson(
-            CFG.org+L.url+"/"+out.attrs.OBJECTID+"/attachments?f=json",signal),signal);
+            layerUrl(L.url)+"/"+out.attrs.OBJECTID+"/attachments?f=json",signal),signal);
           out.files = (a.attachmentInfos||[]).map(x=>({
             id:x.id, name:x.name, type:x.contentType, size:x.size,
-            url:CFG.org+L.url+"/"+out.attrs.OBJECTID+"/attachments/"+x.id
+            url:layerUrl(L.url)+"/"+out.attrs.OBJECTID+"/attachments/"+x.id
           }));
         }catch(e){
           if(e.kind==="aborted") throw e;
@@ -1204,54 +1265,6 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
   }
   body$.append(c1);
 
-  /* ---- Determinations off the parcel record ---- */
-  const dl2=el("dl",{}); const notes=[]; let any=false, unknown=false;
-  CFG.PARCEL_FLAGS.forEach(F=>{
-    const raw=rec[F.field];
-    const state=F.classify(raw);
-    const yes=state==="yes";
-    if(yes) any=true;
-    if(state==="unknown") unknown=true;
-    dl2.append(flagPair(F.label,state,yes&&F.detail?F.detail(raw):null));
-    if(yes&&F.note) notes.push(F.label+": "+F.note);
-  });
-  const c2=el("div",{class:"card"});
-  c2.append(el("h3",{text:"Hazard and special designations"}));
-  c2.append(dl2);
-  if(!any&&!unknown) c2.append(el("p",{class:"meta",
-    text:"This property is not flagged for flood hazard, wildland-urban interface, sensitive land, or historic designation."}));
-  if(unknown) c2.append(el("p",{class:"meta",
-    text:"One or more source fields did not contain a definite Yes or No. Verify unknown results with staff."}));
-  notes.forEach(n=>{
-    const cal=el("div",{class:"callout"});
-    cal.append(el("p",{},[el("strong",{text:"What this means. "}),document.createTextNode(n)]));
-    c2.append(cal);
-  });
-
-  /* Sensitive Land Areas cross-check. The parcel field is computed against the
-     whole parcel; this test uses the centroid. Disagreement usually means the
-     parcel is only partly inside the area — which still matters legally, so
-     surface it rather than silently trusting either source. */
-  const sp = overlays.find(o=>o.key==="sens_poly");
-  if(sp && !sp.failed){
-    const parcelState=CFG.PARCEL_FLAGS.find(F=>F.field==="sensitive_land").classify(rec.sensitive_land);
-    const byParcel = parcelState==="yes";
-    const byPoint  = !!sp.attrs;
-    if(parcelState!=="unknown" && byParcel !== byPoint){
-      const cal=el("div",{class:"callout"});
-      cal.append(el("p",{},[
-        el("strong",{text:"Verify this one with staff. "}),
-        document.createTextNode(
-          "The parcel record and the Sensitive Land Areas boundary do not agree for this "+
-          "property. That usually means the parcel is only partly inside a Sensitive Land "+
-          "Area. Partial coverage still carries requirements. Call "+CFG.contact.phone+
-          " for a definitive answer before relying on this.")
-      ]));
-      c2.append(cal);
-    }
-  }
-  body$.append(c2);
-
   /* ---- Grouped layer results ---- */
   const groups=[...new Set(CFG.LAYERS.filter(L=>!L.hidden).map(L=>L.group))];
   groups.forEach(g=>{
@@ -1262,6 +1275,52 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
     const dl=el("dl",{});
     const gnotes=[];
     rows.forEach(o=>{
+      if(!o.failed && o.kind==="femaFlood"){
+        if(!o.attrs){
+          dl.append(flagPair("In FEMA Special Flood Hazard Area (SFHA)","unknown"));
+          dl.append(pair("Highest FEMA flood classification","No FEMA classification returned","none"));
+          return;
+        }
+        const sfha=String(o.attrs.SFHA_TF||"").trim().toUpperCase();
+        dl.append(flagPair("In FEMA Special Flood Hazard Area (SFHA)",
+          sfha==="T"?"yes":(sfha==="F"?"no":"unknown")));
+        dl.append(pair("Highest FEMA flood zone",decode(o.sch.FLD_ZONE,o.attrs.FLD_ZONE)||"Not reported"));
+        dl.append(pair("Highest FEMA flood subtype",decode(o.sch.ZONE_SUBTY,o.attrs.ZONE_SUBTY)||"No subtype reported"));
+        if(o.attrs.STATIC_BFE!=null){
+          const unit=decode(o.sch.LEN_UNIT,o.attrs.LEN_UNIT);
+          dl.append(pair("FEMA static base flood elevation",
+            String(o.attrs.STATIC_BFE)+(unit?" "+unit:"")));
+        }
+        const citation=decode(o.sch.SOURCE_CIT,o.attrs.SOURCE_CIT);
+        if(citation) dl.append(pair("FEMA source citation",citation));
+        const classes=[...new Set(o.all.map(floodDescription).filter(Boolean))];
+        if(classes.length>1) gnotes.push("FEMA returned "+classes.length+
+          " flood classifications touching the parcel: "+classes.join("; ")+". The lookup displays "+
+          "the most restrictive classification first using a conservative precedence; this is not a FEMA risk score.");
+        if(o.schemaFailed) gnotes.push(o.label+": field descriptions were temporarily unavailable, so coded values may not be expanded.");
+        return;
+      }
+      if(!o.failed && o.kind==="ugsFaultProximity"){
+        const yes=!!o.attrs;
+        dl.append(flagPair(o.label,yes?"yes":"no"));
+        if(yes){
+          const unique=f=>[...new Set(o.all.map(a=>decode(o.sch[f],a[f])).filter(v=>v!=null&&v!==""))];
+          const fields=[["FaultName","Fault name"],["SectionName","Section"],
+            ["FaultAge","Mapped fault age"],["MappingConstraint","Mapping constraint"]];
+          fields.forEach(([f,lab])=>{
+            const values=unique(f);
+            if(values.length) dl.append(pair("Nearby UGS fault traces - "+lab,values.join("; ")));
+          });
+          const link=unique("USGS_Link")[0];
+          if(link) dl.append(pair("Nearby UGS fault traces - USGS fault record",link,null,"USGS fault record"));
+          const citations=unique("Citation");
+          if(citations.length) dl.append(pair("Nearby UGS fault traces - Citation",citations.join("; ")));
+        }
+        gnotes.push("This is a direct proximity screen against UGS mapped Quaternary fault traces, "+
+          "not a local special-study-area boundary or a site-specific geologic determination.");
+        if(o.schemaFailed) gnotes.push(o.label+": field descriptions were temporarily unavailable, so coded values may not be expanded.");
+        return;
+      }
       if(o.failed){ dl.append(pair(o.label,"Temporarily unavailable — call "+CFG.contact.phone,"none")); return; }
       // Pure in/out layers: render as an explicit Yes/No, never a blank.
       if(o.boolean){

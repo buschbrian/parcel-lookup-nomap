@@ -277,8 +277,9 @@ details > *:not(summary){font-size:.9063rem}
       Parcel, ownership and valuation data originate with the
       <strong>Salt Lake County Recorder and Assessor</strong>. Zoning, overlay
       zone and district data are maintained by <strong>Millcreek</strong>.
-      Flood data come from FEMA, and mapped Quaternary fault data come from the
-      Utah Geological Survey. Address data originate with the Utah Geospatial
+      Flood data come from FEMA and are compared with Millcreek's published
+      flood layer. Surface fault rupture special-study-area data come from the
+      public Planning map. Address data originate with the Utah Geospatial
       Resource Center (UGRC) and Salt Lake County.
     </p>
     <p id="public-disclaimer">
@@ -365,6 +366,13 @@ const CFG = {
     version: "2026.08.09",
     publishedOn: "2026-08-09",
     dataReviewedOn: "2026-08-09"
+  },
+
+  // Public interactive-map reference used for layer-parity checks.
+  referenceWebMap: {
+    itemId:"f780892acd744d0da60001644cada75c",
+    portalUrl:"https://millcrk.maps.arcgis.com",
+    appUrl:"https://maps.millcreekut.gov/"
   },
   request: { timeoutMs:12000, retryDelayMs:700 },
 
@@ -453,11 +461,10 @@ const CFG = {
   // group: which heading the result appears under.
   LAYERS: [
     { key:"zone",  group:"Zoning", label:"Base zoning district",
-      url:"/zoneupdate2024/FeatureServer/0",
+      url:"/Zone_Update_2025___Related_Master/FeatureServer/2",
       sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"one",
       // Field labels stay short: the layer label is prepended to every row.
       fields:{ZONE_:"Code", ZONE_DESC:"Category",
-              Res_Max_De:"Max residential density (units/acre)",
               Zone_Desc1:"Ordinance"} },
 
     // NOTE: FCOZ (Zone_FCOZ) and RCOZ (Zone_RCOZ) were removed August 2026 —
@@ -465,7 +472,7 @@ const CFG = {
     // re-add them without confirming with Planning.
 
     { key:"futureland", group:"Zoning", label:"Future land use",
-      url:"/Future_Land_Use_2019/FeatureServer/0",
+      url:"/FutureLandUse_2024_Millcreek/FeatureServer/0",
       sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"one",
       fields:{LandUse:"Designation", GENPLAN_WEBSITE:"General Plan",
               GENPLAN_DOCUMENT:"Plan document"} },
@@ -512,13 +519,21 @@ const CFG = {
       reviewedOn:"2026-08-09",
       fields:{FLD_ZONE:"Zone", ZONE_SUBTY:"Subtype", SFHA_TF:"Special Flood Hazard Area",
         STATIC_BFE:"Base flood elevation", LEN_UNIT:"Elevation unit", SOURCE_CIT:"FEMA source citation"} },
+    // Hidden copy used only to cross-check FEMA's current result. The public
+    // Planning web map does not contain FEMA's minimal-hazard X polygons;
+    // comparison logic accounts for that documented difference.
+    { key:"flood_local", group:"Natural hazards", label:"Millcreek flood-layer cross-check",
+      url:"/Flood_Hazard_Zones_Final_Update/FeatureServer/0",
+      kind:"femaLocalCrosscheck", geometryMode:"parcel", cardinality:"many", hidden:true,
+      sourceOwner:"FEMA data published in Millcreek's Planning web map",
+      reviewedOn:"2026-08-09",
+      fields:{FLD_ZONE:"Zone", ZONE_SUBTY:"Subtype", SFHA_TF:"Special Flood Hazard Area"} },
     { key:"fault", group:"Natural hazards",
-      label:"UGS mapped Quaternary fault within 1,000 feet", kind:"ugsFaultProximity",
-      url:"https://webmaps.geology.utah.gov/arcgis/rest/services/Hazards/Faults_Quaternary/MapServer/2",
-      geometryMode:"parcel", distance:1000, units:"esriSRUnit_Foot", cardinality:"many",
-      sourceOwner:"Utah Geological Survey", reviewedOn:"2026-08-09",
-      fields:{FaultName:"Fault name", SectionName:"Section", FaultAge:"Mapped fault age",
-        MappingConstraint:"Mapping constraint", USGS_Link:"USGS fault record", Citation:"Citation"} },
+      label:"In the UGS surface fault rupture special study area", boolean:true,
+      url:"/Fault_Study_Area/FeatureServer/0", geometryMode:"parcel", cardinality:"one",
+      sourceOwner:"UGS/County special-study-area data published by Millcreek",
+      reviewedOn:"2026-08-09",
+      note:"A site-specific geologic investigation may be required before development." },
 
     { key:"council", group:"Representation", label:"City Council",
       url:"/Millcreek_City_Council_Dist_2022/FeatureServer/2",
@@ -601,9 +616,10 @@ const CFG = {
       "a property transaction, or a connection application.",
     "Natural hazards":
       "Flood classifications are queried live from FEMA's National Flood Hazard Layer against "+
-      "the full parcel boundary. Fault proximity is queried live from Utah Geological Survey "+
-      "mapped Quaternary fault traces. These screening results are not a site survey, local "+
-      "special-study-area determination, or flood determination for lending or insurance.",
+      "the full parcel boundary and compared with the flood layer in Millcreek's public Planning "+
+      "map. Surface fault rupture uses the special-study-area polygon from that same public map. "+
+      "These screening results are not a site survey, site-specific geologic investigation, or "+
+      "flood determination for lending or insurance.",
     "Historic designation":
       "Designation type distinguishes a National Register listing from a Millcreek local "+
       "ordinance designation. Use the Local ordinance field to determine which is shown, and "+
@@ -801,6 +817,24 @@ function selectHighestFlood(features){
 }
 function floodDescription(a){
   return [a?.FLD_ZONE&&("Zone "+a.FLD_ZONE),a?.ZONE_SUBTY].filter(Boolean).join(" — ");
+}
+function floodSignature(a){
+  const zone=String(a?.FLD_ZONE||"").trim().toUpperCase();
+  const subtype=String(a?.ZONE_SUBTY||"").trim().toUpperCase()
+    .replace(/\bPERCENT\b/g,"PCT").replace(/\s+/g," ");
+  const sfha=String(a?.SFHA_TF||"").trim().toUpperCase();
+  return zone+"|"+subtype+"|"+sfha;
+}
+const isMinimalFlood = a => /MINIMAL FLOOD HAZARD/i.test(String(a?.ZONE_SUBTY||""));
+function floodClassSet(features,{omitMinimal=false}={}){
+  return new Set(features.filter(a=>!omitMinimal||!isMinimalFlood(a)).map(floodSignature));
+}
+function describeFloodFeatures(features){
+  return [...new Set(features.map(floodDescription).filter(Boolean))].join("; ")||
+    "no mapped non-minimal hazard";
+}
+function sameSet(a,b){
+  return a.size===b.size && [...a].every(value=>b.has(value));
 }
 
 /* ---------------------------------------------------------------
@@ -1105,7 +1139,7 @@ async function load(parcelId, label){
 // against every configured layer, in parallel.
 async function hits(lon,lat,parcelGeometry,task){
   const {signal}=task;
-  return Promise.all(CFG.LAYERS.map(async L=>{
+  const results=await Promise.all(CFG.LAYERS.map(async L=>{
     try{
       const useParcel=L.geometryMode==="parcel"&&parcelGeometry;
       const geo = {
@@ -1160,6 +1194,26 @@ async function hits(lon,lat,parcelGeometry,task){
         failedReason:e.kind||"unknown", files:[], attachmentsFailed:false};
     }
   }));
+  const live=results.find(o=>o.kind==="femaFlood");
+  const local=results.find(o=>o.kind==="femaLocalCrosscheck");
+  if(live){
+    if(live.failed || !local || local.failed){
+      live.verification={state:"unknown",live:live.all||[],local:local?.all||[]};
+    }else if(!live.all.length){
+      live.verification={state:local.all.length?"no":"unknown",live:[],local:local.all};
+      live.verificationMismatch=live.verification.state==="no";
+    }else{
+      // Millcreek's map omits FEMA's minimal-hazard X polygons. Compare all
+      // other classifications after normalizing PERCENT/PCT capitalization.
+      const liveSet=floodClassSet(live.all,{omitMinimal:true});
+      const localSet=floodClassSet(local.all,{omitMinimal:true});
+      live.verification={state:sameSet(liveSet,localSet)?"yes":"no",
+        live:live.all.filter(a=>!isMinimalFlood(a)),
+        local:local.all.filter(a=>!isMinimalFlood(a))};
+      live.verificationMismatch=live.verification.state==="no";
+    }
+  }
+  return results;
 }
 
 const isUrl = v => typeof v==="string" && /^https?:\/\//i.test(v.trim());
@@ -1279,6 +1333,11 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
         if(!o.attrs){
           dl.append(flagPair("In FEMA Special Flood Hazard Area (SFHA)","unknown"));
           dl.append(pair("Highest FEMA flood classification","No FEMA classification returned","none"));
+          const verification=o.verification||{state:"unknown",live:[],local:[]};
+          dl.append(flagPair("Millcreek flood layer matches live FEMA",verification.state));
+          if(verification.state==="no") gnotes.push("Review this flood mapping discrepancy. "+
+            "Live FEMA returned no classification; Millcreek's public-map copy returned "+
+            describeFloodFeatures(verification.local)+".");
           return;
         }
         const sfha=String(o.attrs.SFHA_TF||"").trim().toUpperCase();
@@ -1297,27 +1356,13 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
         if(classes.length>1) gnotes.push("FEMA returned "+classes.length+
           " flood classifications touching the parcel: "+classes.join("; ")+". The lookup displays "+
           "the most restrictive classification first using a conservative precedence; this is not a FEMA risk score.");
-        if(o.schemaFailed) gnotes.push(o.label+": field descriptions were temporarily unavailable, so coded values may not be expanded.");
-        return;
-      }
-      if(!o.failed && o.kind==="ugsFaultProximity"){
-        const yes=!!o.attrs;
-        dl.append(flagPair(o.label,yes?"yes":"no"));
-        if(yes){
-          const unique=f=>[...new Set(o.all.map(a=>decode(o.sch[f],a[f])).filter(v=>v!=null&&v!==""))];
-          const fields=[["FaultName","Fault name"],["SectionName","Section"],
-            ["FaultAge","Mapped fault age"],["MappingConstraint","Mapping constraint"]];
-          fields.forEach(([f,lab])=>{
-            const values=unique(f);
-            if(values.length) dl.append(pair("Nearby UGS fault traces - "+lab,values.join("; ")));
-          });
-          const link=unique("USGS_Link")[0];
-          if(link) dl.append(pair("Nearby UGS fault traces - USGS fault record",link,null,"USGS fault record"));
-          const citations=unique("Citation");
-          if(citations.length) dl.append(pair("Nearby UGS fault traces - Citation",citations.join("; ")));
+        const verification=o.verification||{state:"unknown",live:[],local:[]};
+        dl.append(flagPair("Millcreek flood layer matches live FEMA",verification.state));
+        if(verification.state==="no"){
+          gnotes.push("Review this flood mapping discrepancy. Live FEMA returned "+
+            describeFloodFeatures(verification.live)+"; Millcreek's public-map copy returned "+
+            describeFloodFeatures(verification.local)+".");
         }
-        gnotes.push("This is a direct proximity screen against UGS mapped Quaternary fault traces, "+
-          "not a local special-study-area boundary or a site-specific geologic determination.");
         if(o.schemaFailed) gnotes.push(o.label+": field descriptions were temporarily unavailable, so coded values may not be expanded.");
         return;
       }
@@ -1432,7 +1477,7 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
   ]));
   body$.append(c4);
 
-  const degraded = overlays.filter(o=>o.failed||o.schemaFailed||o.attachmentsFailed||o.ambiguous).length+
+  const degraded = overlays.filter(o=>o.failed||o.schemaFailed||o.attachmentsFailed||o.ambiguous||o.verificationMismatch).length+
     (parcelSchemaFailed?1:0);
   results$.hidden=false;
   say(degraded

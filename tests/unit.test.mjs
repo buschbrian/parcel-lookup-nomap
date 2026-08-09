@@ -14,7 +14,7 @@ function pureApp(){
   const helperEnd = script.indexOf("/* Tiered search");
   return vm.runInNewContext(
     script.slice(cfgStart,cfgEnd)+"\n"+script.slice(helperStart,helperEnd)+
-    "\n;({CFG,parseAddress,decode,floodRank,selectHighestFlood});"
+    "\n;({CFG,parseAddress,decode,floodRank,selectHighestFlood,floodClassSet,sameSet});"
   );
 }
 
@@ -33,15 +33,28 @@ test("address normalization handles words, locality suffixes, and units",()=>{
     {num:"2760",street:"2100",normalized:"2760 S 2100 E"});
 });
 
-test("hazards use live source layers and select the highest FEMA subtype",()=>{
-  const {CFG,floodRank,selectHighestFlood}=pureApp();
+test("hazards use the requested source layers and cross-check FEMA classifications",()=>{
+  const {CFG,floodRank,selectHighestFlood,floodClassSet,sameSet}=pureApp();
   assert.deepEqual([...CFG.PARCEL_FLAGS],[]);
   assert.match(CFG.LAYERS.find(layer=>layer.kind==="femaFlood").url,/hazards\.fema\.gov/);
-  assert.match(CFG.LAYERS.find(layer=>layer.kind==="ugsFaultProximity").url,/geology\.utah\.gov/);
+  assert.match(CFG.LAYERS.find(layer=>layer.key==="flood_local").url,/Flood_Hazard_Zones_Final_Update/);
+  assert.match(CFG.LAYERS.find(layer=>layer.key==="fault").url,/Fault_Study_Area/);
   const minimal={FLD_ZONE:"X",ZONE_SUBTY:"AREA OF MINIMAL FLOOD HAZARD",SFHA_TF:"F"};
   const floodway={FLD_ZONE:"AE",ZONE_SUBTY:"FLOODWAY",SFHA_TF:"T"};
+  const localFloodway={FLD_ZONE:"AE",ZONE_SUBTY:"Floodway",SFHA_TF:"T"};
   assert.ok(floodRank(floodway)>floodRank(minimal));
   assert.equal(selectHighestFlood([minimal,floodway]),floodway);
+  assert.equal(sameSet(floodClassSet([minimal,floodway],{omitMinimal:true}),
+    floodClassSet([localFloodway],{omitMinimal:true})),true);
+});
+
+test("zoning follows the public map and does not display density",()=>{
+  const {CFG}=pureApp();
+  const zone=CFG.LAYERS.find(layer=>layer.key==="zone");
+  const future=CFG.LAYERS.find(layer=>layer.key==="futureland");
+  assert.match(zone.url,/Zone_Update_2025___Related_Master/);
+  assert.equal(Object.hasOwn(zone.fields,"Res_Max_De"),false);
+  assert.match(future.url,/FutureLandUse_2024_Millcreek/);
 });
 
 test("configured fields retain valid numeric zero values",()=>{
@@ -64,7 +77,6 @@ test("every displayed layer carries source-governance metadata",()=>{
 test("security policy permits authoritative sources and Planning uses its own contact",async()=>{
   const headers=await readFile(new URL("../_headers",import.meta.url),"utf8");
   assert.match(headers,/connect-src[^\n]+https:\/\/hazards\.fema\.gov/);
-  assert.match(headers,/connect-src[^\n]+https:\/\/webmaps\.geology\.utah\.gov/);
   assert.match(html,/Planning &amp; Zoning[\s\S]{0,200}801-214-2700/);
   assert.doesNotMatch(html,/Planning and Development Services[\s\S]{0,100}801-214-2754/);
 });

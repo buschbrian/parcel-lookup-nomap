@@ -49,7 +49,7 @@ const lon=record[CFG.parcel.lonField],lat=record[CFG.parcel.latField];
 assert.equal(Number.isFinite(Number(lon))&&Number.isFinite(Number(lat)),true,"known parcel has a centroid");
 console.log("ok known-parcel lookup",parcelId);
 
-await Promise.all(CFG.LAYERS.map(async layer=>{
+const spatialResults=new Map(await Promise.all(CFG.LAYERS.map(async layer=>{
   const useParcel=layer.geometryMode==="parcel"&&parcelGeometry;
   const spatialParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:"*",
     geometry:useParcel?JSON.stringify(parcelGeometry):String(lon)+","+String(lat),
@@ -68,7 +68,64 @@ await Promise.all(CFG.LAYERS.map(async layer=>{
   }else{
     console.log("ok",layer.key,"spatial query; matches",result.features.length);
   }
+  return [layer.key,result.features.map(feature=>feature.attributes)];
+})));
+
+const floodSignature=attributes=>{
+  const zone=String(attributes?.FLD_ZONE||"").trim().toUpperCase();
+  const subtype=String(attributes?.ZONE_SUBTY||"").trim().toUpperCase()
+    .replace(/\bPERCENT\b/g,"PCT").replace(/\s+/g," ");
+  const sfha=String(attributes?.SFHA_TF||"").trim().toUpperCase();
+  return zone+"|"+subtype+"|"+sfha;
+};
+const comparable=features=>new Set(features
+  .filter(feature=>!/MINIMAL FLOOD HAZARD/i.test(String(feature?.ZONE_SUBTY||"")))
+  .map(floodSignature));
+const femaClasses=comparable(spatialResults.get("flood")||[]);
+const cityClasses=comparable(spatialResults.get("flood_local")||[]);
+assert.equal(femaClasses.size,cityClasses.size,"known parcel flood source count differs");
+assert.equal([...femaClasses].every(value=>cityClasses.has(value)),true,
+  "known parcel FEMA and Millcreek flood classifications differ");
+console.log("ok known-parcel FEMA/Millcreek flood congruence");
+
+const hazardParcelId="15354000190000";
+const hazardParcelParams=new URLSearchParams({f:"json",returnGeometry:"true",outSR:"4326",
+  outFields:"parcel_id,prop_location",where:CFG.parcel.idField+"='"+hazardParcelId+"'"});
+const hazardParcel=await json(layerUrl(CFG.parcel.url)+"/query?"+hazardParcelParams);
+const hazardGeometry=hazardParcel.features?.[0]?.geometry;
+assert.ok(hazardGeometry,"known flood-hazard parcel geometry is available");
+const floodLayers=[CFG.LAYERS.find(layer=>layer.key==="flood"),
+  CFG.LAYERS.find(layer=>layer.key==="flood_local")];
+const [hazardFema,hazardCity]=await Promise.all(floodLayers.map(async layer=>{
+  const queryParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:"*",
+    geometry:JSON.stringify(hazardGeometry),geometryType:"esriGeometryPolygon",inSR:"4326",
+    spatialRel:"esriSpatialRelIntersects"});
+  return (await json(layerUrl(layer.url)+"/query?"+queryParams)).features.map(f=>f.attributes);
 }));
+assert.equal(hazardFema.some(feature=>String(feature.SFHA_TF).toUpperCase()==="T"),true,
+  "known hazard parcel no longer intersects FEMA SFHA");
+const hazardFemaClasses=comparable(hazardFema);
+const hazardCityClasses=comparable(hazardCity);
+assert.equal(hazardFemaClasses.size,hazardCityClasses.size,
+  "known hazard parcel flood source count differs");
+assert.equal([...hazardFemaClasses].every(value=>hazardCityClasses.has(value)),true,
+  "known hazard parcel FEMA and Millcreek classifications differ");
+console.log("ok known-hazard-parcel FEMA/Millcreek flood congruence",hazardParcelId);
+
+const faultParcelId="16203550110000";
+const faultParcelParams=new URLSearchParams({f:"json",returnGeometry:"true",outSR:"4326",
+  outFields:"parcel_id,prop_location",where:CFG.parcel.idField+"='"+faultParcelId+"'"});
+const faultParcel=await json(layerUrl(CFG.parcel.url)+"/query?"+faultParcelParams);
+const faultGeometry=faultParcel.features?.[0]?.geometry;
+assert.ok(faultGeometry,"known special-study-area parcel geometry is available");
+const faultLayer=CFG.LAYERS.find(layer=>layer.key==="fault");
+const faultQueryParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:"OBJECTID",
+  geometry:JSON.stringify(faultGeometry),geometryType:"esriGeometryPolygon",inSR:"4326",
+  spatialRel:"esriSpatialRelIntersects"});
+const faultResult=await json(layerUrl(faultLayer.url)+"/query?"+faultQueryParams);
+assert.ok(faultResult.features.length>0,
+  "known special-study-area parcel no longer intersects the fault study layer");
+console.log("ok known fault-special-study-area parcel",faultParcelId);
 
 const historicLayer=CFG.LAYERS.find(layer=>layer.key==="hist");
 const historicParams=new URLSearchParams({f:"json",where:"1=1",returnGeometry:"false",
@@ -87,6 +144,25 @@ assert.equal(districts.get("Evergreen Avenue Historic District")?.local_ordinanc
   "Yes","Evergreen local-ordinance status changed");
 console.log("ok historic designation distinction; National Register-only and local district verified");
 
-console.log("Candidate replacements still require GIS/Planning approval:");
-console.log("- FutureLandUse_2024_Millcreek/FeatureServer/0");
-console.log("- Zone_Update_2025___Related_Master/FeatureServer/2");
+const webMapUrl=CFG.referenceWebMap.portalUrl+"/sharing/rest/content/items/"+
+  CFG.referenceWebMap.itemId+"/data?f=json";
+const webMap=await json(webMapUrl);
+const leafLayers=[];
+function flatten(layers){
+  for(const layer of layers||[]){
+    if(layer.layers) flatten(layer.layers);
+    else if(layer.url) leafLayers.push(layer);
+  }
+}
+flatten(webMap.operationalLayers);
+const normalizeUrl=url=>new URL(url).href.replace(/\/$/,"").toLowerCase();
+const webMapUrls=new Set(leafLayers.map(layer=>normalizeUrl(layer.url)));
+const paritySpecs=[
+  {key:"address",url:CFG.address.url},{key:"parcel",url:CFG.parcel.url},
+  ...CFG.LAYERS.filter(layer=>layer.kind!=="femaFlood")
+];
+for(const spec of paritySpecs){
+  assert.equal(webMapUrls.has(normalizeUrl(layerUrl(spec.url))),true,
+    spec.key+" is not present in the configured public Planning web map");
+}
+console.log("ok public-web-map parity",paritySpecs.length,"adopted local layers verified");

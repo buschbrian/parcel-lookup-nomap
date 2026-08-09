@@ -57,6 +57,7 @@ Everything above the `No further edits needed below this line` marker is the mai
 | Section | Responsibility |
 |:--|:--|
 | `release` | Static version, publication date and data-review date |
+| `referenceWebMap` | Public Planning web-map item used for source-parity checks |
 | `request` | Fetch timeout and one-retry delay |
 | `address` | Address service, field names, synonyms and safe local aliases |
 | `parcel` | Parcel service, identifier, centroid fields and owner visibility |
@@ -173,8 +174,10 @@ For each layer, `hits()`:
 
 FEMA's specialized renderer shows SFHA status, the selected highest zone/subtype and all
 intersecting classifications. Its conservative precedence is not presented as a FEMA risk score.
-The UGS renderer shows a 1,000-foot direct fault-trace screen and explicitly disclaims any local
-special-study-area or site-specific determination. Historic fields preserve the distinction
+A hidden query compares those classifications with the public-map flood copy, normalizes its
+`PERCENT`/`PCT` label difference, ignores the local layer's documented minimal-X omission, and
+makes every other mismatch visible. Surface fault rupture is an explicit Yes/No full-parcel query
+against the public map's special-study-area polygon. Historic fields preserve the distinction
 between National Register and local-ordinance designations.
 
 Every configured row is labelled `<Layer label> — <Field label>` so repeated labels such as
@@ -214,8 +217,9 @@ designation wording, zeroes, cancellation races, pointer/keyboard combobox selec
 overlap warnings, copied output and automated accessibility rules.
 
 `npm run check:services` is intentionally separate because it calls public production services. It
-verifies configured endpoints and fields plus a known address. CI runs it on a schedule or manual
-dispatch, not as a pull-request dependency.
+verifies configured endpoints and fields, a known address, FEMA/local flood congruence, the two
+historic designation types, and parity between adopted local sources and the public Planning web
+map. CI runs it on a schedule or manual dispatch, not as a pull-request dependency.
 
 `npm run check:deployment` is a post-deploy gate. It requires the live HTML to equal the committed
 `index.html` and checks CSP, permissions, referrer, HSTS, MIME-sniffing and cache headers.

@@ -10,7 +10,7 @@
   # (one HTML document, inline <style> and <script>) so GIS staff can edit
   # the config block without a build step. If that constraint is ever lifted,
   # split the CSS/JS into files and drop both 'unsafe-inline' values.
-  Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://services9.arcgis.com https://hazards.fema.gov https://webmaps.geology.utah.gov; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self' https://maps-millcrk.hub.arcgis.com https://*.millcreekut.gov
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://services9.arcgis.com https://hazards.fema.gov; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self' https://maps-millcrk.hub.arcgis.com https://*.millcreekut.gov
 
 # Always revalidate the document so config edits go live immediately.
 /index.html

@@ -77,9 +77,10 @@ property:
 | Wildland-Urban Interface | Wildfire-resistant construction and defensible space may be required |
 | Sensitive Land Area | Additional review; slope, vegetation, stream corridor or wetland constraints may apply. Replaced the former FCOZ and RCOZ overlay zones |
 
-**Natural hazards** reports FEMA's live flood zone and subtype, plus whether a UGS mapped
-Quaternary fault trace is within 1,000 feet of the parcel. **Historic designation** separately says
-whether the district is National Register only or also protected by a Millcreek local ordinance.
+**Natural hazards** reports FEMA's live flood zone and subtype, whether the public-map flood copy
+agrees, and whether the parcel intersects the surface fault rupture special-study area.
+**Historic designation** separately says whether the district is National Register only or also
+protected by a Millcreek local ordinance.
 
 **The recorded plat** is the surveyed subdivision drawing showing lot lines, dimensions and
 easements. The currently linked scanned files are not screen-reader accessible. Call
@@ -92,7 +93,7 @@ This tool reports the data of record. It is **not** a zoning verification letter
 determination for a lender or insurer, and **not** a decision about whether you can build.
 
 Utility boundaries come from state agencies and providers. They are approximate, contain known
-gaps and overlaps, and are checked at a stored point inside the parcel. Flood, fault proximity,
+gaps and overlaps, and are checked at a stored point inside the parcel. Flood, the fault special-study area,
 WUI, Sensitive Land and historic designations use the full parcel boundary. **Your utility bill or
 meter is the real record of who serves you.** For anything binding, contact Planning & Zoning at
 **801-214-2700** or **planner@millcreekut.gov**.
@@ -145,8 +146,8 @@ Route to GIS at **gis@millcreekut.gov**. The published commitment is **5 busines
 ### What not to say
 
 - Don't say the data is definitive. Utility and hazard boundaries are approximate.
-- Don't present the FEMA or UGS screen as a lender's flood determination, a local fault
-  special-study-area decision, or a site-specific geologic assessment.
+- Don't present the FEMA result as a lender's flood determination or the special-study-area result
+  as a site-specific geologic assessment.
 - Don't tell someone to "just use the map instead" if they've said they can't. That is the whole
   problem this exists to solve.
 
@@ -256,7 +257,7 @@ explicitly for anything resident-facing.
 | `reviewedOn` | Date GIS last checked the source and configured fields (`YYYY-MM-DD`) |
 | `cardinality` | `"one"` when one polygon should match; unexpected overlaps are flagged |
 | `geometryMode: "parcel"` | Intersect the full parcel boundary instead of its stored point |
-| `kind` | Select specialized rendering, currently `femaFlood` or `ugsFaultProximity` |
+| `kind` | Select specialized behavior, currently `femaFlood` or the hidden `femaLocalCrosscheck` |
 | `distance`, `units` | Add an ArcGIS proximity distance to the spatial query |
 
 ### Row shape is the same for every layer
@@ -290,13 +291,15 @@ link is worse than plain text for someone who cannot see that the number looks w
 
 Do not display the denormalized `flood_zone`, `in_wui`, `sensitive_land`, or `is_historic` fields
 from `Millcreek_Parcels`. They can lag behind their source layers. Current determinations are
-spatial queries in `CFG.LAYERS`: FEMA NFHL and UGS fault traces are queried from their agencies,
-while WUI, Sensitive Land and historic designations are queried from their current published City
-layers. All five use `geometryMode: "parcel"`.
+spatial queries in `CFG.LAYERS`: FEMA NFHL is the primary flood source and the public-map flood
+layer is a hidden cross-check; the surface fault rupture special-study area, WUI, Sensitive Land
+and historic designations use their current public-map layers. All use `geometryMode: "parcel"`.
 
-The FEMA handler preserves every classification touching the parcel and displays the highest using
-a documented conservative precedence. That ordering is an application display rule, not a FEMA
-risk score. Run the same logic in an ArcGIS Python environment with:
+The FEMA handler preserves every classification touching the parcel, displays the highest using a
+documented conservative precedence, and makes disagreement with Millcreek's copy visible. The
+comparison ignores FEMA's minimal-X polygon because that classification is absent from the local
+layer. The ordering is an application display rule, not a FEMA risk score. Run the same logic in an
+ArcGIS Python environment with:
 
 ```bash
 python scripts/fema_highest_hazard.py 16264570030000
@@ -370,11 +373,11 @@ commit, run `npm run check:deployment` to compare the live HTML and security hea
 
 ### Adding a layer from a different host
 
-The CSP currently allows Millcreek ArcGIS Online, FEMA hazards, and UGS geology services. Add any
-new origin to `connect-src` in `_headers` or every query to it fails:
+The CSP currently allows Millcreek ArcGIS Online and FEMA hazards services. Add any new origin to
+`connect-src` in `_headers` or every query to it fails:
 
 ```
-Content-Security-Policy: … connect-src https://services9.arcgis.com https://hazards.fema.gov https://webmaps.geology.utah.gov https://newhost.example.gov; …
+Content-Security-Policy: … connect-src https://services9.arcgis.com https://hazards.fema.gov https://newhost.example.gov; …
 ```
 
 ### What not to change without care

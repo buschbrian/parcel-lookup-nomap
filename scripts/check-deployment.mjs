@@ -10,7 +10,7 @@ assert.equal(deployed,html,"deployed HTML does not match index.html");
 
 const required={
   "content-security-policy":["default-src 'none'","connect-src https://services9.arcgis.com",
-    "https://hazards.fema.gov","https://webmaps.geology.utah.gov"],
+    "https://hazards.fema.gov"],
   "permissions-policy":["geolocation=()","camera=()","microphone=()"],
   "referrer-policy":["strict-origin-when-cross-origin"],
   "strict-transport-security":["max-age="],

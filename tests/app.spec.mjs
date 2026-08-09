@@ -19,9 +19,9 @@ function parcel(overrides={}){
 }
 
 const layerFeatures={
-  zoneupdate2024:[{ZONE_:"R-1-8",ZONE_DESC:"Residential",Res_Max_De:5,
+  Zone_Update_2025___Related_Master:[{ZONE_:"R-1-8",ZONE_DESC:"Residential",
     Zone_Desc1:"https://example.test/zoning"}],
-  Future_Land_Use_2019:[{LandUse:"Neighborhood 1",GENPLAN_WEBSITE:"https://example.test/plan",
+  FutureLandUse_2024_Millcreek:[{LandUse:"Neighborhood 1",GENPLAN_WEBSITE:"https://example.test/plan",
     GENPLAN_DOCUMENT:"https://example.test/document"}],
   HistoricDistricts:[], Zone_TCOZ:[], WUI:[], Sensitive_Land_Areas__Feb24:[],
   Subdivision_Dissovle_3:[{OBJECTID:7,SUB_PLAT:"EL SERRITO 2",PLAT_NUM:"22"}],
@@ -31,7 +31,10 @@ const layerFeatures={
     {FLD_ZONE:"AE",ZONE_SUBTY:"FLOODWAY",SFHA_TF:"T",
       STATIC_BFE:4387,LEN_UNIT:"Feet",SOURCE_CIT:"Mock FIRM"}
   ],
-  UGS_FAULTS:[],
+  Flood_Hazard_Zones_Final_Update:[
+    {FLD_ZONE:"AE",ZONE_SUBTY:"Floodway",SFHA_TF:"T"}
+  ],
+  Fault_Study_Area:[],
   Millcreek_City_Council_Dist_2022:[{DIST:"1",COUNCILMEMBER:"Example Member",
     WEB:"https://example.test/council"}],
   TrashPickupDays:[{PickupDay:"Tuesday",phonenumberfix:"385-468-6325",
@@ -45,7 +48,6 @@ const layerFeatures={
 
 function serviceName(pathname){
   if(pathname.includes("/public/NFHL/MapServer/28")) return "FEMA_NFHL";
-  if(pathname.includes("/Hazards/Faults_Quaternary/MapServer/2")) return "UGS_FAULTS";
   if(pathname.includes("Millcreek_Wildland_Urban_Interface")) return "WUI";
   const match=pathname.match(/\/services\/([^/]+)\/FeatureServer/i);
   return match?.[1]||"";
@@ -73,8 +75,10 @@ async function mockArcGIS(page,state={}){
       }
       let features=[...(layerFeatures[name]||[])];
       if(name==="FEMA_NFHL" && state.femaFeatures) features=[...state.femaFeatures];
+      if(name==="Flood_Hazard_Zones_Final_Update" && state.cityFloodFeatures)
+        features=[...state.cityFloodFeatures];
       if(name==="HistoricDistricts" && state.historicFeatures) features=[...state.historicFeatures];
-      if(name==="UGS_FAULTS" && state.faultFeatures) features=[...state.faultFeatures];
+      if(name==="Fault_Study_Area" && state.faultFeatures) features=[...state.faultFeatures];
       if(name==="Water_Services_2021" && state.multipleWater)
         features.push({DWNAME:"Overlapping Provider",phone:"801-555-0100",webpublic:"https://example.test/overlap"});
       return json({features:features.map(attributes=>({attributes}))});
@@ -141,7 +145,30 @@ test("FEMA results display the highest intersecting flood subtype",async({page})
   await expect(page.locator(".pair",{hasText:"Highest FEMA flood zone"})).toContainText("AE");
   await expect(page.locator(".pair",{hasText:"Highest FEMA flood subtype"})).toContainText("FLOODWAY");
   await expect(page.locator(".pair",{hasText:"In FEMA Special Flood Hazard Area"})).toContainText("Yes");
+  await expect(page.locator(".pair",{hasText:"Millcreek flood layer matches live FEMA"})).toContainText("Yes");
   await expect(page.locator("#results-body")).toContainText("AREA OF MINIMAL FLOOD HAZARD");
+});
+
+test("FEMA and Millcreek flood discrepancies are visible",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{cityFloodFeatures:[
+    {FLD_ZONE:"X",ZONE_SUBTY:"0.2 Percent Annual Chance Flood Hazard",SFHA_TF:"F"}
+  ]});
+  await page.reload();
+  await loadKnownProperty(page);
+  await expect(page.locator(".pair",{hasText:"Millcreek flood layer matches live FEMA"})).toContainText("No");
+  await expect(page.locator("#results-body")).toContainText("Review this flood mapping discrepancy");
+  await expect(page.locator("#status")).toContainText("data source issue");
+});
+
+test("fault hazard reports the special study area rather than fault proximity",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{faultFeatures:[{OBJECTID:1,SFRHazardLabel:"Surface Fault Rupture"}]});
+  await page.reload();
+  await loadKnownProperty(page);
+  const fault=page.locator(".pair",{hasText:"In the UGS surface fault rupture special study area"});
+  await expect(fault).toContainText("Yes");
+  await expect(page.locator("#results-body")).not.toContainText("mapped Quaternary fault");
 });
 
 test("historic results distinguish local ordinance and National Register status",async({page})=>{

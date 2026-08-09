@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { readApp } from "./app-config.mjs";
+import { readApp, readBusinessApp } from "./app-config.mjs";
 
 const {CFG}=await readApp();
+const {CFG:businessCFG}=await readBusinessApp();
 const timeoutMs=20_000;
 const layerUrl=path=>/^https?:\/\//i.test(path)?path:CFG.org+path;
 
@@ -20,7 +21,10 @@ const specs=[
     ...CFG.PARCEL_FACTS.map(([field])=>field),...CFG.PARCEL_FLAGS.map(flag=>flag.field)]},
   ...CFG.LAYERS.map(layer=>({key:layer.key,url:layer.url,
     fields:[...Object.keys(layer.fields||{}),...(layer.nameField?[layer.nameField]:[]),
-      ...(layer.attachments?["OBJECTID"]:[])]}))
+      ...(layer.attachments?["OBJECTID"]:[])]})),
+  {key:"business-rental",url:businessCFG.rental.url,fields:[businessCFG.rental.idField]},
+  {key:"business-buffer",url:businessCFG.buffer.url,
+    fields:[businessCFG.buffer.originField,businessCFG.buffer.distanceField]}
 ];
 
 for(const spec of specs){
@@ -127,6 +131,27 @@ assert.ok(faultResult.features.length>0,
   "known special-study-area parcel no longer intersects the fault study layer");
 console.log("ok known fault-special-study-area parcel",faultParcelId);
 
+const informationalHazardParcels={
+  liquefaction:"22062280160000",
+  debris_flow:"22013760250000",
+  alluvial_fan:"22013520360000"
+};
+for(const [layerKey,positiveParcelId] of Object.entries(informationalHazardParcels)){
+  const positiveParcelParams=new URLSearchParams({f:"json",returnGeometry:"true",outSR:"4326",
+    outFields:"parcel_id,prop_location",where:CFG.parcel.idField+"='"+positiveParcelId+"'"});
+  const positiveParcel=await json(layerUrl(CFG.parcel.url)+"/query?"+positiveParcelParams);
+  const positiveGeometry=positiveParcel.features?.[0]?.geometry;
+  assert.ok(positiveGeometry,layerKey+" known-positive parcel geometry is unavailable");
+  const layer=CFG.LAYERS.find(candidate=>candidate.key===layerKey);
+  const positiveQueryParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:"*",
+    geometry:JSON.stringify(positiveGeometry),geometryType:"esriGeometryPolygon",inSR:"4326",
+    spatialRel:"esriSpatialRelIntersects"});
+  const positiveResult=await json(layerUrl(layer.url)+"/query?"+positiveQueryParams);
+  assert.ok(positiveResult.features.length>0,
+    layerKey+" known-positive parcel no longer intersects the configured layer");
+  console.log("ok known informational-hazard parcel",layerKey,positiveParcelId);
+}
+
 const historicLayer=CFG.LAYERS.find(layer=>layer.key==="hist");
 const historicParams=new URLSearchParams({f:"json",where:"1=1",returnGeometry:"false",
   outFields:"name,designation_type,local_ordinance,listyear"});
@@ -144,6 +169,40 @@ assert.equal(districts.get("Evergreen Avenue Historic District")?.local_ordinanc
   "Yes","Evergreen local-ordinance status changed");
 console.log("ok historic designation distinction; National Register-only and local district verified");
 
+const rentalParams=new URLSearchParams({f:"json",where:"1=1",returnGeometry:"false",
+  outFields:businessCFG.rental.idField,resultRecordCount:"1"});
+const rentalResult=await json(layerUrl(businessCFG.rental.url)+"/query?"+rentalParams);
+const rentalParcelId=rentalResult.features?.[0]?.attributes?.[businessCFG.rental.idField];
+assert.ok(rentalParcelId,"published short-term-rental layer has no records");
+const rentalBufferParams=new URLSearchParams({f:"json",returnGeometry:"false",
+  outFields:[businessCFG.buffer.originField,businessCFG.buffer.distanceField].join(","),
+  where:businessCFG.buffer.originField+"='"+String(rentalParcelId).replaceAll("'","''")+"'"});
+const rentalBuffer=await json(layerUrl(businessCFG.buffer.url)+"/query?"+rentalBufferParams);
+assert.ok(rentalBuffer.features?.length,"known published rental has no matching buffer");
+// ArcGIS currently stores BUFF_DIST as 121.92024384 (400 feet expressed in
+// metres) even though its field alias says feet. Verify the geometry itself:
+// in the service's Utah Central feet coordinate system, every envelope side
+// extends about 400 feet beyond the originating rental parcel.
+const distanceValues=rentalBuffer.features.map(feature=>
+  Number(feature.attributes[businessCFG.buffer.distanceField]));
+assert.equal(distanceValues.every(value=>Math.abs(value-121.92024384)<0.01||
+  Math.abs(value-400)<0.01),true,"published buffer-distance attribute changed");
+async function featureExtent(url,idField,id){
+  const extentParams=new URLSearchParams({f:"json",returnExtentOnly:"true",outSR:"102743",
+    where:idField+"='"+String(id).replaceAll("'","''")+"'"});
+  return (await json(layerUrl(url)+"/query?"+extentParams)).extent;
+}
+const [rentalExtent,bufferExtent]=await Promise.all([
+  featureExtent(businessCFG.rental.url,businessCFG.rental.idField,rentalParcelId),
+  featureExtent(businessCFG.buffer.url,businessCFG.buffer.originField,rentalParcelId)
+]);
+assert.ok(rentalExtent&&bufferExtent,"published rental or buffer extent is unavailable");
+const bufferMargins=[rentalExtent.xmin-bufferExtent.xmin,rentalExtent.ymin-bufferExtent.ymin,
+  bufferExtent.xmax-rentalExtent.xmax,bufferExtent.ymax-rentalExtent.ymax];
+assert.equal(bufferMargins.every(value=>value>=395&&value<=405),true,
+  "published short-term-rental geometry is not a 400-foot buffer");
+console.log("ok short-term-rental parcel and 400-foot buffer geometry",rentalParcelId);
+
 const webMapUrl=CFG.referenceWebMap.portalUrl+"/sharing/rest/content/items/"+
   CFG.referenceWebMap.itemId+"/data?f=json";
 const webMap=await json(webMapUrl);
@@ -159,7 +218,9 @@ const normalizeUrl=url=>new URL(url).href.replace(/\/$/,"").toLowerCase();
 const webMapUrls=new Set(leafLayers.map(layer=>normalizeUrl(layer.url)));
 const paritySpecs=[
   {key:"address",url:CFG.address.url},{key:"parcel",url:CFG.parcel.url},
-  ...CFG.LAYERS.filter(layer=>layer.kind!=="femaFlood")
+  ...CFG.LAYERS.filter(layer=>layer.kind!=="femaFlood"),
+  {key:"business-rental",url:businessCFG.rental.url},
+  {key:"business-buffer",url:businessCFG.buffer.url}
 ];
 for(const spec of paritySpecs){
   assert.equal(webMapUrls.has(normalizeUrl(layerUrl(spec.url))),true,

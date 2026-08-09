@@ -1,8 +1,8 @@
 # Code Walkthrough
 
-`index.html` is the complete production application: semantic HTML, CSS, configuration and plain
-JavaScript. It has no runtime packages, build output or map library. Developer-only tests live
-outside that file and never ship to Netlify.
+`index.html` is the complete general property lookup. `business-licensing.html` is a separate,
+self-contained short-term-rental buffer lookup. Each contains its own semantic HTML, CSS,
+configuration and plain JavaScript. Neither has runtime packages, build output or a map library.
 
 This guide describes responsibilities and invariants instead of line numbers so it remains useful
 as the file changes.
@@ -13,7 +13,8 @@ as the file changes.
 
 1. **WCAG 2.1 Level AA is the target.** Automated checks support that work but are not a public
    conformance claim; keyboard and screen-reader testing remain required.
-2. **Production stays one file.** GIS staff can change the marked `CFG` block without a bundler.
+2. **Each production page stays self-contained.** GIS staff can change its marked `CFG` block
+   without a bundler.
 3. **Third-party values are untrusted.** Rendering uses `textContent`; only validated HTTP(S) URLs
    and dialable North American phone numbers become links.
 4. **Missing data is not a negative answer.** A missing FEMA classification is Unknown. Service
@@ -21,7 +22,7 @@ as the file changes.
 5. **A partial answer is better than a blank page.** Independent layer failures are contained and
    reported while successful results render normally.
 
-The single-file choice requires `'unsafe-inline'` in the CSP. `_headers` records that accepted
+The self-contained-page choice requires `'unsafe-inline'` in the CSP. `_headers` records that accepted
 tradeoff. If production is ever split into external CSS and JavaScript, remove both allowances.
 
 ---
@@ -76,6 +77,12 @@ Every displayed layer carries:
 
 Layer indices are service-specific and are not assumed to be zero. `DATA-SOURCES.md` is the review
 register; a newer-looking ArcGIS item is not adopted without data-owner approval and comparison.
+
+The licensing page has a deliberately smaller `CFG`: address points, parcels, published STR
+parcels and published STR buffers. It does not import zoning, hazards, utilities or owner-record
+output from the general page. Its spatial buffer query removes a feature when that feature's source
+`parcel_id` equals the selected parcel before answering “within 400 feet of another published
+STR.”
 
 The parcel's denormalized hazard/designation flags are deliberately not displayed. Boolean source
 layers use a successful spatial query as Yes/No; a failed query renders Unavailable. FEMA is

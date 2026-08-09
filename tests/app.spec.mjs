@@ -35,6 +35,12 @@ const layerFeatures={
     {FLD_ZONE:"AE",ZONE_SUBTY:"Floodway",SFHA_TF:"T"}
   ],
   Fault_Study_Area:[],
+  LiquefactionPotential:[
+    {POTENTIAL:"Moderate",Lqf_Desc:"Moderate published potential."},
+    {POTENTIAL:"High",Lqf_Desc:"High published potential."}
+  ],
+  DebrisFlow_WasatchFront_ClipBuffer:[{OBJECTID:31,Hazard:"Debris Flow"}],
+  AlluvialFans:[{OBJECTID:41,GEODESCSHORT:"Fan alluvium"}],
   Millcreek_City_Council_Dist_2022:[{DIST:"1",COUNCILMEMBER:"Example Member",
     WEB:"https://example.test/council"}],
   TrashPickupDays:[{PickupDay:"Tuesday",phonenumberfix:"385-468-6325",
@@ -169,6 +175,16 @@ test("fault hazard reports the special study area rather than fault proximity",a
   const fault=page.locator(".pair",{hasText:"In the UGS surface fault rupture special study area"});
   await expect(fault).toContainText("Yes");
   await expect(page.locator("#results-body")).not.toContainText("mapped Quaternary fault");
+});
+
+test("informational hazards are full-parcel screens and highest liquefaction is shown",async({page})=>{
+  await loadKnownProperty(page);
+  const card=page.locator(".card",{has:page.locator("h3",{hasText:"Informational hazard screening"})});
+  await expect(card).toContainText("Highest mapped liquefaction potential — CategoryHigh");
+  await expect(card.locator(".pair",{hasText:"Intersects a mapped debris-flow screening area"})).toContainText("Yes");
+  await expect(card.locator(".pair",{hasText:"Intersects mapped alluvial-fan deposits"})).toContainText("Yes");
+  await expect(card).toContainText("do not drive a Millcreek ordinance");
+  await expect(card).toContainText("highest configured category is displayed");
 });
 
 test("historic results distinguish local ordinance and National Register status",async({page})=>{

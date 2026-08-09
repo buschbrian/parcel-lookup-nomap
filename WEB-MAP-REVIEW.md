@@ -21,6 +21,14 @@ and, where possible, compare local copies with the responsible agency's current 
 | Zoning density | Removed `Res_Max_De` from resident output | Unit assertion prevents the field from returning |
 | Surface fault rupture | Replaced the direct fault-trace proximity screen with the map's `Fault_Study_Area/0` special-study-area polygon | Full-parcel intersection; explicit Yes/No |
 | Flood hazard | FEMA NFHL remains primary; `Flood_Hazard_Zones_Final_Update/0` is queried invisibly for comparison | Per-parcel classifications are normalized and compared; mismatches are visible |
+| Informational geologic hazards | Added `LiquefactionPotential/0`, `DebrisFlow_WasatchFront_ClipBuffer/0` and `AlluvialFans/0` in a separate non-regulatory group | Full-parcel queries, permanent caveat, and highest-category test for overlapping liquefaction polygons |
+| Short-term-rental licensing | Added a separate licensing-only page using `Short_Term_Rentals_June_2026/0` and `/1` | Exact active-parcel check; full-parcel buffer intersection; own buffer excluded; live envelope test confirms 400 feet despite the inconsistent `BUFF_DIST` unit/alias |
+
+The liquefaction service description credits an AGRC/UGS digitization of mapping from 1994 UGS
+contract reports. The debris-flow and alluvial-fan item metadata do not name an external steward.
+All three therefore remain explicitly informational. Locating current authoritative UGS/County
+services and comparing parcel outcomes is follow-up source-governance work, not something implied
+by reproducing the public-map layers here.
 
 The special-study-area item is owned by `GISMillcreek`. Its public item description says it was
 clipped from Salt Lake County data and updated on 6 January 2026. The result therefore identifies
@@ -46,11 +54,13 @@ flagging differences in every other zone/subtype/SFHA combination.
   already constrain public lookup results.
 - Millcreek Wildland Urban Interface — 2026 Update.
 - Planning and Zoning: CCOZ, Historic Districts, Subdivisions, Future Land Use and Zoning.
-- Geologic: Sensitive Land Areas and Surface Fault Rupture Special Study Area.
+- Geologic: Sensitive Land Areas, Surface Fault Rupture Special Study Area, Liquefaction Potential,
+  Debris Flow and Alluvial Fans. The latter three are informational and do not imply an ordinance.
 - Hydrology: Flood Hazard Zones, used as the FEMA cross-check.
 - Service Districts: Electrical, Sewer, Garbage Collection and Culinary Water.
 - Administrative Boundaries: City Council Districts.
 - Millcreek Parcels and Address Points.
+- Active Short-Term Rentals and 400-foot buffers, isolated in the Business Licensing lookup.
 
 These local layer URLs are checked against the web-map item during `npm run check:services`; a map
 source change now fails the contract check instead of silently drifting from the reference map.
@@ -59,13 +69,10 @@ source change now fails the contract check instead of silently drifting from the
 
 | Public-map layer | Resident value | Source work required before implementation |
 |:--|:--|:--|
-| Liquefaction Potential | Direct geologic-hazard screening | Confirm the adopted special-study/risk interpretation with Planning and compare with current UGS/County data |
-| Debris Flow; Alluvial Fans | Development hazard screening | Determine whether the polygons are hazard inventories or regulatory special-study areas; prefer current UGS/County sources |
 | Streams — 200 ft Buffer | Sensitive-land/project review | Confirm the applicable ordinance and whether whole-parcel intersection is the correct public answer |
 | National Wetlands Inventory | Wetland screening | Compare the local copy with the current U.S. Fish and Wildlife Service source and explain that mapped wetlands are not a jurisdictional determination |
 | Natural Gas Service Areas | Missing utility provider | Confirm provider stewardship, contact fields, gaps and overlaps |
 | Historic Buildings; Monuments and Markers | Completes historic-property context beyond districts | Distinguish local designation, National Register status and inventory-only records |
-| Active Short-Term Rentals and 400-foot buffers | Current regulatory proximity | Confirm public-disclosure policy, update cadence and whether an address-level result is appropriate |
 | School, state, federal and county districts | Broader representation | Prefer the responsible district/state/county sources and add only fields that residents can act on |
 | Code Compliance Officer Boundaries | Department routing | Confirm that staff assignments are intended for public display and kept current |
 

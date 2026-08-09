@@ -6,6 +6,9 @@ import vm from "node:vm";
 const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 assert.ok(script, "index.html contains an inline script");
+const licensingHtml = await readFile(new URL("../business-licensing.html", import.meta.url), "utf8");
+const licensingScript = licensingHtml.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+assert.ok(licensingScript, "business-licensing.html contains an inline script");
 
 function pureApp(){
   const cfgStart = script.indexOf("const CFG =");
@@ -14,12 +17,19 @@ function pureApp(){
   const helperEnd = script.indexOf("/* Tiered search");
   return vm.runInNewContext(
     script.slice(cfgStart,cfgEnd)+"\n"+script.slice(helperStart,helperEnd)+
-    "\n;({CFG,parseAddress,decode,floodRank,selectHighestFlood,floodClassSet,sameSet});"
+    "\n;({CFG,parseAddress,decode,floodRank,selectHighestFlood,selectHighestCategory,floodClassSet,sameSet});"
   );
+}
+
+function businessConfig(){
+  const start=licensingScript.indexOf("const CFG={");
+  const end=licensingScript.indexOf("/* ==================================================================\n   No further edits");
+  return vm.runInNewContext(licensingScript.slice(start,end)+"\n;CFG;");
 }
 
 test("the inline production JavaScript parses",()=>{
   assert.doesNotThrow(()=>new Function(script));
+  assert.doesNotThrow(()=>new Function(licensingScript));
 });
 
 test("address normalization handles words, locality suffixes, and units",()=>{
@@ -34,7 +44,7 @@ test("address normalization handles words, locality suffixes, and units",()=>{
 });
 
 test("hazards use the requested source layers and cross-check FEMA classifications",()=>{
-  const {CFG,floodRank,selectHighestFlood,floodClassSet,sameSet}=pureApp();
+  const {CFG,floodRank,selectHighestFlood,selectHighestCategory,floodClassSet,sameSet}=pureApp();
   assert.deepEqual([...CFG.PARCEL_FLAGS],[]);
   assert.match(CFG.LAYERS.find(layer=>layer.kind==="femaFlood").url,/hazards\.fema\.gov/);
   assert.match(CFG.LAYERS.find(layer=>layer.key==="flood_local").url,/Flood_Hazard_Zones_Final_Update/);
@@ -46,6 +56,26 @@ test("hazards use the requested source layers and cross-check FEMA classificatio
   assert.equal(selectHighestFlood([minimal,floodway]),floodway);
   assert.equal(sameSet(floodClassSet([minimal,floodway],{omitMinimal:true}),
     floodClassSet([localFloodway],{omitMinimal:true})),true);
+  const high={POTENTIAL:"High"},moderate={POTENTIAL:"Moderate"};
+  assert.equal(selectHighestCategory([moderate,high],"POTENTIAL",["Very Low","Moderate","High"]),high);
+});
+
+test("informational hazards stay separate from regulatory hazard results",()=>{
+  const {CFG}=pureApp();
+  const info=CFG.LAYERS.filter(layer=>layer.group==="Informational hazard screening");
+  assert.deepEqual([...info.map(layer=>layer.key)],["liquefaction","debris_flow","alluvial_fan"]);
+  assert.ok(info.every(layer=>layer.geometryMode==="parcel"));
+  assert.match(CFG.GROUP_NOTES["Informational hazard screening"],/do not drive a Millcreek ordinance/i);
+});
+
+test("the licensing page is limited to published STR parcels and buffers",()=>{
+  const CFG=businessConfig();
+  assert.match(CFG.rental.url,/Short_Term_Rentals_June_2026\/FeatureServer\/0/);
+  assert.match(CFG.buffer.url,/Short_Term_Rentals_June_2026\/FeatureServer\/1/);
+  assert.equal(CFG.buffer.distanceField,"BUFF_DIST");
+  assert.doesNotMatch(licensingHtml,/own_name|own_addr|zoning district|FEMA flood/i);
+  assert.match(licensingHtml,/801-214-2759/);
+  assert.doesNotMatch(licensingHtml,/801-214-2754/);
 });
 
 test("zoning follows the public map and does not display density",()=>{

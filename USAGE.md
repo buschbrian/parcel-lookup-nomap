@@ -54,9 +54,9 @@ and moves focus to the **Results** heading when your property loads, so you land
 information rather than having to hunt for it.
 
 Results are organised under headings — Property record, Zoning, Historic designation, Hazard and
-special designations, Subdivision and plat, Natural hazards, Representation, Services — so you can
-jump between them by heading. Each item is a description list, so labels and values are correctly
-associated.
+special designations, Subdivision and plat, Natural hazards, Informational hazard screening,
+Representation, Services — so you can jump between them by heading. Each item is a description
+list, so labels and values are correctly associated.
 
 Determinations are spoken as "Yes", "No", or "Unknown", never conveyed by colour alone. Unknown
 means the authoritative source did not contain a definite value and staff should verify it.
@@ -79,8 +79,24 @@ property:
 
 **Natural hazards** reports FEMA's live flood zone and subtype, whether the public-map flood copy
 agrees, and whether the parcel intersects the surface fault rupture special-study area.
+**Informational hazard screening** reports liquefaction, debris-flow and alluvial-fan mapping from
+the public Planning map. These results are generalized context and are deliberately not described
+as ordinance or development determinations. Only the liquefaction item explicitly credits UGS and
+UGRC; the other two items still need authoritative-source replacement or cross-verification.
 **Historic designation** separately says whether the district is National Register only or also
 protected by a Millcreek local ordinance.
+
+### Short-term-rental licensing page
+
+Use `business-licensing.html` for a focused licensing screen. It checks the published June 2026 STR
+parcel layer and the 400-foot buffer layer against the full selected parcel. If the parcel is itself
+listed, its own buffer is removed before answering whether the parcel is within 400 feet of
+**another** published rental. The page does not expose owner or mailing-address fields and does not
+report zoning, hazards, utilities or unrelated property facts.
+
+A No result is not an approval or reservation. The snapshot can lag licensing actions, and the
+page does not evaluate primary residence, district capacity, parking, inspections, taxes or other
+requirements. Use the official Business Licensing page and contacts shown there for a decision.
 
 **The recorded plat** is the surveyed subdivision drawing showing lot lines, dimensions and
 easements. The currently linked scanned files are not screen-reader accessible. Call
@@ -257,6 +273,7 @@ explicitly for anything resident-facing.
 | `reviewedOn` | Date GIS last checked the source and configured fields (`YYYY-MM-DD`) |
 | `cardinality` | `"one"` when one polygon should match; unexpected overlaps are flagged |
 | `geometryMode: "parcel"` | Intersect the full parcel boundary instead of its stored point |
+| `rankField`, `rankOrder` | For overlapping categorical polygons, display the highest configured category |
 | `kind` | Select specialized behavior, currently `femaFlood` or the hidden `femaLocalCrosscheck` |
 | `distance`, `units` | Add an ArcGIS proximity distance to the spatial query |
 

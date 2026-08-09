@@ -23,6 +23,7 @@
   --no:#4a4a4a;
   --warn-bg:#fff4e5;
   --warn-ink:#7a3e00;     /* 6.9:1 on --warn-bg */
+  --unknown:#7a3e00;
   --note-ink:#3f3f3f;     /* 8.9:1 on --surface */
   --focus:#b5230f;
   --radius:6px;
@@ -32,6 +33,7 @@
     --ink:#f2f2f2; --ink-soft:#c9c9c9; --bg:#121517; --surface:#1e2327;
     --line:#8d9499; --line-soft:#333a40; --accent:#7fc4f2; --accent-dk:#a8d8f8;
     --yes:#7fd396; --no:#b9c0c5; --warn-bg:#3a2a12; --warn-ink:#ffd9a0;
+    --unknown:#ffd9a0;
     --note-ink:#cdd3d8; --focus:#ff8a70;
   }
 }
@@ -149,6 +151,7 @@ dd.none{color:var(--ink-soft);font-style:italic}
 .flag{display:inline-flex;align-items:baseline;gap:.4rem;font-weight:700}
 .flag[data-v=yes]{color:var(--yes)}
 .flag[data-v=no]{color:var(--no);font-weight:600}
+.flag[data-v=unknown]{color:var(--unknown)}
 .flag .g{font-size:1.05em;line-height:1}
 .callout{
   margin:.75rem 0 0; padding:.75rem .9rem; border-radius:var(--radius);
@@ -213,10 +216,9 @@ details > *:not(summary){font-size:.9063rem}
 
 <main id="main" class="wrap" tabindex="-1">
   <p class="lede">
-    Enter an address or parcel number to get zoning, flood hazard, overlay zone,
-    district and service information as text. This tool provides the same
-    information as the interactive zoning map and does not require a map,
-    a mouse, or vision.
+    Enter an address or parcel number to get key zoning, flood hazard, overlay
+    zone, district and service information as text. This lookup does not require
+    a map, a mouse, or vision.
   </p>
 
   <form id="lookup" novalidate>
@@ -258,8 +260,7 @@ details > *:not(summary){font-size:.9063rem}
 
   <h2>Prefer to ask a person?</h2>
   <p>
-    Staff will look up any property and read or send you the results. This is an
-    equally valid way to get this information.
+    Staff can also look up a property and read or send you the results.
   </p>
   <ul>
     <li>Phone: <a href="tel:+18012142754">801-214-2754</a></li>
@@ -279,7 +280,7 @@ details > *:not(summary){font-size:.9063rem}
       Address data originate with the Utah Geospatial Resource Center (UGRC) and
       Salt Lake County.
     </p>
-    <p>
+    <p id="public-disclaimer">
       This tool reports the data of record. It is <strong>not</strong> a zoning
       verification letter, a flood determination for lending or insurance
       purposes, or a determination that a property can be developed. For a
@@ -356,6 +357,14 @@ details > *:not(summary){font-size:.9063rem}
 const CFG = {
   org: "https://services9.arcgis.com/XRrSFvEwSsReIxuA/arcgis/rest/services",
 
+  // Static release metadata. Do not derive these dates from the visitor's clock.
+  release: {
+    version: "2026.08.09",
+    publishedOn: "2026-08-09",
+    dataReviewedOn: "2026-08-09"
+  },
+  request: { timeoutMs:12000, retryDelayMs:700 },
+
   // Address suggestions come from the City's authoritative address points.
   //
   // The stored format is:  AddNum + PrefixDir + StreetName + StreetType + SuffixDir
@@ -372,6 +381,8 @@ const CFG = {
     nameField:   "StreetName",
     extra: ["City","ZipCode","UnitType","UnitID"],
     max: 10,
+    sourceOwner: "Millcreek GIS; addresses originate with UGRC and Salt Lake County",
+    reviewedOn: "2026-08-09",
 
     // Spelled-out word -> the abbreviation actually stored in the data.
     // Add to this list rather than changing the search logic.
@@ -414,6 +425,8 @@ const CFG = {
     idField: "parcel_id",
     latField: "parcel_latitude",
     lonField: "parcel_longitude",
+    sourceOwner: "Millcreek GIS; parcel records originate with Salt Lake County",
+    reviewedOn: "2026-08-09",
     // Owner of record is public record (Salt Lake County Assessor).
     showOwner: true
   },
@@ -431,6 +444,7 @@ const CFG = {
   LAYERS: [
     { key:"zone",  group:"Zoning", label:"Base zoning district",
       url:"/zoneupdate2024/FeatureServer/0",
+      sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"one",
       // Field labels stay short: the layer label is prepended to every row.
       fields:{ZONE_:"Code", ZONE_DESC:"Category",
               Res_Max_De:"Max residential density (units/acre)",
@@ -442,15 +456,18 @@ const CFG = {
 
     { key:"futureland", group:"Zoning", label:"Future land use",
       url:"/Future_Land_Use_2019/FeatureServer/0",
+      sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"one",
       fields:{LandUse:"Designation", GENPLAN_WEBSITE:"General Plan",
               GENPLAN_DOCUMENT:"Plan document"} },
 
     { key:"hist", group:"Zoning", label:"In a historic district",
       url:"/HistoricDistricts/FeatureServer/0", boolean:true,
+      sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"one",
       note:"Exterior alterations may require historic review." },
 
     { key:"ccoz", group:"Zoning", label:"In the City Center Overlay (CCOZ)",
       url:"/Zone_TCOZ/FeatureServer/0", boolean:true,
+      sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"one",
       note:"City Center Overlay standards apply, which affect permitted uses, "+
            "building height, setbacks and site design." },
 
@@ -459,24 +476,29 @@ const CFG = {
     // the whole parcel boundary; this centroid test exists to catch
     // disagreement between the two, not to answer the question itself.
     { key:"sens_poly", group:"Zoning", label:"Sensitive Land Areas cross-check",
-      url:"/Sensitive_Land_Areas__Feb24/FeatureServer/0", boolean:true, hidden:true },
+      url:"/Sensitive_Land_Areas__Feb24/FeatureServer/0", boolean:true, hidden:true,
+      sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"one" },
 
     // attachments:true -> also fetch the recorded plat PDF attached to the feature.
     { key:"subdiv", group:"Subdivision and plat", label:"Recorded subdivision",
       url:"/Subdivision_Dissovle_3/FeatureServer/7",
+      sourceOwner:"Millcreek GIS", reviewedOn:"2026-08-09", cardinality:"one",
       fields:{SUB_PLAT:"Name", PLAT_NUM:"Plat number"},
       attachments:true, attachmentLabel:"Recorded plat" },
 
     { key:"flood", group:"Natural hazards", label:"FEMA flood hazard zone",
       url:"/Flood_Hazard_Zones_Final_Update/FeatureServer/0",
+      sourceOwner:"FEMA; maintained in this service by Millcreek GIS", reviewedOn:"2026-08-09", cardinality:"one",
       fields:{FLD_ZONE:"Zone", ZONE_SUBTY:"Subtype",
               SFHA_TF:"Special Flood Hazard Area", STATIC_BFE:"Base flood elevation (ft)"} },
     { key:"fault", group:"Natural hazards", label:"In a geologic fault study area",
       url:"/Fault_Study_Area/FeatureServer/0", boolean:true,
+      sourceOwner:"Utah Geological Survey; maintained in this service by Millcreek GIS", reviewedOn:"2026-08-09", cardinality:"one",
       note:"A site-specific geologic study may be required before building." },
 
     { key:"council", group:"Representation", label:"City Council",
       url:"/Millcreek_City_Council_Dist_2022/FeatureServer/2",
+      sourceOwner:"Millcreek GIS", reviewedOn:"2026-08-09", cardinality:"one",
       fields:{DIST:"District", COUNCILMEMBER:"Member", WEB:"Member page"} },
     // NOTE: Community councils (Community_Council) were removed August 2026 —
     // no longer a City responsibility.
@@ -485,10 +507,12 @@ const CFG = {
     // No name field in this layer, so linkName supplies the link wording.
     { key:"trash", group:"Services", label:"Waste & recycling",
       url:"/TrashPickupDays/FeatureServer/0",
+      sourceOwner:"Wasatch Front Waste & Recycling District; maintained by Millcreek GIS", reviewedOn:"2026-08-09", cardinality:"one",
       linkName:"Wasatch Front Waste & Recycling District",
       fields:{PickupDay:"Collection day", phonenumberfix:"Phone", websitelink:"Website"} },
     { key:"sewer", group:"Services", label:"Sewer",
       url:"/SewerDistrictsUpdated/FeatureServer/0", nameField:"District",
+      sourceOwner:"Utility providers; maintained by Millcreek GIS", reviewedOn:"2026-08-09", cardinality:"one",
       fields:{District:"District", Phone:"Phone"} },
     // Millcreek is served by several retail (culinary) water companies —
     // Salt Lake City Water, Holliday Water, Boundary Spring and others.
@@ -503,6 +527,7 @@ const CFG = {
     // reads "Salt Lake City Water System", not "Provider website".
     { key:"water", group:"Services", label:"Culinary water",
       url:"/Water_Services_2021/FeatureServer/3", nameField:"DWNAME",
+      sourceOwner:"Utah Division of Drinking Water and providers", reviewedOn:"2026-08-09", cardinality:"one",
       fields:{DWNAME:"Provider", phone:"Phone", webpublic:"Website"} },
     // Every layer below is explicitly configured. Do not rely on the
     // self-configuring fallback for anything resident-facing: it picks the
@@ -510,6 +535,7 @@ const CFG = {
     // contact ended up under Services (it came from the fireworks layer).
     { key:"power", group:"Services", label:"Electrical",
       url:"/Electrical_Service/FeatureServer/0", nameField:"PROVIDER",
+      sourceOwner:"Utility providers; maintained by Millcreek GIS", reviewedOn:"2026-08-09", cardinality:"one",
       fields:{PROVIDER:"Provider", TELEPHONE:"Phone",
               WEBLINK:"Website", NOTES:"Note"} }
 
@@ -522,20 +548,21 @@ const CFG = {
   // A resident should not have to interpret a code.
   PARCEL_FLAGS: [
     { field:"flood_zone",     label:"In a FEMA flood hazard area",
-      yes:v=>v && String(v).trim() && !/^(x|area of minimal)/i.test(v),
+      classify:v=>String(v??"").trim()==="" ? "unknown" :
+        (/^(x|area of minimal)/i.test(String(v).trim()) ? "no" : "yes"),
       detail:v=>"FEMA zone "+v,
       note:"Flood insurance may be required by your lender, and additional building standards apply." },
     { field:"in_wui",         label:"In the Wildland-Urban Interface",
-      yes:v=>/^y/i.test(v||""),
+      classify:v=>/^y/i.test(v||"") ? "yes" : (/^n/i.test(v||"") ? "no" : "unknown"),
       note:"Wildfire-resistant construction and defensible space requirements may apply." },
     { field:"sensitive_land", label:"In a Sensitive Land Area",
-      yes:v=>/^y/i.test(v||""),
+      classify:v=>/^y/i.test(v||"") ? "yes" : (/^n/i.test(v||"") ? "no" : "unknown"),
       note:"Sensitive Land Area standards apply. These replaced the former Foothills "+
            "and Canyons (FCOZ) and Residential Compatibility (RCOZ) overlay zones. "+
            "Development may require additional review, and slope, vegetation, stream "+
            "corridor or wetland constraints may apply. Contact Planning before designing." },
     { field:"is_historic",    label:"Historic designation",
-      yes:v=>/^y/i.test(v||""),
+      classify:v=>/^y/i.test(v||"") ? "yes" : (/^n/i.test(v||"") ? "no" : "unknown"),
       note:"Exterior alterations may require historic review." }
   ],
 
@@ -543,11 +570,11 @@ const CFG = {
   PARCEL_FACTS: [
     ["prop_location",     "Property address"],
     ["parcel_id",         "Parcel number"],
-    ["parcel_acres",      "Parcel size (acres)", v=>Number(v).toFixed(3)],
+    ["parcel_acres",      "Parcel size (acres)", v=>Number.isFinite(Number(v))?Number(v).toFixed(3):null],
     ["property_type_code","Property type"],          // coded-value domain
-    ["year_built",        "Year built",          v=>v>0?String(Math.round(v)):null],
-    ["total_sq_ft",       "Building area (sq ft)",v=>v>0?Math.round(v).toLocaleString("en-US"):null],
-    ["num_housing_units", "Housing units",       v=>v>0?String(Math.round(v)):null],
+    ["year_built",        "Year built",          v=>Number(v)>0?String(Math.round(Number(v))):null],
+    ["total_sq_ft",       "Building area (sq ft)",v=>Number(v)>=0?Math.round(Number(v)).toLocaleString("en-US"):null],
+    ["num_housing_units", "Housing units",       v=>Number(v)>=0?String(Math.round(Number(v))):null],
     ["tax_dist",          "Tax district"],
     ["prop_zip",          "ZIP code"]
   ],
@@ -596,8 +623,20 @@ const el = (t,a={},kids=[]) => {
 const q$=$("#q"), list$=$("#sugg"), status$=$("#status"),
       results$=$("#results"), body$=$("#results-body"), head$=$("#r-head");
 
-let items=[], active=-1, chosen=null, seq=0;
+let items=[], active=-1, chosen=null, seq=0, activeKind=null;
+let activeController = new AbortController();
 const schemaCache = new Map();
+
+function startTask(kind){
+  seq++;
+  activeController.abort();
+  activeController = new AbortController();
+  activeKind = kind;
+  return {mine:seq, signal:activeController.signal};
+}
+function finishTask(task){
+  if(task && task.mine===seq) activeKind=null;
+}
 
 function say(msg, tone){
   status$.textContent = msg || "";
@@ -621,39 +660,60 @@ function svcError(kind, msg, detail){
 // "cannot reach the service" during local testing.
 const RUNNING_FROM_FILE = location.protocol === "file:";
 
-async function rawQuery(path, params){
-  const u = new URL(CFG.org + path + "/query");
-  u.search = new URLSearchParams({f:"json", returnGeometry:"false", ...params});
+async function fetchJson(url, signal){
+  const u = url instanceof URL ? url : new URL(url);
+  const controller = new AbortController();
+  let timedOut=false;
+  const timeout=setTimeout(()=>{ timedOut=true; controller.abort(); }, CFG.request.timeoutMs);
+  const cancel=()=>controller.abort();
+  if(signal){
+    if(signal.aborted) cancel();
+    else signal.addEventListener("abort",cancel,{once:true});
+  }
   let r;
   try{
-    r = await fetch(u, {headers:{Accept:"application/json"}});
-  }catch(netErr){
-    // fetch() rejects for: offline, DNS failure, CORS block, CSP block.
+    r = await fetch(u, {headers:{Accept:"application/json"}, signal:controller.signal});
+    if(r.status===429) throw svcError("busy","Service is rate limiting requests (HTTP 429)",String(u));
+    if(r.status>=500)  throw svcError("server","Service error (HTTP "+r.status+")",String(u));
+    if(!r.ok)          throw svcError("http","Service returned HTTP "+r.status,String(u));
+    let j;
+    try{ j = await r.json(); }
+    catch{ throw svcError("server","Service returned a malformed response",String(u)); }
+    if(j.error) throw svcError("query",j.error.message||"Query rejected",{url:String(u),error:j.error});
+    return j;
+  }catch(err){
+    if(err && err.kind) throw err;
+    if(signal?.aborted) throw svcError("aborted","Request was superseded",String(u));
+    if(timedOut) throw svcError("timeout","Service request timed out",String(u));
     throw svcError(RUNNING_FROM_FILE ? "file" : "network",
-      netErr.message || "Network request failed", String(u));
+      err.message || "Network request failed", String(u));
+  }finally{
+    clearTimeout(timeout);
+    if(signal) signal.removeEventListener("abort",cancel);
   }
-  if(r.status===429) throw svcError("busy","Service is rate limiting requests (HTTP 429)");
-  if(r.status>=500)  throw svcError("server","Service error (HTTP "+r.status+")");
-  if(!r.ok)          throw svcError("http","Service returned HTTP "+r.status);
-  let j;
-  try{ j = await r.json(); }
-  catch{ throw svcError("server","Service returned a malformed response"); }
-  // ArcGIS returns HTTP 200 with an error body for a rejected query.
-  if(j.error) throw svcError("query", j.error.message || "Query rejected", j.error);
-  return j;
 }
 
-async function query(path, params){
+async function withRetry(work, signal){
   try{
-    return await rawQuery(path, params);
+    return await work();
   }catch(e){
-    // Retry once, only for failures that are plausibly transient.
-    if(["network","busy","server"].includes(e.kind)){
-      await new Promise(r=>setTimeout(r,700));
-      return await rawQuery(path, params);
+    if(["network","busy","server","timeout"].includes(e.kind) && !signal?.aborted){
+      await new Promise(r=>setTimeout(r,CFG.request.retryDelayMs));
+      if(signal?.aborted) throw svcError("aborted","Request was superseded");
+      return await work();
     }
     throw e;
   }
+}
+
+async function rawQuery(path, params, signal){
+  const u = new URL(CFG.org + path + "/query");
+  u.search = new URLSearchParams({f:"json", returnGeometry:"false", ...params});
+  return fetchJson(u,signal);
+}
+
+async function query(path, params, signal){
+  return withRetry(()=>rawQuery(path,params,signal),signal);
 }
 
 /* Turn a classified error into something worth reading. */
@@ -668,6 +728,8 @@ function explain(e, what){
       return "The "+what+" is busy right now. Wait a few seconds and try again."+call;
     case "network":
       return "Could not reach the "+what+". Check your internet connection, then try again."+call;
+    case "timeout":
+      return "The "+what+" took too long to respond. Try again in a moment."+call;
     case "server":
     case "http":
       return "The "+what+" is not responding correctly. This is a problem at our end, not yours."+call;
@@ -678,21 +740,16 @@ function explain(e, what){
   }
 }
 // Field aliases + coded-value domains, read from the service itself.
-async function schema(path){
+async function schema(path,signal){
   if(schemaCache.has(path)) return schemaCache.get(path);
-  const p = (async()=>{
-    try{
-      const r = await fetch(new URL(CFG.org+path).toString()+"?f=json");
-      const j = await r.json();
-      const map = {};
-      (j.fields||[]).forEach(f=>{
-        map[f.name] = { alias:f.alias||f.name, domain:f.domain };
-      });
-      return map;
-    }catch{ return {}; }
-  })();
-  schemaCache.set(path,p);
-  return p;
+  const u=new URL(CFG.org+path); u.search="?f=json";
+  const j=await withRetry(()=>fetchJson(u,signal),signal);
+  const map = {};
+  (j.fields||[]).forEach(f=>{
+    map[f.name] = { alias:f.alias||f.name, domain:f.domain };
+  });
+  schemaCache.set(path,map);
+  return map;
 }
 const decode = (fld,v) => {
   // Assessor data contains whitespace-only strings; treat them as empty.
@@ -703,6 +760,7 @@ const decode = (fld,v) => {
   return typeof v==="string" ? v.trim() : v;
 };
 const esc = s => String(s).replace(/'/g,"''");
+const regexEsc = s => String(s).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
 
 /* ---------------------------------------------------------------
    Address parsing.
@@ -718,7 +776,7 @@ function parseAddress(raw){
   const DIRS=new Set(A.dirs), TYPES=new Set(A.types);
   let s=String(raw||"").toUpperCase();
   s=s.split(",")[0];                                   // drop ", MILLCREEK, UT 84109"
-  s=s.replace(/\b(?:APT|APARTMENT|UNIT|STE|SUITE|BLDG|BUILDING|LOT|#)\s*[\w-]*/g," ");
+  s=s.replace(/(?:\b(?:APT|APARTMENT|UNIT|STE|SUITE|BLDG|BUILDING|LOT)\b|#)\s*[\w-]*/g," ");
   s=s.replace(/[.,;:]/g," ").replace(/\s+/g," ").trim();
   if(!s) return {num:null,street:"",normalized:""};
 
@@ -729,7 +787,7 @@ function parseAddress(raw){
   // more — it is cheaper than loosening the search.
   let joined=toks.join(" ");
   for(const [from,to] of Object.entries(A.streetAliases||{})){
-    joined=joined.replace(new RegExp("\\b"+from+"\\b","g"),to);
+    joined=joined.replace(new RegExp("\\b"+regexEsc(from)+"\\b","g"),to);
   }
   toks=joined.split(" ").filter(Boolean);
 
@@ -751,7 +809,7 @@ function parseAddress(raw){
 
 /* Tiered search. Returns the first tier that finds anything, plus a note
    explaining any broadening so it can be announced to the user. */
-async function findAddresses(raw, limit){
+async function findAddresses(raw, limit, signal){
   const A=CFG.address, p=parseAddress(raw);
   if(!p.normalized) return {items:[],note:null,parsed:p};
 
@@ -773,7 +831,7 @@ async function findAddresses(raw, limit){
       outFields:[A.searchField,A.parcelField,...A.extra].join(","),
       orderByFields:A.searchField,
       resultRecordCount:String(limit||A.max)
-    });
+    },signal);
     const items=(j.features||[]).map(f=>f.attributes).filter(a=>a[A.parcelField]);
     if(items.length) return {items, note:t.note, parsed:p};
   }
@@ -786,25 +844,28 @@ q$.addEventListener("input", ()=>{
   chosen=null;
   clearTimeout(timer);
   const term=q$.value.trim();
-  if(term.length<3){ closeList(); say(""); return; }
-  timer=setTimeout(()=>suggest(term),250);
+  const task=startTask("suggest");
+  if(term.length<3){ activeKind=null; closeList(); say(""); return; }
+  timer=setTimeout(()=>{timer=null; suggest(term,task);},250);
 });
 
-async function suggest(term){
-  const mine = ++seq;
+async function suggest(term,task){
+  const {mine,signal}=task;
   // A bare 9-14 digit string is a parcel number, not an address.
   if(/^\d{9,14}$/.test(term)){
     closeList();
     say("Looks like a parcel number. Choose “Look up property”.");
+    finishTask(task);
     return;
   }
   let found, note;
   try{
-    ({items:found, note} = await findAddresses(term));
+    ({items:found, note} = await findAddresses(term,null,signal));
   }catch(e){
-    if(mine!==seq) return;
+    if(mine!==seq || e.kind==="aborted") return;
     console.error("[lookup] address search failed:", e.kind, e.message, e.detail||"");
     closeList(); say(explain(e,"address service"), "error");
+    finishTask(task);
     return;
   }
   if(mine!==seq) return;                          // stale response
@@ -812,6 +873,7 @@ async function suggest(term){
   // reported to the user as a network failure.
   items = found;
   render(note);
+  finishTask(task);
 }
 
 function render(note){
@@ -881,7 +943,18 @@ list$.addEventListener("mousemove", e=>{
   if(li) highlight([...list$.children].indexOf(li));
 });
 document.addEventListener("click", e=>{
-  if(!e.target.closest(".combo")) closeList();
+  if(!e.target.closest(".combo")){
+    if(activeKind==="suggest") startTask(null);
+    clearTimeout(timer); timer=null;
+    closeList();
+  }
+});
+document.addEventListener("focusin", e=>{
+  if(!e.target.closest(".combo") && (!list$.hidden || activeKind==="suggest")){
+    if(activeKind==="suggest") startTask(null);
+    clearTimeout(timer); timer=null;
+    closeList();
+  }
 });
 
 function pick(i){
@@ -902,30 +975,39 @@ $("#lookup").addEventListener("submit", async e=>{
   if(chosen){ load(chosen,term); return; }
   if(/^\d{9,14}$/.test(term)){ load(term.padStart(14,"0"), term); return; }
   // Free text: run the same tiered search the suggestions use.
+  const task=startTask("search");
   say("Searching…");
   try{
     const A=CFG.address;
-    const {items:found, note} = await findAddresses(term);
+    const {items:found, note} = await findAddresses(term,null,task.signal);
+    if(task.mine!==seq) return;
     if(!found.length){
       say("No property matches “"+term+"”. Try just the house number and street name — "+
           "for example “3300 Santa Rosa”. Or call "+CFG.contact.phone+" and staff will "+
           "look it up for you.","error");
+      finishTask(task);
       return;
     }
     // Several candidates: let the user choose rather than guessing for them.
     if(found.length>1){
       items=found; render(note);
       q$.focus();
+      finishTask(task);
       return;
     }
     if(note) say(note);
+    finishTask(task);
     load(found[0][A.parcelField], found[0][A.searchField]);
   }catch(err){
+    if(task.mine!==seq || err.kind==="aborted") return;
     console.error("[lookup] submit search failed:", err.kind, err.message);
     say(explain(err,"address service"),"error");
+    finishTask(task);
   }
 });
 $("#clear").addEventListener("click", ()=>{
+  startTask(null); activeKind=null;
+  clearTimeout(timer); timer=null;
   q$.value=""; chosen=null; closeList(); say("");
   results$.hidden=true; body$.textContent="";
   q$.focus();
@@ -933,13 +1015,23 @@ $("#clear").addEventListener("click", ()=>{
 
 /* --- Load and render a property --------------------------------- */
 async function load(parcelId, label){
-  const mine = ++seq;
+  const task=startTask("load");
+  const {mine,signal}=task;
   say("Looking up "+label+"…");
   results$.hidden=true; body$.textContent="";
   try{
     const P=CFG.parcel;
-    const pSchema = await schema(P.url);
-    const j = await query(P.url,{ where:`${P.idField}='${esc(parcelId)}'`, outFields:"*" });
+    const [schemaResult,queryResult] = await Promise.allSettled([
+      schema(P.url,signal),
+      query(P.url,{ where:`${P.idField}='${esc(parcelId)}'`, outFields:"*" },signal)
+    ]);
+    if(queryResult.status==="rejected") throw queryResult.reason;
+    if(schemaResult.status==="rejected" && schemaResult.reason?.kind==="aborted")
+      throw schemaResult.reason;
+    const pSchema=schemaResult.status==="fulfilled" ? schemaResult.value : {};
+    const j=queryResult.value;
+    if(schemaResult.status==="rejected")
+      console.warn("[lookup] parcel schema unavailable:",schemaResult.reason?.kind||"unknown");
     if(mine!==seq) return;
     const rec=(j.features||[])[0]?.attributes;
     if(!rec){
@@ -948,52 +1040,74 @@ async function load(parcelId, label){
       return;
     }
     const lat=rec[P.latField], lon=rec[P.lonField];
-    const overlays = (lat&&lon) ? await hits(lon,lat,mine) : [];
+    const overlays = (lat!=null&&lon!=null) ? await hits(lon,lat,task) : [];
     if(mine!==seq) return;
-    draw(rec,pSchema,overlays,label,lat,lon);
+    draw(rec,pSchema,overlays,label,lat,lon,schemaResult.status==="rejected");
+    finishTask(task);
   }catch(err){
-    if(mine!==seq) return;
+    if(mine!==seq || err.kind==="aborted") return;
     console.error("[lookup] property load failed:", err.kind, err.message, err.detail||"");
     say(explain(err,"property service"),"error");
+    finishTask(task);
   }
 }
 
 // Point-in-polygon against every configured layer, in parallel.
-async function hits(lon,lat,mine){
+async function hits(lon,lat,task){
+  const {signal}=task;
   const geo = { geometry:`${lon},${lat}`, geometryType:"esriGeometryPoint",
                 inSR:"4326", spatialRel:"esriSpatialRelIntersects" };
   return Promise.all(CFG.LAYERS.map(async L=>{
     try{
-      const [j,sch] = await Promise.all([
-        query(L.url,{...geo,outFields:"*"}),
-        schema(L.url)
+      const [queryResult,schemaResult] = await Promise.allSettled([
+        query(L.url,{...geo,outFields:"*"},signal),
+        schema(L.url,signal)
       ]);
+      if(queryResult.status==="rejected") throw queryResult.reason;
+      if(schemaResult.status==="rejected" && schemaResult.reason?.kind==="aborted")
+        throw schemaResult.reason;
+      const j=queryResult.value;
+      const sch=schemaResult.status==="fulfilled" ? schemaResult.value : {};
+      if(schemaResult.status==="rejected")
+        console.warn("[lookup] schema unavailable:",L.key,schemaResult.reason?.kind||"unknown");
       const feats = (j.features||[]).map(f=>f.attributes);
-      const out = {...L, attrs:feats[0]||null, all:feats, sch, failed:false, files:[]};
+      const out = {...L, attrs:feats[0]||null, all:feats, sch, failed:false,
+        schemaFailed:schemaResult.status==="rejected", ambiguous:false,
+        files:[], attachmentsFailed:false};
+      out.ambiguous = (L.cardinality||"one")==="one" && feats.length>1;
 
       // Recorded plat (or any other attachment) on the matched feature.
       if(L.attachments && out.attrs && out.attrs.OBJECTID!=null){
         try{
-          const r = await fetch(CFG.org+L.url+"/"+out.attrs.OBJECTID+"/attachments?f=json");
-          const a = await r.json();
+          const a = await withRetry(()=>fetchJson(
+            CFG.org+L.url+"/"+out.attrs.OBJECTID+"/attachments?f=json",signal),signal);
           out.files = (a.attachmentInfos||[]).map(x=>({
             id:x.id, name:x.name, type:x.contentType, size:x.size,
             url:CFG.org+L.url+"/"+out.attrs.OBJECTID+"/attachments/"+x.id
           }));
-        }catch{ /* attachment listing is non-critical; carry on without it */ }
+        }catch(e){
+          if(e.kind==="aborted") throw e;
+          out.attachmentsFailed=true;
+          console.warn("[lookup] attachment listing unavailable:",L.key,e.kind||"unknown");
+        }
       }
       return out;
-    }catch{ return {...L, attrs:null, all:[], sch:{}, failed:true, files:[]}; }
+    }catch(e){
+      if(e.kind==="aborted") throw e;
+      console.error("[lookup] layer unavailable:",L.key,e.kind||"unknown",e.message||"");
+      return {...L, attrs:null, all:[], sch:{}, failed:true,
+        failedReason:e.kind||"unknown", files:[], attachmentsFailed:false};
+    }
   }));
 }
 
 const isUrl = v => typeof v==="string" && /^https?:\/\//i.test(v.trim());
 
 /* Phone handling. A tel: link is only created for a number that can actually
-   be dialled — 10 digits, or 11 starting with 1. Source data contains
-   malformed values (the waste district's number is stored as 9 digits), and a
-   tel: link that fails to connect is worse than plain text, especially for
-   someone who cannot easily see that the number looks wrong. */
+   be dialled — 10 digits, or 11 starting with 1. Source data can contain
+   malformed values, and a tel: link that fails to connect is worse than plain
+   text, especially for someone who cannot easily see that the number looks
+   wrong. */
 const phoneShaped = v => typeof v==="string" && /^[\d\s()+.\-]{7,}$/.test(v.trim());
 function dialable(v){
   const d = String(v).replace(/\D/g,"");
@@ -1045,17 +1159,19 @@ function ownerPair(raw, careOf){
     el("dt",{text: names.length>1 ? "Owners of record" : "Owner of record"}), dd]);
 }
 
-function flagPair(labelTxt,isYes,detail){
+function flagPair(labelTxt,state,detail){
+  const v=["yes","no","unknown"].includes(state)?state:"unknown";
   const dd=el("dd",{});
-  const f=el("span",{class:"flag","data-v":isYes?"yes":"no"});
-  f.append(el("span",{class:"g",text:isYes?"●":"○","aria-hidden":"true"}));
-  f.append(document.createTextNode(isYes?"Yes":"No"));
+  const f=el("span",{class:"flag","data-v":v});
+  f.append(el("span",{class:"g",text:v==="yes"?"●":(v==="no"?"○":"?"),"aria-hidden":"true"}));
+  f.append(document.createTextNode(v==="yes"?"Yes":(v==="no"?"No":"Unknown")));
   dd.append(f);
-  if(isYes&&detail) dd.append(document.createTextNode(" — "+detail));
+  if(v==="yes"&&detail) dd.append(document.createTextNode(" — "+detail));
+  if(v==="unknown") dd.append(document.createTextNode(" — verify with staff"));
   return el("div",{class:"pair"},[el("dt",{text:labelTxt}),dd]);
 }
 
-function draw(rec,sch,overlays,label,lat,lon){
+function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
   const P=CFG.parcel;
   body$.textContent="";
   head$.textContent = "Results for " + (rec.prop_location || label);
@@ -1074,7 +1190,13 @@ function draw(rec,sch,overlays,label,lat,lon){
     dl1.append(ownerPair(rec.own_name, rec.care_of));
   }
   c1.append(dl1);
-  if(rec.slc_link){
+  if(parcelSchemaFailed){
+    const d=el("div",{class:"note"});
+    d.append(el("p",{},[el("strong",{text:"About this data. "}),
+      document.createTextNode("Parcel field descriptions were temporarily unavailable, so coded values may not be expanded.")]));
+    c1.append(d);
+  }
+  if(isUrl(rec.slc_link)){
     c1.append(el("p",{class:"meta"},[
       document.createTextNode("Assessor valuation record: "),
       el("a",{href:rec.slc_link,rel:"noopener",text:"Salt Lake County Assessor"})
@@ -1083,19 +1205,23 @@ function draw(rec,sch,overlays,label,lat,lon){
   body$.append(c1);
 
   /* ---- Determinations off the parcel record ---- */
-  const dl2=el("dl",{}); const notes=[]; let any=false;
+  const dl2=el("dl",{}); const notes=[]; let any=false, unknown=false;
   CFG.PARCEL_FLAGS.forEach(F=>{
     const raw=rec[F.field];
-    const yes=!!F.yes(raw);
+    const state=F.classify(raw);
+    const yes=state==="yes";
     if(yes) any=true;
-    dl2.append(flagPair(F.label,yes,yes&&F.detail?F.detail(raw):null));
+    if(state==="unknown") unknown=true;
+    dl2.append(flagPair(F.label,state,yes&&F.detail?F.detail(raw):null));
     if(yes&&F.note) notes.push(F.label+": "+F.note);
   });
   const c2=el("div",{class:"card"});
   c2.append(el("h3",{text:"Hazard and special designations"}));
   c2.append(dl2);
-  if(!any) c2.append(el("p",{class:"meta",
+  if(!any&&!unknown) c2.append(el("p",{class:"meta",
     text:"This property is not flagged for flood hazard, wildland-urban interface, sensitive land, or historic designation."}));
+  if(unknown) c2.append(el("p",{class:"meta",
+    text:"One or more source fields did not contain a definite Yes or No. Verify unknown results with staff."}));
   notes.forEach(n=>{
     const cal=el("div",{class:"callout"});
     cal.append(el("p",{},[el("strong",{text:"What this means. "}),document.createTextNode(n)]));
@@ -1108,9 +1234,10 @@ function draw(rec,sch,overlays,label,lat,lon){
      surface it rather than silently trusting either source. */
   const sp = overlays.find(o=>o.key==="sens_poly");
   if(sp && !sp.failed){
-    const byParcel = /^y/i.test(rec.sensitive_land||"");
+    const parcelState=CFG.PARCEL_FLAGS.find(F=>F.field==="sensitive_land").classify(rec.sensitive_land);
+    const byParcel = parcelState==="yes";
     const byPoint  = !!sp.attrs;
-    if(byParcel !== byPoint){
+    if(parcelState!=="unknown" && byParcel !== byPoint){
       const cal=el("div",{class:"callout"});
       cal.append(el("p",{},[
         el("strong",{text:"Verify this one with staff. "}),
@@ -1139,8 +1266,9 @@ function draw(rec,sch,overlays,label,lat,lon){
       // Pure in/out layers: render as an explicit Yes/No, never a blank.
       if(o.boolean){
         const yes=!!o.attrs;
-        dl.append(flagPair(o.label,yes,null));
+        dl.append(flagPair(o.label,yes?"yes":"no",null));
         if(yes&&o.note) gnotes.push(o.label.replace(/^In /,"")+": "+o.note);
+        if(o.ambiguous) gnotes.push(o.label+": multiple source polygons matched the parcel point. Verify this result with staff.");
         return;
       }
       if(!o.attrs){ dl.append(pair(o.label,"Not in this area","none")); return; }
@@ -1159,11 +1287,14 @@ function draw(rec,sch,overlays,label,lat,lon){
          same shape so cards stay congruent. */
       const row = lab => o.label+" — "+lab;
 
+      if(o.ambiguous) gnotes.push(o.label+": multiple source polygons matched the parcel point. The first value is shown; verify it with staff.");
+      if(o.schemaFailed) gnotes.push(o.label+": field descriptions were temporarily unavailable, so coded values may not be expanded.");
+
       if(o.fields){
         let printed=0;
         for(const [f,lab] of Object.entries(o.fields)){
           const v=decode(o.sch[f],o.attrs[f]);
-          if(v==null||v===""||v===0) continue;
+          if(v==null||v==="") continue;
           dl.append(pair(row(lab), v, null, linkText));
           printed++;
         }
@@ -1185,6 +1316,14 @@ function draw(rec,sch,overlays,label,lat,lon){
          scanned drawings that a screen reader cannot read, with the staffed
          route offered alongside. The link is useful; pretending it is
          accessible would not be. */
+      if(o.attachments){
+        if(o.attachmentsFailed){
+          dl.append(pair(o.attachmentLabel||"Attachment",
+            "Temporarily unavailable — call "+CFG.contact.phone,"none"));
+        }else if(!o.files.length){
+          dl.append(pair(o.attachmentLabel||"Attachment","No attached file was found","none"));
+        }
+      }
       if(o.files && o.files.length){
         o.files.forEach(f=>{
           const dd=el("dd",{});
@@ -1195,8 +1334,8 @@ function draw(rec,sch,overlays,label,lat,lon){
           dl.append(el("div",{class:"pair"},[
             el("dt",{text:o.attachmentLabel||"Attachment"}), dd]));
         });
-        gnotes.push("Recorded plats are scanned survey drawings. They are images, so a screen "+
-          "reader cannot read them and they cannot be made fully accessible. If you need the "+
+        gnotes.push("The currently linked recorded plats are scanned survey drawings and are not "+
+          "screen-reader accessible. If you need the "+
           "information on the plat — lot dimensions, easements, setbacks — call "+
           CFG.contact.phone+" and staff will read it to you or describe it. Please say which "+
           "property and what you need to know.");
@@ -1223,44 +1362,67 @@ function draw(rec,sch,overlays,label,lat,lon){
   const c4=el("div",{class:"card"});
   c4.append(el("h3",{text:"Location"}));
   const dl4=el("dl",{});
-  if(lat&&lon){
+  if(lat!=null&&lon!=null){
     dl4.append(pair("Latitude, longitude", Number(lat).toFixed(6)+", "+Number(lon).toFixed(6)));
   }
   c4.append(dl4);
   c4.append(el("p",{class:"meta"},[
-    document.createTextNode("Prefer a visual map? The same information is available on the "),
+    document.createTextNode("Prefer a visual map? You can also use the "),
     el("a",{href:CFG.fallbackMapUrl,rel:"noopener",text:"interactive zoning map"}),
-    document.createTextNode(". The map is not required to use this service.")
+    document.createTextNode(". The map is not required to use this lookup.")
   ]));
   body$.append(c4);
 
-  const dropped = overlays.filter(o=>o.failed).length;
+  const degraded = overlays.filter(o=>o.failed||o.schemaFailed||o.attachmentsFailed||o.ambiguous).length+
+    (parcelSchemaFailed?1:0);
   results$.hidden=false;
-  say(dropped
-      ? "Results ready. "+dropped+" layer(s) were unavailable and are marked in the results."
+  say(degraded
+      ? "Results ready. "+degraded+" data source issue(s) are marked in the results."
       : "Results ready.");
   head$.focus();          // move focus so screen readers land on the results
 }
 
 /* --- Copy / print ------------------------------------------------ */
+function plainText(node){
+  let out="";
+  node.childNodes.forEach(n=>{
+    if(n.nodeType===Node.TEXT_NODE){ out+=n.textContent; return; }
+    if(n.nodeType!==Node.ELEMENT_NODE) return;
+    const text=plainText(n);
+    if(n.matches("a[href^='http']")) out+=text+" ("+n.href+")";
+    else if(n.matches("li")) out+=(out.trim()?"; ":"")+text;
+    else if(n.matches("p,ul,ol")) out+=(out.trim()?" ":"")+text;
+    else out+=text;
+  });
+  return out.replace(/\s+/g," ").trim();
+}
 $("#copy").addEventListener("click", async ()=>{
   const lines=[head$.textContent,""];
   body$.querySelectorAll(".card").forEach(card=>{
     lines.push(card.querySelector("h3").textContent.toUpperCase());
     card.querySelectorAll(".pair").forEach(p=>{
       lines.push("  "+p.querySelector("dt").textContent+": "+
-                 p.querySelector("dd").textContent.replace(/\s+/g," ").trim());
+                 plainText(p.querySelector("dd")));
+    });
+    card.querySelectorAll(".callout p,.note p,p.meta").forEach(p=>{
+      if(!p.closest(".pair")) lines.push("  NOTE: "+plainText(p));
     });
     lines.push("");
   });
-  lines.push("Source: Millcreek, Utah property lookup — "+new Date().toLocaleString("en-US"));
+  lines.push("DISCLAIMER");
+  lines.push("  "+plainText($("#public-disclaimer")));
+  lines.push("");
+  lines.push("Source: Millcreek, Utah property lookup, release "+CFG.release.version+
+    "; data sources reviewed "+CFG.release.dataReviewedOn+
+    "; copied "+new Date().toLocaleString("en-US"));
   const txt=lines.join("\n");
   try{
     await navigator.clipboard.writeText(txt);
     say("Results copied to the clipboard as plain text.");
   }catch{
     // Clipboard blocked: give an accessible fallback rather than failing silently.
-    const ta=el("textarea",{"aria-label":"Results as plain text. Select all and copy.",
+    $("#copy-fallback")?.remove();
+    const ta=el("textarea",{id:"copy-fallback","aria-label":"Results as plain text. Select all and copy.",
       style:"width:100%;min-height:12rem;font-family:monospace;margin-top:.75rem"});
     ta.value=txt; body$.append(ta); ta.focus(); ta.select();
     say("Clipboard is not available in this browser. The text is selected below — press Control+C, or Command+C on a Mac.");
@@ -1275,8 +1437,9 @@ if(RUNNING_FROM_FILE){
   console.warn("[lookup] Opened via file:// — cross-origin requests are blocked by the "+
     "browser. Serve over http(s): e.g. `python3 -m http.server 8080`.");
 }
-$("#build").textContent="Accessible property lookup — WCAG 2.1 AA target build, "+
-  new Date().toISOString().slice(0,10)+". Report a problem to gis@millcreekut.gov.";
+$("#build").textContent="Property lookup release "+CFG.release.version+
+  " — published "+CFG.release.publishedOn+"; data sources last reviewed "+
+  CFG.release.dataReviewedOn+". WCAG 2.1 AA target. Report a problem to "+CFG.contact.email+".";
 </script>
 </body>
 </html>

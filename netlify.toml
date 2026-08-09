@@ -5,8 +5,8 @@
 # Edition deploy replaces the whole publish directory, which would silently
 # delete this app if it lived inside that site.
 #
-# The clean public URL is then produced by a rewrite in the ExB site's own
-# netlify.toml — see DEPLOY.md, step 4.
+# Any clean public URL hosted by another Millcreek site must be configured in
+# that site's own routing configuration. Deployment and rollback notes live in README.md.
 
 [build]
   # No build step. The app is a single static HTML document by design.
@@ -20,8 +20,4 @@
   to = "/index.html"
   status = 200
 
-[[headers]]
-  for = "/*"
-  [headers.values]
-    X-Content-Type-Options = "nosniff"
-    Referrer-Policy = "strict-origin-when-cross-origin"
+# Response headers have one source of truth: _headers.

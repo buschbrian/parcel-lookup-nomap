@@ -1,0 +1,184 @@
+import { expect, test } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
+
+const address={
+  FullAdd:"3300 E SANTA ROSA AVE", ParcelID:"16264570030000",
+  City:"MILLCREEK", ZipCode:"84109", UnitType:null, UnitID:null
+};
+
+function parcel(overrides={}){
+  return {
+    parcel_id:address.ParcelID, prop_location:address.FullAdd,
+    parcel_latitude:40.699, parcel_longitude:-111.815,
+    parcel_acres:0.25, property_type_code:"RES", year_built:1978,
+    total_sq_ft:0, num_housing_units:0, tax_dist:"MC", prop_zip:"84109",
+    own_name:"ALEX EXAMPLE (JT); CASEY EXAMPLE (JT)", care_of:"",
+    flood_zone:"X", in_wui:"No", sensitive_land:"No", is_historic:"No",
+    slc_link:"https://example.test/assessor", ...overrides
+  };
+}
+
+const layerFeatures={
+  zoneupdate2024:[{ZONE_:"R-1-8",ZONE_DESC:"Residential",Res_Max_De:5,
+    Zone_Desc1:"https://example.test/zoning"}],
+  Future_Land_Use_2019:[{LandUse:"Neighborhood 1",GENPLAN_WEBSITE:"https://example.test/plan",
+    GENPLAN_DOCUMENT:"https://example.test/document"}],
+  HistoricDistricts:[], Zone_TCOZ:[], Sensitive_Land_Areas__Feb24:[],
+  Subdivision_Dissovle_3:[{OBJECTID:7,SUB_PLAT:"EL SERRITO 2",PLAT_NUM:"22"}],
+  Flood_Hazard_Zones_Final_Update:[], Fault_Study_Area:[],
+  Millcreek_City_Council_Dist_2022:[{DIST:"1",COUNCILMEMBER:"Example Member",
+    WEB:"https://example.test/council"}],
+  TrashPickupDays:[{PickupDay:"Tuesday",phonenumberfix:"385-468-6325",
+    websitelink:"https://example.test/waste"}],
+  SewerDistrictsUpdated:[{District:"Mount Olympus Improvement District",Phone:"801-262-2904"}],
+  Water_Services_2021:[{DWNAME:"Salt Lake City Water System",phone:"801-483-6900",
+    webpublic:"https://example.test/water"}],
+  Electrical_Service:[{PROVIDER:"Rocky Mountain Power",TELEPHONE:"1-888-221-7070",
+    WEBLINK:"https://example.test/power",NOTES:""}]
+};
+
+function serviceName(pathname){
+  const match=pathname.match(/\/services\/([^/]+)\/FeatureServer/i);
+  return match?.[1]||"";
+}
+
+async function mockArcGIS(page,state={}){
+  await page.route("https://services9.arcgis.com/**",async route=>{
+    const url=new URL(route.request().url());
+    const path=url.pathname;
+    const name=serviceName(path);
+    const json=body=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(body)});
+
+    if(path.endsWith("/attachments")){
+      if(state.attachmentFailure) return route.fulfill({status:500,body:"temporary failure"});
+      return json({attachmentInfos:[{id:9,name:"El Serrito 2.pdf",contentType:"application/pdf",size:2472960}]});
+    }
+    if(path.endsWith("/query")){
+      if(name==="Address_Points") return json({features:[{attributes:address}]});
+      if(name==="Millcreek_Parcels"){
+        if(state.delayParcel) await new Promise(resolve=>setTimeout(resolve,state.delayParcel));
+        return json({features:[{attributes:parcel(state.parcel)}]});
+      }
+      let features=[...(layerFeatures[name]||[])];
+      if(name==="Water_Services_2021" && state.multipleWater)
+        features.push({DWNAME:"Overlapping Provider",phone:"801-555-0100",webpublic:"https://example.test/overlap"});
+      return json({features:features.map(attributes=>({attributes}))});
+    }
+
+    if(name==="Millcreek_Parcels"&&state.parcelSchemaFailure)
+      return route.fulfill({status:500,body:"temporary metadata failure"});
+
+    const sample=name==="Address_Points" ? address :
+      (name==="Millcreek_Parcels" ? parcel(state.parcel) : (layerFeatures[name]?.[0]||{OBJECTID:1}));
+    const extra=["OBJECTID","FullAdd","ParcelID","AddNum","StreetName","City","ZipCode","UnitType","UnitID",
+      "parcel_id","parcel_latitude","parcel_longitude","prop_location","parcel_acres","property_type_code",
+      "year_built","total_sq_ft","num_housing_units","tax_dist","prop_zip","flood_zone","in_wui",
+      "sensitive_land","is_historic","own_name","care_of","slc_link"];
+    const names=[...new Set([...Object.keys(sample),...extra])];
+    return json({fields:names.map(field=>({name:field,alias:field,domain:null}))});
+  });
+}
+
+async function loadKnownProperty(page){
+  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await expect(page.locator("#sugg")).toBeVisible();
+  await page.locator("#q").press("ArrowDown");
+  await page.locator("#q").press("Enter");
+  await expect(page.locator("#results")).toBeVisible();
+}
+
+test.beforeEach(async({page})=>{
+  await mockArcGIS(page,{});
+  await page.goto("/index.html");
+  await page.evaluate(()=>{ CFG.request.retryDelayMs=1; });
+});
+
+test("initial and populated views have no detectable axe violations",async({page})=>{
+  expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
+  await loadKnownProperty(page);
+  expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
+});
+
+test("lookup preserves zeroes and copy includes links, notes, and disclaimer",async({page})=>{
+  await loadKnownProperty(page);
+  await expect(page.locator("#results-body")).toContainText("Building area (sq ft)0");
+  await expect(page.locator("#results-body")).toContainText("About this data.");
+  await page.locator("#copy").click();
+  const copied=await page.evaluate(()=>navigator.clipboard.readText());
+  expect(copied).toContain("Building area (sq ft): 0");
+  expect(copied).toContain("About this data.");
+  expect(copied).toContain("https://example.test/water");
+  expect(copied).toContain("DISCLAIMER");
+  expect(copied).toContain("not a zoning verification letter");
+});
+
+test("unknown source values are not rendered as No",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{parcel:{in_wui:""}});
+  await page.reload();
+  await loadKnownProperty(page);
+  const row=page.locator(".pair",{hasText:"Wildland-Urban Interface"});
+  await expect(row).toContainText("Unknown — verify with staff");
+});
+
+test("leaving the combobox closes its suggestions",async({page})=>{
+  await page.locator("#q").fill("3300 East");
+  await expect(page.locator("#sugg")).toBeVisible();
+  await page.locator("#q").press("Tab");
+  await expect(page.locator("#sugg")).toBeHidden();
+  await expect(page.locator("#q")).toHaveAttribute("aria-expanded","false");
+});
+
+test("Clear invalidates a slow property response",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{delayParcel:350});
+  await page.reload();
+  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await expect(page.locator("#sugg")).toBeVisible();
+  await page.locator("#q").press("ArrowDown");
+  await page.locator("#q").press("Enter");
+  await expect(page.locator("#status")).toContainText("Looking up");
+  await page.locator("#clear").click();
+  await page.waitForTimeout(500);
+  await expect(page.locator("#results")).toBeHidden();
+  await expect(page.locator("#q")).toHaveValue("");
+});
+
+test("attachment failures and singular-layer overlaps are visible",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{attachmentFailure:true,multipleWater:true});
+  await page.reload();
+  await page.evaluate(()=>{ CFG.request.retryDelayMs=1; });
+  await loadKnownProperty(page);
+  await expect(page.locator("#results-body")).toContainText("Recorded platTemporarily unavailable");
+  await expect(page.locator("#results-body")).toContainText("multiple source polygons matched");
+  await expect(page.locator("#status")).toContainText("data source issue");
+});
+
+test("results reflow without horizontal page scrolling at 320 CSS pixels",async({page})=>{
+  await page.setViewportSize({width:320,height:900});
+  await loadKnownProperty(page);
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("forced colors, reduced motion, and print retain usable content",async({page})=>{
+  await page.emulateMedia({forcedColors:"active",reducedMotion:"reduce"});
+  await loadKnownProperty(page);
+  await expect(page.locator("#results")).toBeVisible();
+  await page.emulateMedia({media:"print"});
+  await expect(page.locator("#lookup")).toBeHidden();
+  await expect(page.locator("footer")).toBeVisible();
+  await expect(page.locator("#public-disclaimer")).toContainText("not");
+});
+
+test("parcel values remain available when only schema metadata fails",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{parcelSchemaFailure:true});
+  await page.reload();
+  await page.evaluate(()=>{ CFG.request.retryDelayMs=1; });
+  await loadKnownProperty(page);
+  await expect(page.locator("#results-body")).toContainText("3300 E SANTA ROSA AVE");
+  await expect(page.locator("#results-body")).toContainText("field descriptions were temporarily unavailable");
+  await expect(page.locator("#status")).toContainText("data source issue");
+});

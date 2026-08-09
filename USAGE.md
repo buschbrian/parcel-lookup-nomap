@@ -57,11 +57,13 @@ Results are organised under headings — Property record, Hazard and special des
 Subdivision and plat, Natural hazards, Representation, Services — so you can jump between them by
 heading. Each item is a description list, so labels and values are correctly associated.
 
-Yes/No answers are always spoken as the word "Yes" or "No", never conveyed by colour alone.
+Determinations are spoken as "Yes", "No", or "Unknown", never conveyed by colour alone. Unknown
+means the authoritative source did not contain a definite value and staff should verify it.
 
 ### Getting the results out
 
-- **Copy results as text** puts everything on your clipboard as plain text.
+- **Copy results as text** puts the values, links, warnings, data notes and public disclaimer on your
+  clipboard as plain text.
 - **Print results** produces a clean printout, disclaimer included.
 
 ### Reading the answers
@@ -77,8 +79,9 @@ property:
 | Historic designation | Exterior alterations may need historic review |
 
 **The recorded plat** is the surveyed subdivision drawing showing lot lines, dimensions and
-easements. It is a scanned image, so a screen reader cannot read it. Call **801-214-2754** and staff
-will read or describe what you need — tell them the property and what you are looking for.
+easements. The currently linked scanned files are not screen-reader accessible. Call
+**801-214-2754** and staff will read or describe what you need — tell them the property and what you
+are looking for.
 
 ### Important limits
 
@@ -202,7 +205,7 @@ codes to the `TENANCY` map if you meet an unfamiliar one.
 https://services9.arcgis.com/XRrSFvEwSsReIxuA/arcgis/rest/services/<SERVICE>/FeatureServer?f=json
 ```
 
-Known: Council districts **2**, water service **3**, fireworks **5**, subdivisions **7**.
+Known: Council districts **2**, water service **3**, subdivisions **7**.
 
 **2. Whether the layer has usable attributes.**
 
@@ -238,6 +241,9 @@ explicitly for anything resident-facing.
 | `attachmentLabel` | Link label for attachments |
 | `nameField` | Field holding the organisation's name. Used as **link text**, so a link reads "Rocky Mountain Power" rather than "Provider website" |
 | `linkName` | Same idea, but a fixed string — for layers with no name field (the waste district) |
+| `sourceOwner` | Organisation responsible for the source or local maintenance |
+| `reviewedOn` | Date GIS last checked the source and configured fields (`YYYY-MM-DD`) |
+| `cardinality` | `"one"` when one polygon should match; unexpected overlaps are flagged |
 
 ### Row shape is the same for every layer
 
@@ -261,9 +267,9 @@ URL values become links titled by `nameField` / `linkName`, falling back to the 
 bare URL — that fails 2.4.4.
 
 Phone values become `tel:` links **only if they are actually dialable** — 10 digits, or 11 starting
-with 1 — and are reformatted as `(801) 483-6900`. Anything else renders as plain text. This matters:
-the waste district's number is stored in the data as `385468632` (9 digits), and a `tel:` link that
-fails to connect is worse than plain text for someone who cannot see that the number looks wrong.
+with 1 — and are reformatted as `(801) 483-6900`. Anything else renders as plain text. This
+validation previously exposed and helped correct a nine-digit waste-district value; a dead phone
+link is worse than plain text for someone who cannot see that the number looks wrong.
 **If you see a number rendered as plain text, that is a data defect worth fixing at source.**
 
 ### Hazard flags
@@ -320,11 +326,21 @@ To find the real street names:
 
 ### After any change — check these
 
+Run the deterministic developer checks first:
+
+```bash
+npm ci
+npx playwright install chromium
+npm test
+```
+
 - [ ] Search `3300 East Santa Rosa Avenue`. Results load, no blank rows.
 - [ ] **Tab through with a keyboard only.** Every control reachable, focus always visible.
 - [ ] Arrow keys move through the address list; <kbd>Esc</kbd> closes it.
 - [ ] Any new boolean layer shows Yes **or** No, never blank.
+- [ ] A parcel field with no value shows **Unknown**, never an assumed No.
 - [ ] New third-party layer has a `GROUP_NOTES` entry.
+- [ ] Each new layer has `sourceOwner`, `reviewedOn`, and `cardinality`.
 - [ ] Test over `http://localhost`, **not** by double-clicking the file. Over `file://` the browser
       blocks the ArcGIS request and every lookup fails even though nothing is wrong. The app warns
       you on load if you do this.
@@ -332,6 +348,10 @@ To find the real street names:
       you whether it was the network, the browser, rate limiting, or a rejected query.
 - [ ] A CSP error means a new host needs adding to `_headers`.
 - [ ] Print preview still includes the disclaimer.
+- [ ] Copied text includes warnings, data notes, links and the public disclaimer.
+
+Then run `npm run check:services` against the public ArcGIS schemas. After Netlify deploys the
+commit, run `npm run check:deployment` to compare the live HTML and security headers with the repo.
 
 ### Adding a layer from a different host
 

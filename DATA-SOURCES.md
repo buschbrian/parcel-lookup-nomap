@@ -12,30 +12,34 @@ coverage and results, update `CFG`, this register and tests together, and record
 |:--|:--|:--|:--|:--|
 | Address to parcel | `Address_Points/0` | Attribute search; returns `ParcelID` | Millcreek GIS; UGRC and Salt Lake County origins | Schema and known-address check weekly |
 | Parcel facts and geometry | `Millcreek_Parcels/0` | Whole parcel record and boundary; stored point for point-based lookups | Millcreek GIS; Salt Lake County parcel origins | Confirm refresh at every parcel update |
-| Base zoning | `zoneupdate2024/0` | Parcel-centroid intersection | Millcreek Planning and GIS | Verify after every zoning-map amendment |
-| Future land use | `Future_Land_Use_2019/0` | Parcel-centroid intersection | Millcreek Planning and GIS | Verify against the adopted General Plan |
+| Base zoning | `Zone_Update_2025___Related_Master/2` | Parcel-centroid intersection | Millcreek Planning and GIS; source used by public Planning web map | Verify after every zoning-map amendment and against web-map parity check |
+| Future land use | `FutureLandUse_2024_Millcreek/0` | Parcel-centroid intersection | Millcreek Planning and GIS; source used by public Planning web map | Verify against the adopted General Plan and web-map parity check |
 | Historic designation | `HistoricDistricts/0` | Full-parcel intersection; reports `designation_type`, `local_ordinance`, and `listyear` | Millcreek Planning and GIS | Annual and after district changes; preserve Federal versus Federal-and-Local distinction |
 | City Center Overlay | `Zone_TCOZ/0` | Parcel-centroid intersection | Millcreek Planning and GIS | Verify after overlay amendments |
 | 2026 Wildland-Urban Interface | `Millcreek_Wildland_Urban_Interface_WUI_Boundary_–_2026/0` | Full-parcel intersection | Millcreek Fire, Planning and GIS | Confirm after boundary or state-law changes |
 | Sensitive Land Area | `Sensitive_Land_Areas__Feb24/0` | Full-parcel intersection | Millcreek Planning and GIS | Confirm after regulatory boundary changes |
 | Subdivision and plat | `Subdivision_Dissovle_3/7` | Centroid intersection plus feature attachments | Millcreek GIS | Schema and attachment sample weekly |
 | FEMA flood detail | `https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28` | Live full-parcel intersection; displays all matches and selects the highest classification by documented conservative precedence | Federal Emergency Management Agency | Live contract check; review display precedence after FEMA schema or terminology changes |
-| Quaternary fault proximity | `https://webmaps.geology.utah.gov/arcgis/rest/services/Hazards/Faults_Quaternary/MapServer/2` | Live full-parcel query with a 1,000-foot search distance; not a local special-study-area determination | Utah Geological Survey | Live contract check and review after UGS revisions |
+| FEMA flood cross-check | `Flood_Hazard_Zones_Final_Update/0` | Hidden full-parcel comparison with live FEMA; minimal-X omission is normalized | FEMA data published in Millcreek's public Planning web map | Surface mismatches and run known-parcel plus web-map parity checks |
+| Surface fault rupture special-study area | `Fault_Study_Area/0` | Full-parcel Yes/No intersection | Salt Lake County data clipped/published by Millcreek; public item updated 6 January 2026 | Confirm continued use in the public Planning map and review after County/UGS mapping changes |
 | City Council | `Millcreek_City_Council_Dist_2022/2` | Parcel-centroid intersection | Millcreek GIS | Verify after annexation or redistricting |
 | Waste collection | `TrashPickupDays/0` | Parcel-centroid intersection | Wasatch Front Waste & Recycling District; Millcreek GIS service steward | Confirm route/provider updates |
 | Sewer | `SewerDistrictsUpdated/0` | Parcel-centroid intersection | Utility providers; Millcreek GIS service steward | Confirm provider boundary updates |
 | Culinary water | `Water_Services_2021/3` | Parcel-centroid intersection; expected one provider | Utah Division of Drinking Water and providers | Review gaps and overlaps at every update |
 | Electrical | `Electrical_Service/0` | Parcel-centroid intersection | Utility providers; Millcreek GIS service steward | Confirm provider boundary updates |
 
-All configured endpoints and fields passed the live schema contract check on 9 August 2026. This
-does not establish that an older-named dataset is still the adopted source.
+All configured endpoints and fields passed the live schema contract check on 9 August 2026. Local
+source URLs used by this lookup are also checked against the public Planning web-map item.
 
-## Replacement candidates requiring approval
+## Public-map alignments adopted in this review
 
-| Current source | Candidate | Required validation before switching |
-|:--|:--|:--|
-| `Future_Land_Use_2019/0` | `FutureLandUse_2024_Millcreek/0` | Planning confirms the adopted plan; compare designations, coverage, domains and document URLs for all changed polygons |
-| `zoneupdate2024/0` | `Zone_Update_2025___Related_Master/2` | Planning confirms it is the public zoning source; compare codes, descriptions, ordinance links, gaps, overlaps and known amendment parcels |
+- `Future_Land_Use_2019/0` → `FutureLandUse_2024_Millcreek/0`.
+- `zoneupdate2024/0` → `Zone_Update_2025___Related_Master/2`.
+- Direct UGS fault-trace proximity → `Fault_Study_Area/0` surface-fault-rupture
+  special-study-area determination.
+
+See [WEB-MAP-REVIEW.md](WEB-MAP-REVIEW.md) for the complete 96-layer inventory, implemented
+parity decisions and prioritized candidates.
 
 Do **not** migrate to `CityCouncilDistricts/0` based on its shorter name: its published layer name
 describes 2017–2022 boundaries. The configured council service was edited in 2026 and remains in

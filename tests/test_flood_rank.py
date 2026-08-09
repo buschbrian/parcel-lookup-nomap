@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.fema_highest_hazard import flood_rank, select_highest
+from scripts.fema_highest_hazard import comparable_classifications, flood_rank, select_highest
 
 
 class FloodRankTests(unittest.TestCase):
@@ -21,6 +21,14 @@ class FloodRankTests(unittest.TestCase):
 
     def test_empty_collection_has_no_selection(self):
         self.assertIsNone(select_highest([]))
+
+    def test_city_labels_match_fema_and_minimal_x_is_ignored(self):
+        fema = [
+            {"FLD_ZONE": "AE", "ZONE_SUBTY": "FLOODWAY", "SFHA_TF": "T"},
+            {"FLD_ZONE": "X", "ZONE_SUBTY": "AREA OF MINIMAL FLOOD HAZARD", "SFHA_TF": "F"},
+        ]
+        city = [{"FLD_ZONE": "AE", "ZONE_SUBTY": "Floodway", "SFHA_TF": "T"}]
+        self.assertEqual(comparable_classifications(fema), comparable_classifications(city))
 
 
 if __name__ == "__main__":

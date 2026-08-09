@@ -58,8 +58,8 @@ Enter an address (`3300 East Santa Rosa Avenue`) or a 14-digit parcel number, an
 - **Historic designation** — district name, National Register status/listing year, and whether a
   separate Millcreek local ordinance designation applies
 - **Subdivision and plat** — plat name, plat number, and a link to the recorded plat PDF
-- **Natural hazards** — live FEMA NFHL zone/subtype detail and proximity to UGS mapped Quaternary
-  fault traces
+- **Natural hazards** — live FEMA NFHL zone/subtype detail, comparison with Millcreek's public-map
+  flood layer, and the surface fault rupture special-study-area designation
 - **Representation** — City Council district and council member
 - **Services** — culinary water provider, sewer district, electrical provider and waste collection day
 
@@ -106,6 +106,7 @@ README.md       This file.
 USAGE.md        For residents, front-counter staff, and GIS staff maintaining the config.
 CODE.md         Full code walkthrough — every function explained.
 DATA-SOURCES.md Data ownership, freshness and replacement-candidate register.
+WEB-MAP-REVIEW.md Full inventory and disposition review of the 96 public-map layers.
 tests/          Developer-only deterministic unit, browser and accessibility tests.
 scripts/        Live service-contract and deployment checks.
 ```
@@ -152,8 +153,9 @@ another environment with ArcGIS API for Python installed:
 python scripts/fema_highest_hazard.py 16264570030000
 ```
 
-The JSON output includes the selected highest classification and every classification touching the
-parcel. The selection is a documented display precedence, not a FEMA risk score.
+The JSON output includes the selected highest classification, every FEMA classification touching
+the parcel, the corresponding Millcreek classifications and their congruence result. The selection
+is a documented display precedence, not a FEMA risk score.
 
 > **Do not test by double-clicking `index.html`.** Over `file://` the browser blocks the
 > cross-origin request to ArcGIS, so every lookup fails even though the service is fine. The app
@@ -207,8 +209,9 @@ displayed.
 
 Most local queries go to Millcreek's ArcGIS Online feature services at
 `services9.arcgis.com/XRrSFvEwSsReIxuA`. Flood classifications are queried directly from FEMA's
-National Flood Hazard Layer, and fault traces are queried directly from the Utah Geological Survey.
-The CSP permits those three origins; adding another host requires adding its origin to `_headers`.
+National Flood Hazard Layer and compared with the flood layer in the public Planning map. Surface
+fault rupture uses that map's special-study-area polygon. The CSP permits the Millcreek and FEMA
+origins; adding another host requires adding its origin to `_headers`.
 
 | Data | Origin |
 |:--|:--|
@@ -216,14 +219,14 @@ The CSP permits those three origins; adding another host requires adding its ori
 | Addresses | Utah Geospatial Resource Center (UGRC), Salt Lake County |
 | Zoning, overlays, future land use, subdivisions | Millcreek |
 | Flood hazard | FEMA |
-| Quaternary fault traces | Utah Geological Survey |
+| Surface fault rupture special-study area | Salt Lake County data published by Millcreek |
 | Utility service areas | Utah Division of Drinking Water, UGRC, providers |
 
 ### On data quality
 
 Utility boundaries are compiled from third-party products and can contain gaps, overlaps and other
-topological defects. Utility results still use the stored parcel point. FEMA flood, UGS fault
-proximity, WUI, Sensitive Land and historic results use the **full parcel boundary**, so partial
+topological defects. Utility results still use the stored parcel point. FEMA flood, the fault
+special-study area, WUI, Sensitive Land and historic results use the **full parcel boundary**, so partial
 intersection is no longer missed by a centroid-only query.
 
 Standing disclaimers to that effect are shown with every Services and Natural hazards result. They
@@ -240,7 +243,7 @@ comparison are required first.
 ## Known limitations
 
 1. **Some results remain centroid-based.** Zoning, future land use, subdivisions, representation
-   and utilities use the stored parcel point. FEMA flood, UGS fault proximity, WUI, Sensitive Land
+   and utilities use the stored parcel point. FEMA flood, the fault special-study area, WUI, Sensitive Land
    and historic designations use the full parcel boundary.
 2. **The currently linked recorded plat PDFs are scanned drawings** and are not screen-reader
    accessible. The app identifies that limitation and offers staff to read or describe the needed

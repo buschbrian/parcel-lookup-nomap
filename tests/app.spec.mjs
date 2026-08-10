@@ -74,10 +74,12 @@ async function mockArcGIS(page,state={}){
       if(name==="Address_Points") return json({features:[{attributes:address}]});
       if(name==="Millcreek_Parcels"){
         if(state.delayParcel) await new Promise(resolve=>setTimeout(resolve,state.delayParcel));
-        return json({features:[{attributes:parcel(state.parcel),geometry:{rings:[[
+        const feature={attributes:parcel(state.parcel)};
+        if(!state.omitParcelGeometry) feature.geometry={rings:[[
           [-111.816,40.698],[-111.814,40.698],[-111.814,40.700],
           [-111.816,40.700],[-111.816,40.698]
-        ]],spatialReference:{wkid:4326}}}]});
+        ]],spatialReference:{wkid:4326}};
+        return json({features:[feature]});
       }
       let features=[...(layerFeatures[name]||[])];
       if(name==="FEMA_NFHL" && state.femaFeatures) features=[...state.femaFeatures];
@@ -116,6 +118,13 @@ test.beforeEach(async({page})=>{
   await mockArcGIS(page,{});
   await page.goto("/index.html");
   await page.evaluate(()=>{ CFG.request.retryDelayMs=1; });
+});
+
+test("shows the official Millcreek identity and city homepage link",async({page})=>{
+  await expect(page.locator(".brand-logo")).toHaveAttribute("alt","Millcreek city logo");
+  expect(await page.locator(".brand-logo").evaluate(image=>image.complete&&image.naturalWidth>0)).toBe(true);
+  await expect(page.getByRole("link",{name:"Millcreek city homepage"}))
+    .toHaveAttribute("href","https://millcreekut.gov/");
 });
 
 test("initial and populated views have no detectable axe violations",async({page})=>{
@@ -279,4 +288,26 @@ test("parcel values remain available when only schema metadata fails",async({pag
   await expect(page.locator("#results-body")).toContainText("3300 E SANTA ROSA AVE");
   await expect(page.locator("#results-body")).toContainText("field descriptions were temporarily unavailable");
   await expect(page.locator("#status")).toContainText("data source issue");
+});
+
+test("full-parcel layers are unavailable when parcel geometry is missing",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{omitParcelGeometry:true});
+  await page.reload();
+  await page.evaluate(()=>{ CFG.request.retryDelayMs=1; });
+  await loadKnownProperty(page);
+  await expect(page.locator(".pair",{hasText:"FEMA flood hazard"}))
+    .toContainText("Temporarily unavailable");
+  await expect(page.locator("#status")).toContainText("data source issue");
+});
+
+test("full-parcel layers still run when parcel centroid coordinates are missing",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{parcel:{parcel_latitude:null,parcel_longitude:null}});
+  await page.reload();
+  await loadKnownProperty(page);
+  await expect(page.locator(".pair",{hasText:"In FEMA Special Flood Hazard Area"}))
+    .toContainText("Yes");
+  await expect(page.locator(".pair",{hasText:"Base zoning"}))
+    .toContainText("Temporarily unavailable");
 });

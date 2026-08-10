@@ -22,7 +22,7 @@ function pureApp(){
 }
 
 function businessConfig(){
-  const start=licensingScript.indexOf("const CFG={");
+  const start=licensingScript.indexOf("const CFG =");
   const end=licensingScript.indexOf("/* ==================================================================\n   No further edits");
   return vm.runInNewContext(licensingScript.slice(start,end)+"\n;CFG;");
 }

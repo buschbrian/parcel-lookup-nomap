@@ -36,6 +36,31 @@ coverage and results, update `CFG`, this register and tests together, and record
 All configured endpoints and fields passed the live schema contract check on 9 August 2026. Local
 source URLs used by this lookup are also checked against the public Planning web-map item.
 
+## ArcGIS Online and Enterprise metadata expectations
+
+The repository register supplements portal metadata; it does not replace it. Each ArcGIS item and
+resident-facing sublayer should let a reviewer establish:
+
+- the municipal data owner and technical item owner;
+- whether the product is authoritative, informational, or derived;
+- the original county, state, federal, or municipal source, including a stable upstream URL;
+- the derivation or publication method for any clipped, buffered, joined, generalized, or otherwise
+  transformed product;
+- source, publication, last-reviewed, and expected-refresh dates;
+- acknowledgements/credits, terms of use, license or access constraints, and a contact;
+- intended scale or limitations, spatial reference, extent, fields, domains, and known quality
+  constraints.
+
+These details belong in ArcGIS item details and, where available, standards-based layer metadata.
+Item-level and layer-level metadata must both be reviewed because they are not automatically kept
+in sync. A locally published copy of county, state, or federal data must name its upstream source;
+the Millcreek publisher account alone is not sufficient provenance.
+
+ArcGIS API for Python may be used to search ArcGIS Online and Enterprise, export these facts, and
+produce a metadata-gap report. Treat the report as release evidence. The tool must not update item
+details, sharing, services, or data unless an authenticated operator explicitly invokes a separate
+reviewed maintenance operation.
+
 ## Public-map alignments adopted in this review
 
 - `Future_Land_Use_2019/0` → `FutureLandUse_2024_Millcreek/0`.

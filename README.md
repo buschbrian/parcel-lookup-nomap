@@ -7,6 +7,8 @@ map, mouse, or vision.
 
 Live: <https://parcel-lookup-millcreek.netlify.app/>
 
+Millcreek homepage: <https://millcreekut.gov/>
+
 ---
 
 ## Why this exists
@@ -109,6 +111,7 @@ to a broken page.
 ```
 index.html      The general property lookup, self-contained by design.
 business-licensing.html The focused short-term-rental and 400-foot buffer lookup.
+assets/         Municipal brand assets stored locally for reliable rendering.
 _headers        Netlify security headers, including the CSP.
 netlify.toml    Netlify build/redirect configuration.
 README.md       This file.
@@ -118,6 +121,7 @@ DATA-SOURCES.md Data ownership, freshness and replacement-candidate register.
 WEB-MAP-REVIEW.md Full inventory and disposition review of the 96 public-map layers.
 tests/          Developer-only deterministic unit, browser and accessibility tests.
 scripts/        Live service-contract and deployment checks.
+docs/           Migration proposal and architecture decision records.
 ```
 
 ### Why each page is self-contained

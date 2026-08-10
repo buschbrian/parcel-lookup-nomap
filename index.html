@@ -60,10 +60,17 @@ body{
 
 header[role=banner]{border-bottom:2px solid var(--line-soft); background:var(--surface)}
 header .wrap{padding-block:1.25rem}
+.brand-lockup{display:flex;align-items:center;gap:1rem}
+.brand-logo{
+  display:block;flex:0 0 auto;width:5.5rem;height:auto;padding:.25rem;
+  background:#fff;border:1px solid var(--line-soft);border-radius:var(--radius);
+}
+.brand-copy{min-width:0}
 .eyebrow{
   margin:0 0 .15rem; font-size:.8125rem; font-weight:700;
   letter-spacing:.09em; text-transform:uppercase; color:var(--ink-soft);
 }
+.site-link{margin:.35rem 0 0;font-size:.9375rem}
 h1{margin:0; font-size:1.75rem; line-height:1.25}
 h2{margin:2.25rem 0 .5rem; font-size:1.3rem; line-height:1.3}
 h3{margin:1.5rem 0 .4rem; font-size:1.0625rem}
@@ -188,6 +195,10 @@ details[open] summary{margin-bottom:.25rem}
 details > *:not(summary){font-size:.9063rem}
 .spin[data-on=true]::after{content:" …"}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (max-width:26rem){
+  .brand-lockup{gap:.75rem}
+  .brand-logo{width:4.5rem}
+}
 @media print{
   form,.skip,#actions,.status{display:none}
   header{border-bottom:1px solid #000;background:#fff}
@@ -209,8 +220,15 @@ details > *:not(summary){font-size:.9063rem}
 
 <header role="banner">
   <div class="wrap">
-    <p class="eyebrow">Millcreek, Utah</p>
-    <h1>Property Lookup</h1>
+    <div class="brand-lockup">
+      <img class="brand-logo" src="/assets/millcreek-logo.png" width="456" height="415"
+           alt="Millcreek city logo">
+      <div class="brand-copy">
+        <p class="eyebrow">Millcreek, Utah</p>
+        <h1>Property Lookup</h1>
+        <p class="site-link"><a href="https://millcreekut.gov/">Millcreek city homepage</a></p>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -1157,7 +1175,7 @@ async function load(parcelId, label){
       return;
     }
     const lat=rec[P.latField], lon=rec[P.lonField];
-    const overlays = (lat!=null&&lon!=null) ? await hits(lon,lat,parcelFeature.geometry,task) : [];
+    const overlays = await hits(lon,lat,parcelFeature.geometry,task);
     if(mine!==seq) return;
     draw(rec,pSchema,overlays,label,lat,lon,schemaResult.status==="rejected");
     finishTask(task);
@@ -1175,7 +1193,11 @@ async function hits(lon,lat,parcelGeometry,task){
   const {signal}=task;
   const results=await Promise.all(CFG.LAYERS.map(async L=>{
     try{
-      const useParcel=L.geometryMode==="parcel"&&parcelGeometry;
+      const useParcel=L.geometryMode==="parcel";
+      if(useParcel&&!parcelGeometry)
+        throw svcError("data","Parcel boundary geometry is unavailable");
+      if(!useParcel&&(lat==null||lon==null))
+        throw svcError("data","Parcel centroid coordinates are unavailable");
       const geo = {
         geometry:useParcel?JSON.stringify(parcelGeometry):`${lon},${lat}`,
         geometryType:useParcel?"esriGeometryPolygon":"esriGeometryPoint",

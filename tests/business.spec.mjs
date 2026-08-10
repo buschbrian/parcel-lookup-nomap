@@ -12,15 +12,20 @@ async function mockArcGIS(page,state={}){
     const url=new URL(route.request().url()),path=url.pathname;
     const json=body=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(body)});
     if(!path.endsWith("/query"))return json({fields:[]});
-    if(path.includes("/Address_Points/"))return json({features:[{attributes:address}]});
+    if(path.includes("/Address_Points/")){
+      const attributes=state.addressWithoutParcelId?{...address,ParcelID:null}:address;
+      return json({features:[{attributes}]});
+    }
     if(path.includes("/Millcreek_Parcels/"))return json({features:[{attributes:{
       parcel_id:address.ParcelID,prop_location:address.FullAdd
     },geometry}]});
     if(path.includes("/Short_Term_Rentals_June_2026/FeatureServer/0/")){
+      if(state.malformedActiveResponse)return json({});
       return json({features:state.active?[{attributes:{parcel_id:address.ParcelID}}]:[]});
     }
     if(path.includes("/Short_Term_Rentals_June_2026/FeatureServer/1/")){
       if(state.bufferFailure)return route.fulfill({status:503,body:"temporary failure"});
+      if(state.malformedBufferResponse)return json({});
       const features=(state.buffers??[{parcel_id:"99999999999999",BUFF_DIST:400}])
         .map(attributes=>({attributes}));
       return json({features});
@@ -41,6 +46,13 @@ test.beforeEach(async({page})=>{
   await mockArcGIS(page);
   await page.goto("/business-licensing.html");
   await page.evaluate(()=>{CFG.request.retryDelayMs=1});
+});
+
+test("shows the official Millcreek identity and city homepage link",async({page})=>{
+  await expect(page.locator(".brand-logo")).toHaveAttribute("alt","Millcreek city logo");
+  expect(await page.locator(".brand-logo").evaluate(image=>image.complete&&image.naturalWidth>0)).toBe(true);
+  await expect(page.getByRole("link",{name:"Millcreek city homepage"}))
+    .toHaveAttribute("href","https://millcreekut.gov/");
 });
 
 test("licensing page has no detectable axe violations before or after lookup",async({page})=>{
@@ -95,4 +107,31 @@ test("a failed buffer source is Unknown and the page reflows at 320 pixels",asyn
   await expect(page.locator("#status")).toContainText("unavailable data source");
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("a malformed rental response is Unknown rather than a rendering failure",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{malformedActiveResponse:true});
+  await page.reload();
+  await loadByKeyboard(page);
+  await expect(page.locator(".pair",{hasText:"Appears in the June 2026"})).toContainText("Unknown");
+  await expect(page.locator("#status")).toContainText("unavailable data source");
+});
+
+test("a malformed buffer response is Unknown rather than No",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{malformedBufferResponse:true});
+  await page.reload();
+  await loadByKeyboard(page);
+  await expect(page.locator(".pair",{hasText:"Within 400 feet"})).toContainText("Unknown");
+  await expect(page.locator("#status")).toContainText("unavailable data source");
+});
+
+test("address suggestions without parcel IDs are discarded",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{addressWithoutParcelId:true});
+  await page.reload();
+  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await expect(page.locator("#sugg")).toBeHidden();
+  await expect(page.locator("#status")).toContainText("No addresses match");
 });

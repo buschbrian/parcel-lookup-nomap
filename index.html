@@ -393,7 +393,10 @@ const CFG = {
     portalUrl:"https://millcrk.maps.arcgis.com",
     appUrl:"https://maps.millcreekut.gov/"
   },
-  request: { timeoutMs:12000, retryDelayMs:700 },
+  // suggestDebounceMs is how long a typed edit waits before it is searched.
+  // It is configuration rather than a literal so cancellation races can be
+  // tested deterministically instead of depending on how fast the run is.
+  request: { timeoutMs:12000, retryDelayMs:700, suggestDebounceMs:250 },
 
   // Address suggestions come from the City's authoritative address points.
   //
@@ -934,11 +937,30 @@ function parseAddress(raw){
   return {num, street:rest.join(" "), normalized};
 }
 
+/* What the live region says about a suggestion list.
+
+   ArcGIS caps every result at `resultRecordCount` and reports the cap in
+   `exceededTransferLimit`. Announcing "10 address matches" when the service
+   capped 49 of them tells the resident the list is complete when it is not, and
+   their own address may not be among the ten shown. That failure is silent, and
+   it strands exactly the person this page exists for. So say the list is
+   partial, and say what to add to narrow it. */
+function matchSummary(count, more){
+  const review = count===1 ? "Use the Down arrow to review it."
+                           : "Use arrow keys to review them.";
+  if(!more) return (count===1 ? "1 address match. " : count+" address matches. ")+review;
+  return (count===1 ? "Showing the first match." : "Showing the first "+count+" matches.")+
+    " More addresses match than are listed. "+review+
+    " Add the direction or street type to narrow the list, for example "+
+    "“3300 E Santa Rosa Ave”.";
+}
+
 /* Tiered search. Returns the first tier that finds anything, plus a note
-   explaining any broadening so it can be announced to the user. */
+   explaining any broadening so it can be announced to the user, and `more`
+   when the service reported it capped the result. */
 async function findAddresses(raw, limit, signal){
   const A=CFG.address, p=parseAddress(raw);
-  if(!p.normalized) return {items:[],note:null,parsed:p};
+  if(!p.normalized) return {items:[],note:null,parsed:p,more:false};
 
   const tiers=[];
   tiers.push({ w:`UPPER(${A.searchField}) LIKE '${esc(p.normalized)}%'`, note:null });
@@ -960,9 +982,12 @@ async function findAddresses(raw, limit, signal){
       resultRecordCount:String(limit||A.max)
     },signal);
     const items=(j.features||[]).map(f=>f.attributes).filter(a=>a[A.parcelField]);
-    if(items.length) return {items, note:t.note, parsed:p};
+    // `more` comes from the service, not from items.length: the filter above drops
+    // address points with no parcel ID, so a capped result can arrive here shorter
+    // than the cap. Counting rows would call that list complete.
+    if(items.length) return {items, note:t.note, parsed:p, more:j.exceededTransferLimit===true};
   }
-  return {items:[], note:null, parsed:p};
+  return {items:[], note:null, parsed:p, more:false};
 }
 
 /* --- Suggestions (accessible combobox) --------------------------- */
@@ -973,7 +998,7 @@ q$.addEventListener("input", ()=>{
   const term=q$.value.trim();
   const task=startTask("suggest");
   if(term.length<3){ activeKind=null; closeList(); say(""); return; }
-  timer=setTimeout(()=>{timer=null; suggest(term,task);},250);
+  timer=setTimeout(()=>{timer=null; suggest(term,task);},CFG.request.suggestDebounceMs);
 });
 
 async function suggest(term,task){
@@ -985,9 +1010,9 @@ async function suggest(term,task){
     finishTask(task);
     return;
   }
-  let found, note;
+  let found, note, more;
   try{
-    ({items:found, note} = await findAddresses(term,null,signal));
+    ({items:found, note, more} = await findAddresses(term,null,signal));
   }catch(e){
     if(mine!==seq || e.kind==="aborted") return;
     console.error("[lookup] address search failed:", e.kind, e.message, e.detail||"");
@@ -999,11 +1024,11 @@ async function suggest(term,task){
   // render() is OUTSIDE the try on purpose: a rendering bug must not be
   // reported to the user as a network failure.
   items = found;
-  render(note);
+  render(note, more);
   finishTask(task);
 }
 
-function render(note){
+function render(note, more){
   list$.textContent="";
   active=-1;
   q$.removeAttribute("aria-activedescendant");
@@ -1024,9 +1049,7 @@ function render(note){
   });
   list$.hidden=false;
   q$.setAttribute("aria-expanded","true");
-  const base = items.length===1
-    ? "1 address match. Use the Down arrow to review it."
-    : items.length+" address matches. Use arrow keys to review them.";
+  const base = matchSummary(items.length, more===true);
   // Tell the user when the search had to be loosened, rather than silently
   // returning something different from what they typed.
   say(note ? note+" "+base : base);
@@ -1112,7 +1135,7 @@ $("#lookup").addEventListener("submit", async e=>{
   say("Searching…");
   try{
     const A=CFG.address;
-    const {items:found, note} = await findAddresses(term,null,task.signal);
+    const {items:found, note, more} = await findAddresses(term,null,task.signal);
     if(task.mine!==seq) return;
     if(!found.length){
       say("No property matches “"+term+"”. Try just the house number and street name — "+
@@ -1122,8 +1145,10 @@ $("#lookup").addEventListener("submit", async e=>{
       return;
     }
     // Several candidates: let the user choose rather than guessing for them.
-    if(found.length>1){
-      items=found; render(note);
+    // `more` counts as several: if the service capped the result, a single
+    // surviving row is not "the" match, so it must not be loaded as if it were.
+    if(found.length>1 || more){
+      items=found; render(note, more);
       q$.focus();
       finishTask(task);
       return;

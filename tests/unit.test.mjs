@@ -17,7 +17,8 @@ function pureApp(){
   const helperEnd = script.indexOf("/* Tiered search");
   return vm.runInNewContext(
     script.slice(cfgStart,cfgEnd)+"\n"+script.slice(helperStart,helperEnd)+
-    "\n;({CFG,parseAddress,decode,floodRank,selectHighestFlood,selectHighestCategory,floodClassSet,sameSet});"
+    "\n;({CFG,parseAddress,decode,floodRank,selectHighestFlood,selectHighestCategory,floodClassSet,"+
+    "sameSet,matchSummary});"
   );
 }
 
@@ -41,6 +42,35 @@ test("address normalization handles words, locality suffixes, and units",()=>{
   assert.deepEqual({...parseAddress("3300 E Santa Rosa Ave Apt 4")},expected);
   assert.deepEqual({...parseAddress("2760 South 2100 East")},
     {num:"2760",street:"2100",normalized:"2760 S 2100 E"});
+});
+
+test("an uncapped suggestion list is announced as a complete count",()=>{
+  const {matchSummary}=pureApp();
+  assert.match(matchSummary(1,false),/^1 address match\./);
+  assert.match(matchSummary(1,false),/Down arrow/);
+  assert.match(matchSummary(4,false),/^4 address matches\./);
+  assert.doesNotMatch(matchSummary(4,false),/first|narrow/i);
+});
+
+test("a capped suggestion list says it is partial and how to narrow it",()=>{
+  const {matchSummary}=pureApp();
+  const capped=matchSummary(10,true);
+  // "10 address matches" is a lie when the service capped 49 matches at 10, and
+  // the resident's own address may not be among the ten shown.
+  assert.match(capped,/first 10/);
+  assert.match(capped,/More addresses match/);
+  assert.match(capped,/narrow/i);
+  assert.doesNotMatch(capped,/^10 address matches/);
+});
+
+// A hardcoded debounce makes the "stale selection" and "superseded lookup" races
+// untestable: a slow CI run lets the timer fire and the test passes for the wrong
+// reason. Both pages expose the delay so tests can hold the window open.
+test("both pages expose the suggestion debounce delay as configuration",()=>{
+  const {CFG}=pureApp();
+  assert.equal(typeof CFG.request.suggestDebounceMs,"number");
+  assert.ok(CFG.request.suggestDebounceMs>0);
+  assert.equal(typeof businessConfig().request.suggestDebounceMs,"number");
 });
 
 test("hazards use the requested source layers and cross-check FEMA classifications",()=>{

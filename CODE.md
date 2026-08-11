@@ -59,7 +59,7 @@ Everything above the `No further edits needed below this line` marker is the mai
 |:--|:--|
 | `release` | Static version, publication date and data-review date |
 | `referenceWebMap` | Public Planning web-map item used for source-parity checks |
-| `request` | Fetch timeout and one-retry delay |
+| `request` | Fetch timeout, one-retry delay and suggestion debounce delay |
 | `address` | Address service, field names, synonyms and safe local aliases |
 | `parcel` | Parcel service, identifier, centroid fields and owner visibility |
 | `contact` | Phone, email and staffed response commitment |
@@ -144,10 +144,34 @@ real, distinct street names.
 
 The returned note tells the live region whenever matching was broadened.
 
-Input events invalidate older requests immediately and debounce suggestions for 250 ms. A sequence
-ticket and abort signal both protect against stale output. The listbox implements Down, Up, Home,
+A tier can match more addresses than the service will return. `resultRecordCount` caps the result at
+`address.max` and ArcGIS reports the cap in `exceededTransferLimit`; a street such as Santa Rosa has
+49 matching points. The cap is read from that flag rather than inferred from the row count, because
+address points without a parcel ID are discarded after the response arrives. When the list is
+partial the live region says so and names what to add to narrow it, because announcing a bare count
+would present ten of forty-nine as the complete answer and silently strand a resident whose address
+is not among them. Submitting free text does not auto-load a lone surviving row when the service
+reported a cap: one row out of a truncated result is not a unique match.
+
+Input events invalidate older requests immediately and debounce suggestions for
+`request.suggestDebounceMs`. That delay is configuration rather than a literal so cancellation races
+can be tested deterministically instead of depending on how fast a test run happens to be. A
+sequence ticket and abort signal both protect against stale output. The listbox implements Down, Up, Home,
 End, Escape and Enter while DOM focus remains in the input. Moving focus out of the combobox closes
 the list, including when the user presses Tab.
+
+Both pages follow one rule about which code claims a ticket. **The event that starts a user action
+claims it; work that the action merely schedules never does.** The input event therefore clears the
+stored selection and takes the ticket itself, and the debounced search inherits that ticket rather
+than opening its own. A search that ticketed itself when its timer fired would abort whatever the
+user did during the debounce window — and because the abort is classified as cancellation, it is
+discarded silently, leaving the page mid-progress with no error. Anything that supersedes a queued
+suggestion — choosing an option, submitting, clearing, dismissing — cancels the pending timer.
+Choosing with a pointer happens to survive without that step, because emptying the listbox detaches
+the clicked option and the document-level handler then treats the click as falling outside the
+combobox; choosing with Enter fires no click and has no such accident to rely on. `activeKind`
+records what the live ticket belongs to, so dismissing suggestions can invalidate a pending search
+without disturbing a lookup.
 
 Selecting an option stores its parcel ID and starts a lookup. Submitting free text uses the same
 tiered search; multiple candidates are shown rather than guessed. A 9–14 digit parcel entry is

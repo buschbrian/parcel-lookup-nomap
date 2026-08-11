@@ -37,10 +37,13 @@ async function mockArcGIS(page,state={}){
       },geometry}]});
     }
     if(path.includes("/Short_Term_Rentals_June_2026/FeatureServer/0/")){
+      if(state.countRental)state.countRental();
+      if(state.rentalStatus)return route.fulfill({status:state.rentalStatus,body:"rejected"});
       if(state.malformedActiveResponse)return json({});
       return json({features:state.active?[{attributes:{parcel_id:address.ParcelID}}]:[]});
     }
     if(path.includes("/Short_Term_Rentals_June_2026/FeatureServer/1/")){
+      if(state.countBuffer)state.countBuffer();
       if(state.bufferFailure)return route.fulfill({status:503,body:"temporary failure"});
       if(state.malformedBufferResponse)return json({});
       const features=(state.buffers??[{parcel_id:"99999999999999",BUFF_DIST:400}])
@@ -240,14 +243,55 @@ test("a request whose task was already superseded is never sent",async({page})=>
     requests++;
     return route.fulfill({status:200,contentType:"application/json",body:"{}"});
   });
+  // Classified `kind`, matching index.html: the shared layer does not surface raw
+  // DOMException names, because "AbortError" and "TypeError" need different words.
   const outcome=await page.evaluate(async()=>{
     const controller=new AbortController();
     controller.abort();
     try{ await fetchJson(new URL(location.origin+"/superseded-probe"),controller.signal); return "resolved"; }
-    catch(error){ return error.name; }
+    catch(error){ return error.kind; }
   });
-  expect(outcome).toBe("AbortError");
+  expect(outcome).toBe("aborted");
   expect(requests).toBe(0);
+});
+
+/* Retry policy. Retrying a rejected query cannot change its answer: it doubles the
+   worst-case wait to two full timeouts and adds load to a service that may already
+   be refusing work. Only network, rate-limit, server and timeout failures are worth
+   a second attempt. */
+test("a permanent service error is reported without a retry",async({page})=>{
+  let requests=0;
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{rentalStatus:400,countRental:()=>{requests++}});
+  await page.reload();
+  await page.evaluate(()=>{CFG.request.retryDelayMs=1});
+  await loadByKeyboard(page);
+  await expect(page.locator(".pair",{hasText:"Appears in the June 2026"})).toContainText("Unknown");
+  expect(requests).toBe(1);
+});
+
+test("a transient service error is retried once",async({page})=>{
+  let requests=0;
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{bufferFailure:true,countBuffer:()=>{requests++}});
+  await page.reload();
+  await page.evaluate(()=>{CFG.request.retryDelayMs=1});
+  await loadByKeyboard(page);
+  await expect(page.locator(".pair",{hasText:"Within 400 feet"})).toContainText("Unknown");
+  expect(requests).toBe(2);
+});
+
+// A status glyph inside the same text node is spoken: "black circle Yes". axe cannot
+// see this, so it needs its own assertion.
+test("status glyphs are hidden from assistive technology",async({page})=>{
+  await loadByKeyboard(page);
+  const flags=page.locator("#results-body .flag");
+  await expect(flags).not.toHaveCount(0);
+  for(const glyph of await page.locator("#results-body .flag .g").all())
+    await expect(glyph).toHaveAttribute("aria-hidden","true");
+  await expect(page.locator(".pair",{hasText:"Appears in the June 2026"})).toContainText("No");
+  expect(await page.locator("#results-body .flag .g").count())
+    .toBe(await flags.count());
 });
 
 test("address suggestions without parcel IDs are discarded",async({page})=>{

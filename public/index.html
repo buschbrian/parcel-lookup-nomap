@@ -858,6 +858,14 @@ const decode = (fld,v) => {
   return typeof v==="string" ? v.trim() : v;
 };
 const esc = s => String(s).replace(/'/g,"''");
+/* A LIKE operand needs more than quote doubling: `%` and `_` are wildcards, so a
+   resident who types one gets a different search than the one they asked for —
+   "330_ E" quietly matches every house number from 3300 to 3309. Escape them and
+   pair every LIKE with ESCAPE '\'. Backslashes are doubled first, or the escape
+   characters this adds would themselves be escaped. Not used for equality operands:
+   there a backslash is a literal character, not an escape. */
+const likeOperand = s => String(s)
+  .replace(/\\/g,"\\\\").replace(/[%_]/g,"\\$&").replace(/'/g,"''");
 const regexEsc = s => String(s).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
 
 /* Conservative display precedence for multiple FEMA classifications touching
@@ -981,15 +989,16 @@ async function findAddresses(raw, limit, signal){
   if(!p.normalized) return {items:[],note:null,parsed:p,more:false};
 
   const tiers=[];
-  tiers.push({ w:`UPPER(${A.searchField}) LIKE '${esc(p.normalized)}%'`, note:null });
+  tiers.push({ w:`UPPER(${A.searchField}) LIKE '${likeOperand(p.normalized)}%' ESCAPE '\\'`,
+               note:null });
   if(p.num && p.street)
-    tiers.push({ w:`${A.numField}='${esc(p.num)}' AND UPPER(${A.nameField}) LIKE '${esc(p.street)}%'`,
+    tiers.push({ w:`${A.numField}='${esc(p.num)}' AND UPPER(${A.nameField}) LIKE '${likeOperand(p.street)}%' ESCAPE '\\'`,
                  note:"Matched on house number and street name." });
   if(!p.num && p.street)
-    tiers.push({ w:`UPPER(${A.nameField}) LIKE '${esc(p.street)}%'`,
+    tiers.push({ w:`UPPER(${A.nameField}) LIKE '${likeOperand(p.street)}%' ESCAPE '\\'`,
                  note:"Showing addresses on that street." });
   if(p.street && p.street.length>2)
-    tiers.push({ w:`UPPER(${A.searchField}) LIKE '%${esc(p.street)}%'`,
+    tiers.push({ w:`UPPER(${A.searchField}) LIKE '%${likeOperand(p.street)}%' ESCAPE '\\'`,
                  note:"No exact match, so the search was broadened." });
 
   for(const t of tiers){
@@ -1537,10 +1546,14 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
       if(o.files && o.files.length){
         o.files.forEach(f=>{
           const dd=el("dd",{});
+          // Not every service reports a size; describing a plat as "NaN KB" is worse
+          // than not stating its size at all.
+          const size=Number(f.size);
+          const detail=Number.isFinite(size)&&size>0
+            ? " (PDF, "+Math.round(size/1024)+" KB)" : " (PDF)";
           dd.append(el("a",{href:f.url, rel:"noopener",
             text:(o.attachmentLabel||"Attachment")+" — "+
-                 String(o.attrs[Object.keys(o.fields||{})[0]]||f.name)+
-                 " (PDF, "+Math.round(f.size/1024)+" KB)"}));
+                 String(o.attrs[Object.keys(o.fields||{})[0]]||f.name)+detail}));
           dl.append(el("div",{class:"pair"},[
             el("dt",{text:o.attachmentLabel||"Attachment"}), dd]));
         });

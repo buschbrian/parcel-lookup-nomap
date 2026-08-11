@@ -33,7 +33,9 @@ const required={
     "https://hazards.fema.gov"],
   "permissions-policy":["geolocation=()","camera=()","microphone=()"],
   "referrer-policy":["strict-origin-when-cross-origin"],
-  "strict-transport-security":["max-age="],
+  // Assert the directives, not just the presence of max-age: a silent downgrade to a
+  // shorter window or a dropped includeSubDomains would otherwise pass this gate.
+  "strict-transport-security":["max-age=31536000","includeSubDomains"],
   "x-content-type-options":["nosniff"],
   "cache-control":["max-age=0","must-revalidate"]
 };

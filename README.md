@@ -134,7 +134,7 @@ snapshot and maintenance cycle do not become entangled with the general property
 
 The deployed app still has no runtime dependencies or build step. Developer-only packages run the
 test suite and are not shipped. The self-contained-page choice means the CSP needs `'unsafe-inline'`
-for inline `<style>` and `<script>`; that accepted tradeoff is documented in `_headers`.
+for inline `<style>` and `<script>`; that accepted tradeoff is documented in `public/_headers`.
 
 ---
 
@@ -145,9 +145,13 @@ No production build step and no runtime dependencies.
 ```bash
 git clone <this repo>
 cd parcel-lookup
-python3 -m http.server 8080     # or: npx serve .
+python3 -m http.server 8080 --directory public     # or: npx serve public
 # open http://localhost:8080
 ```
+
+Serve `public/`, not the repository root, so local browsing matches what the deployed site
+serves. Opening the file directly with `file://` will not work: the browser blocks the
+cross-origin requests to ArcGIS, and both pages say so rather than blaming the service.
 
 To run developer checks, install the dev-only dependencies and tests:
 
@@ -226,7 +230,7 @@ Most local queries go to Millcreek's ArcGIS Online feature services at
 `services9.arcgis.com/XRrSFvEwSsReIxuA`. Flood classifications are queried directly from FEMA's
 National Flood Hazard Layer and compared with the flood layer in the public Planning map. Surface
 fault rupture uses that map's special-study-area polygon. The CSP permits the Millcreek and FEMA
-origins; adding another host requires adding its origin to `_headers`.
+origins; adding another host requires adding its origin to `public/_headers`.
 
 | Data | Origin |
 |:--|:--|

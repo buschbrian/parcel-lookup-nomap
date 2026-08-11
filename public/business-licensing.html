@@ -150,6 +150,12 @@ const q$=$("#q"),list$=$("#sugg"),status$=$("#status"),results$=$("#results"),
 let items=[],active=-1,chosen=null,sequence=0,timer=null,activeKind=null,
   controller=new AbortController();
 const esc=value=>String(value).replace(/'/g,"''");
+/* LIKE operands also escape `%` and `_`, which are wildcards: "330_ E" would quietly
+   match every house number from 3300 to 3309. Backslashes are doubled first so the
+   escapes this adds are not themselves escaped. Equality operands keep using esc(),
+   where a backslash is a literal character. */
+const likeOperand=value=>String(value)
+  .replace(/\\/g,"\\\\").replace(/[%_]/g,"\\$&").replace(/'/g,"''");
 const regexEsc=value=>String(value).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
 function say(message,tone){status$.textContent=message||"";if(tone)status$.dataset.tone=tone;else delete status$.dataset.tone}
 /* One ticket per user action. The ticket is claimed by the event that starts the
@@ -290,10 +296,10 @@ function matchSummary(count,more){
     " Add the direction or street type to narrow the list, for example “3300 E Santa Rosa Ave”.";
 }
 async function findAddresses(raw,signal){
-  const A=CFG.address,p=parseAddress(raw);if(!p.normalized)return{items:[],more:false};const tiers=[`UPPER(${A.searchField}) LIKE '${esc(p.normalized)}%'`];
-  if(p.num&&p.street)tiers.push(`${A.numField}='${esc(p.num)}' AND UPPER(${A.nameField}) LIKE '${esc(p.street)}%'`);
-  if(!p.num&&p.street)tiers.push(`UPPER(${A.nameField}) LIKE '${esc(p.street)}%'`);
-  if(p.street.length>2)tiers.push(`UPPER(${A.searchField}) LIKE '%${esc(p.street)}%'`);
+  const A=CFG.address,p=parseAddress(raw);if(!p.normalized)return{items:[],more:false};const tiers=[`UPPER(${A.searchField}) LIKE '${likeOperand(p.normalized)}%' ESCAPE '\\'`];
+  if(p.num&&p.street)tiers.push(`${A.numField}='${esc(p.num)}' AND UPPER(${A.nameField}) LIKE '${likeOperand(p.street)}%' ESCAPE '\\'`);
+  if(!p.num&&p.street)tiers.push(`UPPER(${A.nameField}) LIKE '${likeOperand(p.street)}%' ESCAPE '\\'`);
+  if(p.street.length>2)tiers.push(`UPPER(${A.searchField}) LIKE '%${likeOperand(p.street)}%' ESCAPE '\\'`);
   for(const where of [...new Set(tiers)]){
     const response=await query(A.url,{where,outFields:[A.searchField,A.parcelField,...A.extra].join(","),orderByFields:A.searchField,resultRecordCount:String(A.max)},signal);
     const found=(response.features||[]).map(feature=>feature.attributes)

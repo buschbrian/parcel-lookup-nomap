@@ -22,7 +22,7 @@ as the file changes.
 5. **A partial answer is better than a blank page.** Independent layer failures are contained and
    reported while successful results render normally.
 
-The self-contained-page choice requires `'unsafe-inline'` in the CSP. `_headers` records that accepted
+The self-contained-page choice requires `'unsafe-inline'` in the CSP. `public/_headers` records that accepted
 tradeoff. If production is ever split into external CSS and JavaScript, remove both allowances.
 
 ---
@@ -140,6 +140,13 @@ values; it marks the layer as degraded and leaves codes undecoded.
 
 `decode()` expands coded domains, trims strings and treats whitespace-only values as absent. It does
 not treat numeric zero as missing.
+
+Two escaping helpers, and they are not interchangeable. `esc()` doubles single quotes and is for
+equality operands. `likeOperand()` also escapes `%` and `_`, and every `LIKE` built with it carries
+`ESCAPE '\'`. Without that, a typed wildcard silently changes the search rather than being looked
+for: `330_ E` matches every house number from 3300 to 3309 and reports the result as if the resident
+had asked for it. Escaping wildcards in an equality operand would be the opposite mistake, inserting
+backslashes into a literal value, which is why the two are separate.
 
 ---
 
@@ -274,7 +281,11 @@ historic designation types, and parity between adopted local sources and the pub
 map. CI runs it on a schedule or manual dispatch, not as a pull-request dependency.
 
 `npm run check:deployment` is a post-deploy gate. It requires the live HTML to equal the committed
-`index.html` and checks CSP, permissions, referrer, HSTS, MIME-sniffing and cache headers.
+`public/index.html`, checks CSP, permissions, referrer, HSTS, MIME-sniffing and cache headers, and
+probes repository paths to confirm the publish directory is not exposing them. Every header it
+asserts is declared in `public/_headers`, so a failure points at something in this repository rather
+than at a hosting default. It asserts HSTS directives, not merely the presence of `max-age`, because
+a shortened window or a dropped `includeSubDomains` is a downgrade worth failing on.
 
 Automated checks do not replace the manual keyboard, reflow, zoom, forced-colors, print and NVDA
 matrix documented in `USAGE.md`.

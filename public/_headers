@@ -5,6 +5,20 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=()
+  # Declared here rather than left to the host. Netlify already sends this value, so
+  # this is not a change in what is served — it is a change in where the value comes
+  # from. `npm run check:deployment` requires the header, and that gate should fail
+  # against something this repository controls, not against a hosting default that
+  # can differ on another platform or account.
+  #
+  # `includeSubDomains` binds subdomains of the host that sends it: from
+  # parcel-lookup-millcreek.netlify.app it reaches nothing else, and from a
+  # subdomain such as parcel.millcreekut.gov it would reach only that subdomain's
+  # own children. Serving this file from the millcreekut.gov apex would force HTTPS
+  # on every City subdomain, so confirm that with whoever owns the domain before
+  # doing it. `preload` only takes effect if the domain is submitted to
+  # hstspreload.org; sending the token does not enrol anything by itself.
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
   # Runtime data requests are limited to Millcreek ArcGIS and FEMA.
   # 'unsafe-inline' is required because both lookup pages are deliberately
   # self-contained HTML documents with inline <style> and <script>, so GIS

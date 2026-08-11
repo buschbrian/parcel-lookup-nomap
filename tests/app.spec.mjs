@@ -68,6 +68,9 @@ async function mockArcGIS(page,state={}){
 
     if(path.endsWith("/attachments")){
       if(state.attachmentFailure) return route.fulfill({status:500,body:"temporary failure"});
+      // Some services omit `size`. Math.round(undefined/1024) renders "NaN KB".
+      if(state.attachmentWithoutSize)
+        return json({attachmentInfos:[{id:9,name:"El Serrito 2.pdf",contentType:"application/pdf"}]});
       return json({attachmentInfos:[{id:9,name:"El Serrito 2.pdf",contentType:"application/pdf",size:2472960}]});
     }
     if(path.endsWith("/query")){
@@ -391,6 +394,17 @@ test("attachment failures and singular-layer overlaps are visible",async({page})
   await expect(page.locator("#results-body")).toContainText("Recorded platTemporarily unavailable");
   await expect(page.locator("#results-body")).toContainText("multiple source polygons matched");
   await expect(page.locator("#status")).toContainText("data source issue");
+});
+
+test("an attachment without a reported size omits the size rather than showing NaN",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{attachmentWithoutSize:true});
+  await page.reload();
+  await loadKnownProperty(page);
+  const plat=page.getByRole("link",{name:/Recorded plat/});
+  await expect(plat).toHaveCount(1);
+  await expect(plat).not.toContainText("NaN");
+  await expect(plat).toContainText("PDF");
 });
 
 test("results reflow without horizontal page scrolling at 320 CSS pixels",async({page})=>{

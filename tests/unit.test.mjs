@@ -18,7 +18,7 @@ function pureApp(){
   return vm.runInNewContext(
     script.slice(cfgStart,cfgEnd)+"\n"+script.slice(helperStart,helperEnd)+
     "\n;({CFG,parseAddress,decode,floodRank,selectHighestFlood,selectHighestCategory,floodClassSet,"+
-    "sameSet,matchSummary});"
+    "sameSet,matchSummary,esc,likeOperand});"
   );
 }
 
@@ -218,6 +218,46 @@ test("only the public site is published",async()=>{
   const repoFile=/^(package(-lock)?\.json|playwright\.config\.mjs|netlify\.toml|LICENSE|CODE\.md|USAGE\.md|README\.md|DATA-SOURCES\.md|WEB-MAP-REVIEW\.md|CHANGES-.+\.md)$/;
   const leaked=served.filter(name=>engineering.test(name)||repoFile.test(name));
   assert.deepEqual(leaked,[],publishDir+"/ would serve engineering files: "+leaked.join(", "));
+});
+
+/* HSTS was being served by the hosting platform rather than declared here, so the
+   deployment gate asserted a header that nothing in the repository guaranteed. Move
+   the site or change the platform and the gate fails for a reason with no source. */
+test("transport security is declared in the repository, not left to the platform",async()=>{
+  const headers=await readFile(new URL("../public/_headers",import.meta.url),"utf8");
+  const hsts=headers.match(/^\s*Strict-Transport-Security:\s*(.+)$/mi)?.[1].trim();
+  assert.ok(hsts,"_headers declares Strict-Transport-Security");
+  const maxAge=Number(hsts.match(/max-age=(\d+)/)?.[1]);
+  assert.ok(maxAge>=31536000,"max-age is at least one year, got "+maxAge);
+});
+
+// A LIKE operand is not an equality operand. Escaping wildcards in an equality
+// comparison would insert backslashes into a literal value, so they are separate.
+test("LIKE operands escape wildcards while equality operands do not",()=>{
+  const {esc,likeOperand}=pureApp();
+  assert.equal(esc("O'BRIEN"),"O''BRIEN");
+  assert.equal(esc("100% MAIN"),"100% MAIN");
+  assert.equal(likeOperand("O'BRIEN"),"O''BRIEN");
+  assert.equal(likeOperand("100% MAIN"),"100\\% MAIN");
+  assert.equal(likeOperand("330_ E"),"330\\_ E");
+  assert.equal(likeOperand("A\\B"),"A\\\\B");
+});
+
+test("address searches escape typed wildcards in every tier",()=>{
+  const belowConfig=script.slice(script.indexOf("No further edits"));
+  const tiers=[...belowConfig.matchAll(/LIKE '[^\n]*/g)].map(match=>match[0]);
+  assert.ok(tiers.length>=4,"found the tiered LIKE clauses, got "+tiers.length);
+  for(const tier of tiers){
+    assert.match(tier,/ESCAPE/,"tier declares an ESCAPE character: "+tier);
+    assert.doesNotMatch(tier,/\$\{esc\(/,"tier uses likeOperand, not esc: "+tier);
+  }
+});
+
+test("CI sets up the Python that the test suite and preview server need",async()=>{
+  const workflow=await readFile(new URL("../.github/workflows/quality.yml",import.meta.url),"utf8");
+  // npm test runs `python -m unittest`, and Playwright's webServer is python http.server.
+  assert.match(workflow,/actions\/setup-python/,
+    "the workflow provisions Python rather than relying on the runner image");
 });
 
 test("security policy permits authoritative sources and Planning uses its own contact",async()=>{

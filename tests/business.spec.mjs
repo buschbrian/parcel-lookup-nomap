@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 const address={FullAdd:"3300 E SANTA ROSA AVE",ParcelID:"16264570030000",City:"MILLCREEK",ZipCode:"84109",UnitType:null,UnitID:null};
+const otherAddress={FullAdd:"1234 E ELM ST",ParcelID:"16264570049999",City:"MILLCREEK",ZipCode:"84109",UnitType:null,UnitID:null};
 const geometry={rings:[[
   [-111.816,40.698],[-111.814,40.698],[-111.814,40.700],
   [-111.816,40.700],[-111.816,40.698]
@@ -13,17 +14,36 @@ async function mockArcGIS(page,state={}){
     const json=body=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(body)});
     if(!path.endsWith("/query"))return json({fields:[]});
     if(path.includes("/Address_Points/")){
+      // exceededTransferLimit is how ArcGIS reports that it capped the result set.
+      if(state.addressOverflow) return json({
+        features:Array.from({length:10},(unused,index)=>({attributes:{...address,
+          FullAdd:"33"+index+"0 E SANTA ROSA AVE",
+          ParcelID:"1626457003000"+index}})),
+        exceededTransferLimit:true
+      });
+      const where=url.searchParams.get("where")||"";
+      // Two distinct streets, so a lookup of the wrong parcel is visible in the heading.
+      if(state.twoAddresses)
+        return json({features:[{attributes:where.includes("ELM")?otherAddress:address}]});
       const attributes=state.addressWithoutParcelId?{...address,ParcelID:null}:address;
       return json({features:[{attributes}]});
     }
-    if(path.includes("/Millcreek_Parcels/"))return json({features:[{attributes:{
-      parcel_id:address.ParcelID,prop_location:address.FullAdd
-    },geometry}]});
+    if(path.includes("/Millcreek_Parcels/")){
+      if(state.delayParcel)await new Promise(resolve=>setTimeout(resolve,state.delayParcel));
+      const where=url.searchParams.get("where")||"";
+      const known=[address,otherAddress].find(one=>where.includes(one.ParcelID))||address;
+      return json({features:[{attributes:{
+        parcel_id:known.ParcelID,prop_location:known.FullAdd
+      },geometry}]});
+    }
     if(path.includes("/Short_Term_Rentals_June_2026/FeatureServer/0/")){
+      if(state.countRental)state.countRental();
+      if(state.rentalStatus)return route.fulfill({status:state.rentalStatus,body:"rejected"});
       if(state.malformedActiveResponse)return json({});
       return json({features:state.active?[{attributes:{parcel_id:address.ParcelID}}]:[]});
     }
     if(path.includes("/Short_Term_Rentals_June_2026/FeatureServer/1/")){
+      if(state.countBuffer)state.countBuffer();
       if(state.bufferFailure)return route.fulfill({status:503,body:"temporary failure"});
       if(state.malformedBufferResponse)return json({});
       const features=(state.buffers??[{parcel_id:"99999999999999",BUFF_DIST:400}])
@@ -88,6 +108,24 @@ test("a pointer click on a licensing address suggestion loads the screen",async(
   await expect(page.locator("#r-head")).toContainText("3300 E SANTA ROSA AVE");
 });
 
+test("a capped licensing address list is announced as partial",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{addressOverflow:true});
+  await page.reload();
+  await page.locator("#q").fill("Santa Rosa");
+  await expect(page.locator("#sugg li")).toHaveCount(10);
+  await expect(page.locator("#status")).toContainText("Showing the first 10 matches");
+  await expect(page.locator("#status")).toContainText("narrow the list");
+});
+
+test("the licensing debounce delay honours its configuration",async({page})=>{
+  await page.evaluate(()=>{CFG.request.suggestDebounceMs=60_000});
+  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.waitForTimeout(750);
+  await expect(page.locator("#sugg")).toBeHidden();
+  await expect(page.locator("#q")).toHaveAttribute("aria-expanded","false");
+});
+
 test("leaving the licensing combobox closes its suggestions",async({page})=>{
   await page.locator("#q").fill("3300 East");
   await expect(page.locator("#sugg")).toBeVisible();
@@ -125,6 +163,135 @@ test("a malformed buffer response is Unknown rather than No",async({page})=>{
   await loadByKeyboard(page);
   await expect(page.locator(".pair",{hasText:"Within 400 feet"})).toContainText("Unknown");
   await expect(page.locator("#status")).toContainText("unavailable data source");
+});
+
+/* The three tests below cover cancellation ownership. `chosen` and the sequence
+   ticket must both be claimed by the input event itself, not by the debounced
+   search that runs 250 ms later — otherwise an action taken inside that window
+   either screens a stale parcel or is silently aborted by the late suggestion.
+   The debounce delay is configuration so these windows are held open on purpose
+   rather than depending on how fast the run happens to be. */
+
+test("editing the address after picking one does not screen the previous parcel",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{twoAddresses:true});
+  await page.reload();
+  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await expect(page.locator("#sugg li")).toHaveCount(1);
+  await page.locator("#sugg li").first().click();
+  await expect(page.locator("#r-head")).toContainText("3300 E SANTA ROSA AVE");
+
+  // Hold the debounce open so the pending search cannot clear the stale selection.
+  await page.evaluate(()=>{CFG.request.suggestDebounceMs=60_000});
+  await page.locator("#q").fill("1234 East Elm Street");
+  await page.locator("#lookup button[type=submit]").click();
+  await expect(page.locator("#r-head")).toContainText("1234 E ELM ST");
+  await expect(page.locator("#r-head")).not.toContainText("SANTA ROSA");
+});
+
+/* These two dispatch the input event and the superseding action inside one
+   page.evaluate, so the ordering is fixed by JavaScript rather than by how long a
+   Playwright click takes to become actionable. Driving them as separate actions
+   lets the debounce fire first, which passes without exercising the race at all. */
+
+/* Keyboard selection, not pointer selection. A pointer click is protected by
+   accident: pick() empties the listbox, so the click reaches the document handler
+   with a detached target, closest(".combo") returns null, and dismissSuggestions()
+   clears the pending timer as a side effect. Choosing with Enter fires no click, so
+   nothing clears it — the vulnerable path is the keyboard one this page exists for. */
+test("a suggestion pending when an address is chosen by keyboard does not abort the lookup",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{delayParcel:1500});
+  await page.reload();
+  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await expect(page.locator("#sugg li")).toHaveCount(1);
+  await page.evaluate(()=>{
+    CFG.request.suggestDebounceMs=50;
+    const q=document.querySelector("#q");
+    const key=name=>q.dispatchEvent(new KeyboardEvent("keydown",{key:name,bubbles:true,cancelable:true}));
+    q.value=q.value+" ";
+    q.dispatchEvent(new Event("input",{bubbles:true}));  // queues a suggestion at +50 ms
+    key("ArrowDown");
+    key("Enter");                                       // supersedes it right now
+  });
+  await expect(page.locator("#results")).toBeVisible({timeout:8000});
+  await expect(page.locator("#status")).toContainText("Results ready");
+  await expect(page.locator("#sugg")).toBeHidden();
+});
+
+test("a suggestion pending when the form is submitted does not abort the screen",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{delayParcel:1500});
+  await page.reload();
+  await page.evaluate(()=>{
+    CFG.request.suggestDebounceMs=50;
+    const q=document.querySelector("#q");
+    q.value="3300 East Santa Rosa Avenue";
+    q.dispatchEvent(new Event("input",{bubbles:true}));
+    document.querySelector("#lookup").requestSubmit();
+  });
+  await expect(page.locator("#results")).toBeVisible({timeout:8000});
+  await expect(page.locator("#status")).toContainText("Results ready");
+});
+
+// Cancellation has to actually cancel. Asserting only the error name is not enough:
+// the name is derived from signal.aborted in the catch, so it reads AbortError even
+// when the request was sent and answered. Count the round trip instead.
+test("a request whose task was already superseded is never sent",async({page})=>{
+  let requests=0;
+  await page.route("**/superseded-probe**",route=>{
+    requests++;
+    return route.fulfill({status:200,contentType:"application/json",body:"{}"});
+  });
+  // Classified `kind`, matching index.html: the shared layer does not surface raw
+  // DOMException names, because "AbortError" and "TypeError" need different words.
+  const outcome=await page.evaluate(async()=>{
+    const controller=new AbortController();
+    controller.abort();
+    try{ await fetchJson(new URL(location.origin+"/superseded-probe"),controller.signal); return "resolved"; }
+    catch(error){ return error.kind; }
+  });
+  expect(outcome).toBe("aborted");
+  expect(requests).toBe(0);
+});
+
+/* Retry policy. Retrying a rejected query cannot change its answer: it doubles the
+   worst-case wait to two full timeouts and adds load to a service that may already
+   be refusing work. Only network, rate-limit, server and timeout failures are worth
+   a second attempt. */
+test("a permanent service error is reported without a retry",async({page})=>{
+  let requests=0;
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{rentalStatus:400,countRental:()=>{requests++}});
+  await page.reload();
+  await page.evaluate(()=>{CFG.request.retryDelayMs=1});
+  await loadByKeyboard(page);
+  await expect(page.locator(".pair",{hasText:"Appears in the June 2026"})).toContainText("Unknown");
+  expect(requests).toBe(1);
+});
+
+test("a transient service error is retried once",async({page})=>{
+  let requests=0;
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{bufferFailure:true,countBuffer:()=>{requests++}});
+  await page.reload();
+  await page.evaluate(()=>{CFG.request.retryDelayMs=1});
+  await loadByKeyboard(page);
+  await expect(page.locator(".pair",{hasText:"Within 400 feet"})).toContainText("Unknown");
+  expect(requests).toBe(2);
+});
+
+// A status glyph inside the same text node is spoken: "black circle Yes". axe cannot
+// see this, so it needs its own assertion.
+test("status glyphs are hidden from assistive technology",async({page})=>{
+  await loadByKeyboard(page);
+  const flags=page.locator("#results-body .flag");
+  await expect(flags).not.toHaveCount(0);
+  for(const glyph of await page.locator("#results-body .flag .g").all())
+    await expect(glyph).toHaveAttribute("aria-hidden","true");
+  await expect(page.locator(".pair",{hasText:"Appears in the June 2026"})).toContainText("No");
+  expect(await page.locator("#results-body .flag .g").count())
+    .toBe(await flags.count());
 });
 
 test("address suggestions without parcel IDs are discarded",async({page})=>{

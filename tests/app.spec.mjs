@@ -68,10 +68,28 @@ async function mockArcGIS(page,state={}){
 
     if(path.endsWith("/attachments")){
       if(state.attachmentFailure) return route.fulfill({status:500,body:"temporary failure"});
+      // Some services omit `size`. Math.round(undefined/1024) renders "NaN KB".
+      if(state.attachmentWithoutSize)
+        return json({attachmentInfos:[{id:9,name:"El Serrito 2.pdf",contentType:"application/pdf"}]});
       return json({attachmentInfos:[{id:9,name:"El Serrito 2.pdf",contentType:"application/pdf",size:2472960}]});
     }
     if(path.endsWith("/query")){
-      if(name==="Address_Points") return json({features:[{attributes:address}]});
+      if(name==="Address_Points"){
+        // ArcGIS caps a result set at resultRecordCount and reports the cap with
+        // exceededTransferLimit. Real streets exceed the cap: "Santa Rosa" matches 49.
+        if(state.addressOverflow) return json({
+          features:Array.from({length:10},(unused,index)=>({attributes:{...address,
+            FullAdd:"33"+index+"0 E SANTA ROSA AVE",
+            ParcelID:"1626457003000"+index}})),
+          exceededTransferLimit:true
+        });
+        if(state.cappedToOneUsableMatch) return json({
+          features:[{attributes:address},
+            ...Array.from({length:9},()=>({attributes:{...address,ParcelID:null}}))],
+          exceededTransferLimit:true
+        });
+        return json({features:[{attributes:address}]});
+      }
       if(name==="Millcreek_Parcels"){
         if(state.delayParcel) await new Promise(resolve=>setTimeout(resolve,state.delayParcel));
         const feature={attributes:parcel(state.parcel)};
@@ -144,6 +162,42 @@ test("lookup preserves zeroes and copy includes links, notes, and disclaimer",as
   expect(copied).toContain("https://example.test/water");
   expect(copied).toContain("DISCLAIMER");
   expect(copied).toContain("not a zoning verification letter");
+});
+
+/* The Assessor stores several owners in one field, separated by semicolons, with
+   tenancy codes like "(JT)". A screen reader reads that as one run-on string, so it
+   becomes a real list with the codes expanded. Nothing asserted this, which is also
+   what let the field itself go unverified. */
+test("multiple owners of record become a list with tenancy codes expanded",async({page})=>{
+  await loadKnownProperty(page);
+  const owners=page.locator(".pair",{hasText:"Owners of record"});
+  await expect(owners.locator("li")).toHaveCount(2);
+  await expect(owners.locator("li").first()).toHaveText("ALEX EXAMPLE — joint tenants");
+  await expect(owners.locator("li").last()).toHaveText("CASEY EXAMPLE — joint tenants");
+  await expect(page.getByRole("link",{name:"Salt Lake County Assessor"}))
+    .toHaveAttribute("href","https://example.test/assessor");
+});
+
+test("a single owner is labelled in the singular and care-of is shown",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{parcel:{own_name:"ALEX EXAMPLE (TR)",care_of:"EXAMPLE TRUST"}});
+  await page.reload();
+  await loadKnownProperty(page);
+  const owner=page.locator(".pair",{hasText:"Owner of record"});
+  await expect(owner).toContainText("ALEX EXAMPLE — trustee");
+  await expect(owner).toContainText("Care of: EXAMPLE TRUST");
+  await expect(owner.locator("li")).toHaveCount(0);
+});
+
+// A vanished owner field must not take the rest of the result down with it.
+test("a missing owner field leaves the remaining parcel record intact",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{parcel:{own_name:null,care_of:null,slc_link:null}});
+  await page.reload();
+  await loadKnownProperty(page);
+  await expect(page.locator("#results-body")).toContainText("3300 E SANTA ROSA AVE");
+  await expect(page.locator("#results-body")).not.toContainText("Owner of record");
+  await expect(page.getByRole("link",{name:"Salt Lake County Assessor"})).toHaveCount(0);
 });
 
 test("a missing FEMA classification is Unknown rather than No",async({page})=>{
@@ -228,12 +282,92 @@ test("leaving the combobox closes its suggestions",async({page})=>{
   await expect(page.locator("#q")).toHaveAttribute("aria-expanded","false");
 });
 
+test("a capped address list is announced as partial, with how to narrow it",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{addressOverflow:true});
+  await page.reload();
+  await page.locator("#q").fill("Santa Rosa");
+  await expect(page.locator("#sugg li")).toHaveCount(10);
+  await expect(page.locator("#status")).toContainText("Showing the first 10 matches");
+  await expect(page.locator("#status")).toContainText("More addresses match");
+  await expect(page.locator("#status")).toContainText("narrow the list");
+});
+
+test("an uncapped address list is not announced as partial",async({page})=>{
+  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await expect(page.locator("#sugg li")).toHaveCount(1);
+  await expect(page.locator("#status")).toContainText("1 address match");
+  await expect(page.locator("#status")).not.toContainText("Showing the first");
+});
+
+// Submitting free text auto-loads a lone match. When the service capped the result
+// and only one row survived the parcel-ID filter, that lone row is not "the" match.
+test("submitting does not auto-load a lone survivor of a capped result",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{cappedToOneUsableMatch:true});
+  await page.reload();
+  await page.evaluate(()=>{ CFG.request.suggestDebounceMs=60_000; });
+  await page.locator("#q").fill("Santa Rosa");
+  await page.locator("#go").click();
+  await expect(page.locator("#status")).toContainText("More addresses match");
+  await expect(page.locator("#results")).toBeHidden();
+});
+
+// A hardcoded 250 ms makes timing-sensitive races untestable: on slow CI the timer
+// fires and the assertion passes for the wrong reason.
+test("the suggestion debounce delay honours its configuration",async({page})=>{
+  await page.evaluate(()=>{ CFG.request.suggestDebounceMs=60_000; });
+  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.waitForTimeout(750);
+  await expect(page.locator("#sugg")).toBeHidden();
+  await expect(page.locator("#q")).toHaveAttribute("aria-expanded","false");
+});
+
 test("a pointer click on an address suggestion loads that property",async({page})=>{
   await page.locator("#q").fill("3300 East Santa Rosa Avenue");
   await expect(page.locator("#sugg li")).toHaveCount(1);
   await page.locator("#sugg li").click();
   await expect(page.locator("#results")).toBeVisible();
   await expect(page.locator("#r-head")).toContainText("3300 E SANTA ROSA AVE");
+});
+
+/* This page already owns its ticket correctly — the input event claims it, not the
+   debounced search. These two characterize that so the behaviour survives the move
+   to shared modules; the identical tests failed on the licensing page before it was
+   restructured to match. */
+test("a suggestion pending when an address is chosen by keyboard does not abort the lookup",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{delayParcel:1500});
+  await page.reload();
+  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await expect(page.locator("#sugg li")).toHaveCount(1);
+  await page.evaluate(()=>{
+    CFG.request.suggestDebounceMs=50;
+    const q=document.querySelector("#q");
+    const key=name=>q.dispatchEvent(new KeyboardEvent("keydown",{key:name,bubbles:true,cancelable:true}));
+    q.value=q.value+" ";
+    q.dispatchEvent(new Event("input",{bubbles:true}));
+    key("ArrowDown");
+    key("Enter");
+  });
+  await expect(page.locator("#results")).toBeVisible({timeout:8000});
+  await expect(page.locator("#status")).toContainText("Results ready");
+});
+
+test("a request whose task was already superseded is never sent",async({page})=>{
+  let requests=0;
+  await page.route("**/superseded-probe**",route=>{
+    requests++;
+    return route.fulfill({status:200,contentType:"application/json",body:"{}"});
+  });
+  const outcome=await page.evaluate(async()=>{
+    const controller=new AbortController();
+    controller.abort();
+    try{ await fetchJson(new URL(location.origin+"/superseded-probe"),controller.signal); return "resolved"; }
+    catch(error){ return error.kind; }
+  });
+  expect(outcome).toBe("aborted");
+  expect(requests).toBe(0);
 });
 
 test("Clear invalidates a slow property response",async({page})=>{
@@ -260,6 +394,17 @@ test("attachment failures and singular-layer overlaps are visible",async({page})
   await expect(page.locator("#results-body")).toContainText("Recorded platTemporarily unavailable");
   await expect(page.locator("#results-body")).toContainText("multiple source polygons matched");
   await expect(page.locator("#status")).toContainText("data source issue");
+});
+
+test("an attachment without a reported size omits the size rather than showing NaN",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{attachmentWithoutSize:true});
+  await page.reload();
+  await loadKnownProperty(page);
+  const plat=page.getByRole("link",{name:/Recorded plat/});
+  await expect(plat).toHaveCount(1);
+  await expect(plat).not.toContainText("NaN");
+  await expect(plat).toContainText("PDF");
 });
 
 test("results reflow without horizontal page scrolling at 320 CSS pixels",async({page})=>{

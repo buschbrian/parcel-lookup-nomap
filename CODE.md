@@ -22,7 +22,7 @@ as the file changes.
 5. **A partial answer is better than a blank page.** Independent layer failures are contained and
    reported while successful results render normally.
 
-The self-contained-page choice requires `'unsafe-inline'` in the CSP. `_headers` records that accepted
+The self-contained-page choice requires `'unsafe-inline'` in the CSP. `public/_headers` records that accepted
 tradeoff. If production is ever split into external CSS and JavaScript, remove both allowances.
 
 ---
@@ -59,9 +59,9 @@ Everything above the `No further edits needed below this line` marker is the mai
 |:--|:--|
 | `release` | Static version, publication date and data-review date |
 | `referenceWebMap` | Public Planning web-map item used for source-parity checks |
-| `request` | Fetch timeout and one-retry delay |
+| `request` | Fetch timeout, one-retry delay and suggestion debounce delay |
 | `address` | Address service, field names, synonyms and safe local aliases |
-| `parcel` | Parcel service, identifier, centroid fields and owner visibility |
+| `parcel` | Parcel service, identifier, centroid fields, owner/care-of/Assessor-link field names and owner visibility |
 | `contact` | Phone, email and staffed response commitment |
 | `planning` | Planning & Zoning contact for binding determinations |
 | `LAYERS` | Local or absolute ArcGIS sources, spatial method and display rules |
@@ -74,6 +74,12 @@ Every displayed layer carries:
 - `cardinality`, normally `"one"`, so an unexpected overlap becomes a warning;
 - an explicit `fields` map for resident-facing output;
 - optional `boolean`, `note`, `geometryMode`, `kind`, distance, link or attachment settings.
+
+Every parcel field the page displays is named in `CFG`, including `ownerField`, `careOfField` and
+`assessorLinkField`. That is not decoration: `npm run check:services` verifies exactly what `CFG`
+declares, so a field read by name in the rendering code is a field no check can notice disappearing.
+When the County renames one, the result is not an error — the owner block or the valuation link
+simply stops appearing, in every result, silently. Name a field in `CFG` before displaying it.
 
 Layer indices are service-specific and are not assumed to be zero. `DATA-SOURCES.md` is the review
 register; a newer-looking ArcGIS item is not adopted without data-owner approval and comparison.
@@ -91,6 +97,21 @@ specialized: no returned classification renders Unknown rather than No.
 ---
 
 ## 4. DOM and request helpers
+
+Both pages carry the request layer — `svcError`, `RUNNING_FROM_FILE`, `fetchJson`, `withRetry`,
+`layerUrl`, `rawQuery`, `query` and `explain` — between `==== SHARED REQUEST LAYER ====` markers, and
+a unit test compares the two copies **byte for byte**. Do not reformat that block or specialise it
+for one page. It reads `org`, `request.timeoutMs`, `request.retryDelayMs` and `contact.phone` from
+whichever `CFG` it is embedded in, so the licensing page offers Business Licensing's number and the
+general page offers GIS's.
+
+Holding two copies identical looks like the opposite of removing duplication, and it is deliberate.
+Divergence is what produced the defects: one page retried rejected queries and permanent HTTP errors,
+one sent superseded requests to the network, and the two reported failures in different vocabularies.
+ADR-0001 replaces both inline scripts with shared modules, and identical copies extract mechanically
+while divergent ones force an undocumented merge decision per difference. Converging them is a step
+toward that extraction, not a substitute for it. `el()`, `flagPair` and the address parser are the
+next candidates.
 
 `el(tag, attributes, children)` is the only general element builder. Attribute values and text are
 assigned without `innerHTML`.
@@ -120,6 +141,13 @@ values; it marks the layer as degraded and leaves codes undecoded.
 `decode()` expands coded domains, trims strings and treats whitespace-only values as absent. It does
 not treat numeric zero as missing.
 
+Two escaping helpers, and they are not interchangeable. `esc()` doubles single quotes and is for
+equality operands. `likeOperand()` also escapes `%` and `_`, and every `LIKE` built with it carries
+`ESCAPE '\'`. Without that, a typed wildcard silently changes the search rather than being looked
+for: `330_ E` matches every house number from 3300 to 3309 and reports the result as if the resident
+had asked for it. Escaping wildcards in an equality operand would be the opposite mistake, inserting
+backslashes into a literal value, which is why the two are separate.
+
 ---
 
 ## 5. Address parsing and combobox
@@ -144,10 +172,34 @@ real, distinct street names.
 
 The returned note tells the live region whenever matching was broadened.
 
-Input events invalidate older requests immediately and debounce suggestions for 250 ms. A sequence
-ticket and abort signal both protect against stale output. The listbox implements Down, Up, Home,
+A tier can match more addresses than the service will return. `resultRecordCount` caps the result at
+`address.max` and ArcGIS reports the cap in `exceededTransferLimit`; a street such as Santa Rosa has
+49 matching points. The cap is read from that flag rather than inferred from the row count, because
+address points without a parcel ID are discarded after the response arrives. When the list is
+partial the live region says so and names what to add to narrow it, because announcing a bare count
+would present ten of forty-nine as the complete answer and silently strand a resident whose address
+is not among them. Submitting free text does not auto-load a lone surviving row when the service
+reported a cap: one row out of a truncated result is not a unique match.
+
+Input events invalidate older requests immediately and debounce suggestions for
+`request.suggestDebounceMs`. That delay is configuration rather than a literal so cancellation races
+can be tested deterministically instead of depending on how fast a test run happens to be. A
+sequence ticket and abort signal both protect against stale output. The listbox implements Down, Up, Home,
 End, Escape and Enter while DOM focus remains in the input. Moving focus out of the combobox closes
 the list, including when the user presses Tab.
+
+Both pages follow one rule about which code claims a ticket. **The event that starts a user action
+claims it; work that the action merely schedules never does.** The input event therefore clears the
+stored selection and takes the ticket itself, and the debounced search inherits that ticket rather
+than opening its own. A search that ticketed itself when its timer fired would abort whatever the
+user did during the debounce window — and because the abort is classified as cancellation, it is
+discarded silently, leaving the page mid-progress with no error. Anything that supersedes a queued
+suggestion — choosing an option, submitting, clearing, dismissing — cancels the pending timer.
+Choosing with a pointer happens to survive without that step, because emptying the listbox detaches
+the clicked option and the document-level handler then treats the click as falling outside the
+combobox; choosing with Enter fires no click and has no such accident to rely on. `activeKind`
+records what the live ticket belongs to, so dismissing suggestions can invalidate a pending search
+without disturbing a lookup.
 
 Selecting an option stores its parcel ID and starts a lookup. Submitting free text uses the same
 tiered search; multiple candidates are shown rather than guessed. A 9–14 digit parcel entry is
@@ -229,7 +281,11 @@ historic designation types, and parity between adopted local sources and the pub
 map. CI runs it on a schedule or manual dispatch, not as a pull-request dependency.
 
 `npm run check:deployment` is a post-deploy gate. It requires the live HTML to equal the committed
-`index.html` and checks CSP, permissions, referrer, HSTS, MIME-sniffing and cache headers.
+`public/index.html`, checks CSP, permissions, referrer, HSTS, MIME-sniffing and cache headers, and
+probes repository paths to confirm the publish directory is not exposing them. Every header it
+asserts is declared in `public/_headers`, so a failure points at something in this repository rather
+than at a hosting default. It asserts HSTS directives, not merely the presence of `max-age`, because
+a shortened window or a dropped `includeSubDomains` is a downgrade worth failing on.
 
 Automated checks do not replace the manual keyboard, reflow, zoom, forced-colors, print and NVDA
 matrix documented in `USAGE.md`.

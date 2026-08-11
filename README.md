@@ -109,11 +109,12 @@ to a broken page.
 ## Repository layout
 
 ```
-index.html      The general property lookup, self-contained by design.
-business-licensing.html The focused short-term-rental and 400-foot buffer lookup.
-assets/         Municipal brand assets stored locally for reliable rendering.
-_headers        Netlify security headers, including the CSP.
-netlify.toml    Netlify build/redirect configuration.
+public/         Everything the deployed site serves — and nothing else.
+  index.html      The general property lookup, self-contained by design.
+  business-licensing.html The focused short-term-rental and 400-foot buffer lookup.
+  assets/         Municipal brand assets stored locally for reliable rendering.
+  _headers        Netlify security headers, including the CSP.
+netlify.toml    Netlify build/redirect configuration; publishes `public/`.
 README.md       This file.
 USAGE.md        For residents, front-counter staff, and GIS staff maintaining the config.
 CODE.md         Full code walkthrough — every function explained.
@@ -133,7 +134,7 @@ snapshot and maintenance cycle do not become entangled with the general property
 
 The deployed app still has no runtime dependencies or build step. Developer-only packages run the
 test suite and are not shipped. The self-contained-page choice means the CSP needs `'unsafe-inline'`
-for inline `<style>` and `<script>`; that accepted tradeoff is documented in `_headers`.
+for inline `<style>` and `<script>`; that accepted tradeoff is documented in `public/_headers`.
 
 ---
 
@@ -144,9 +145,13 @@ No production build step and no runtime dependencies.
 ```bash
 git clone <this repo>
 cd parcel-lookup
-python3 -m http.server 8080     # or: npx serve .
+python3 -m http.server 8080 --directory public     # or: npx serve public
 # open http://localhost:8080
 ```
+
+Serve `public/`, not the repository root, so local browsing matches what the deployed site
+serves. Opening the file directly with `file://` will not work: the browser blocks the
+cross-origin requests to ArcGIS, and both pages say so rather than blaming the service.
 
 To run developer checks, install the dev-only dependencies and tests:
 
@@ -176,8 +181,10 @@ is a documented display precedence, not a FEMA risk score.
 
 ### Deploying
 
-Static hosting. Currently Netlify, auto-deploying from `main`. `_headers` and `netlify.toml` are
-picked up automatically.
+Static hosting. Currently Netlify, auto-deploying from `main`. `netlify.toml` is read from the
+repository root; `public/_headers` is read from the publish directory. Netlify publishes `public/`,
+so a new file is served only when it is added there — committing a document elsewhere in the
+repository does not put it on the public site.
 
 Deploy this as its **own** site. Do not place it inside the Experience Builder site's publish
 directory — an ExB Developer Edition publish replaces that whole directory and would silently
@@ -223,7 +230,7 @@ Most local queries go to Millcreek's ArcGIS Online feature services at
 `services9.arcgis.com/XRrSFvEwSsReIxuA`. Flood classifications are queried directly from FEMA's
 National Flood Hazard Layer and compared with the flood layer in the public Planning map. Surface
 fault rupture uses that map's special-study-area polygon. The CSP permits the Millcreek and FEMA
-origins; adding another host requires adding its origin to `_headers`.
+origins; adding another host requires adding its origin to `public/_headers`.
 
 | Data | Origin |
 |:--|:--|

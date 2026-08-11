@@ -14,12 +14,28 @@ assert.equal(businessResponse.ok,true,"business licensing page returned HTTP "+b
 assert.equal(await businessResponse.text(),businessHtml,
   "deployed business licensing HTML does not match business-licensing.html");
 
+// The publish directory is an allowlist, and this is the post-deploy proof of it.
+// The catch-all rewrite answers unmatched paths with the app at HTTP 200, so a status
+// code cannot distinguish "not served" from "served"; compare the body instead. If a
+// repository file is being published, its own content comes back rather than the app.
+const mustNotBePublished=["/CODE.md","/USAGE.md","/README.md","/DATA-SOURCES.md",
+  "/package.json","/playwright.config.mjs","/netlify.toml","/scripts/check-services.mjs",
+  "/tests/unit.test.mjs","/docs/decisions/0001-use-vite-with-build-time-configuration.md"];
+for(const path of mustNotBePublished){
+  const probe=await fetch(new URL(path,url),{signal:AbortSignal.timeout(20_000)});
+  assert.equal(await probe.text(),html,
+    path+" is served from the deployment: the publish directory is exposing repository files");
+}
+console.log("ok",mustNotBePublished.length,"repository paths are not published");
+
 const required={
   "content-security-policy":["default-src 'none'","connect-src https://services9.arcgis.com",
     "https://hazards.fema.gov"],
   "permissions-policy":["geolocation=()","camera=()","microphone=()"],
   "referrer-policy":["strict-origin-when-cross-origin"],
-  "strict-transport-security":["max-age="],
+  // Assert the directives, not just the presence of max-age: a silent downgrade to a
+  // shorter window or a dropped includeSubDomains would otherwise pass this gate.
+  "strict-transport-security":["max-age=31536000","includeSubDomains"],
   "x-content-type-options":["nosniff"],
   "cache-control":["max-age=0","must-revalidate"]
 };

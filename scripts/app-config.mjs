@@ -12,5 +12,5 @@ async function readConfiguredPage(file){
   return {html,CFG};
 }
 
-export const readApp=()=>readConfiguredPage("../index.html");
-export const readBusinessApp=()=>readConfiguredPage("../business-licensing.html");
+export const readApp=()=>readConfiguredPage("../public/index.html");
+export const readBusinessApp=()=>readConfiguredPage("../public/business-licensing.html");

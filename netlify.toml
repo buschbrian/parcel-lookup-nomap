@@ -10,7 +10,15 @@
 
 [build]
   # No build step. Both lookup pages are static, self-contained HTML by design.
-  publish = "."
+  #
+  # Publish `public/`, not the repository root. The root contains the code
+  # walkthrough, migration notes, the data-source review register, the service
+  # contract script with its known test parcels, and the test suite — all of which
+  # were served over HTTP when this was ".". What ships is an allowlist: add a file
+  # to `public/` to publish it, and nothing else becomes public by being committed.
+  # `_headers` lives inside `public/` because Netlify only honours it from the
+  # publish directory; moving it out silently drops every security header.
+  publish = "public"
   command = ""
 
 [[redirects]]

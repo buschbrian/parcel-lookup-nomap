@@ -393,7 +393,10 @@ const CFG = {
     portalUrl:"https://millcrk.maps.arcgis.com",
     appUrl:"https://maps.millcreekut.gov/"
   },
-  request: { timeoutMs:12000, retryDelayMs:700 },
+  // suggestDebounceMs is how long a typed edit waits before it is searched.
+  // It is configuration rather than a literal so cancellation races can be
+  // tested deterministically instead of depending on how fast the run is.
+  request: { timeoutMs:12000, retryDelayMs:700, suggestDebounceMs:250 },
 
   // Address suggestions come from the City's authoritative address points.
   //
@@ -458,7 +461,14 @@ const CFG = {
     sourceOwner: "Millcreek GIS; parcel records originate with Salt Lake County",
     reviewedOn: "2026-08-09",
     // Owner of record is public record (Salt Lake County Assessor).
-    showOwner: true
+    showOwner: true,
+    // Named here, not read by name in the rendering code, because
+    // `npm run check:services` verifies whatever CFG declares. A field the page
+    // reads but CFG does not name is a field no check can notice going away:
+    // the block would simply stop appearing in every result.
+    ownerField: "own_name",
+    careOfField: "care_of",
+    assessorLinkField: "slc_link"
   },
 
   // Single place to change public contact details.
@@ -718,7 +728,16 @@ function say(msg, tone){
   if(tone) status$.dataset.tone = tone; else delete status$.dataset.tone;
 }
 
-/* --- REST helper -------------------------------------------------
+/* ==== SHARED REQUEST LAYER — keep byte-identical across both lookup pages ====
+   A unit test compares this block verbatim between index.html and
+   business-licensing.html. Do not reformat it, and do not specialise it for one
+   page: divergent copies are what produced two different retry policies and two
+   different cancellation contracts. ADR-0001 extracts this into one module, and
+   identical copies extract mechanically while divergent ones do not.
+
+   Requires from CFG: org, request.timeoutMs, request.retryDelayMs, contact.phone.
+
+   --- REST helper -------------------------------------------------
    Errors are CLASSIFIED (err.kind) rather than collapsed into one
    message. "The browser blocked the request", "the server rejected the
    query" and "the network is down" need different words, and telling a
@@ -816,6 +835,8 @@ function explain(e, what){
       return "Something went wrong loading this."+call;
   }
 }
+/* ==== END SHARED REQUEST LAYER ==== */
+
 // Field aliases + coded-value domains, read from the service itself.
 async function schema(path,signal){
   if(schemaCache.has(path)) return schemaCache.get(path);
@@ -837,6 +858,14 @@ const decode = (fld,v) => {
   return typeof v==="string" ? v.trim() : v;
 };
 const esc = s => String(s).replace(/'/g,"''");
+/* A LIKE operand needs more than quote doubling: `%` and `_` are wildcards, so a
+   resident who types one gets a different search than the one they asked for —
+   "330_ E" quietly matches every house number from 3300 to 3309. Escape them and
+   pair every LIKE with ESCAPE '\'. Backslashes are doubled first, or the escape
+   characters this adds would themselves be escaped. Not used for equality operands:
+   there a backslash is a literal character, not an escape. */
+const likeOperand = s => String(s)
+  .replace(/\\/g,"\\\\").replace(/[%_]/g,"\\$&").replace(/'/g,"''");
 const regexEsc = s => String(s).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
 
 /* Conservative display precedence for multiple FEMA classifications touching
@@ -934,22 +963,42 @@ function parseAddress(raw){
   return {num, street:rest.join(" "), normalized};
 }
 
+/* What the live region says about a suggestion list.
+
+   ArcGIS caps every result at `resultRecordCount` and reports the cap in
+   `exceededTransferLimit`. Announcing "10 address matches" when the service
+   capped 49 of them tells the resident the list is complete when it is not, and
+   their own address may not be among the ten shown. That failure is silent, and
+   it strands exactly the person this page exists for. So say the list is
+   partial, and say what to add to narrow it. */
+function matchSummary(count, more){
+  const review = count===1 ? "Use the Down arrow to review it."
+                           : "Use arrow keys to review them.";
+  if(!more) return (count===1 ? "1 address match. " : count+" address matches. ")+review;
+  return (count===1 ? "Showing the first match." : "Showing the first "+count+" matches.")+
+    " More addresses match than are listed. "+review+
+    " Add the direction or street type to narrow the list, for example "+
+    "“3300 E Santa Rosa Ave”.";
+}
+
 /* Tiered search. Returns the first tier that finds anything, plus a note
-   explaining any broadening so it can be announced to the user. */
+   explaining any broadening so it can be announced to the user, and `more`
+   when the service reported it capped the result. */
 async function findAddresses(raw, limit, signal){
   const A=CFG.address, p=parseAddress(raw);
-  if(!p.normalized) return {items:[],note:null,parsed:p};
+  if(!p.normalized) return {items:[],note:null,parsed:p,more:false};
 
   const tiers=[];
-  tiers.push({ w:`UPPER(${A.searchField}) LIKE '${esc(p.normalized)}%'`, note:null });
+  tiers.push({ w:`UPPER(${A.searchField}) LIKE '${likeOperand(p.normalized)}%' ESCAPE '\\'`,
+               note:null });
   if(p.num && p.street)
-    tiers.push({ w:`${A.numField}='${esc(p.num)}' AND UPPER(${A.nameField}) LIKE '${esc(p.street)}%'`,
+    tiers.push({ w:`${A.numField}='${esc(p.num)}' AND UPPER(${A.nameField}) LIKE '${likeOperand(p.street)}%' ESCAPE '\\'`,
                  note:"Matched on house number and street name." });
   if(!p.num && p.street)
-    tiers.push({ w:`UPPER(${A.nameField}) LIKE '${esc(p.street)}%'`,
+    tiers.push({ w:`UPPER(${A.nameField}) LIKE '${likeOperand(p.street)}%' ESCAPE '\\'`,
                  note:"Showing addresses on that street." });
   if(p.street && p.street.length>2)
-    tiers.push({ w:`UPPER(${A.searchField}) LIKE '%${esc(p.street)}%'`,
+    tiers.push({ w:`UPPER(${A.searchField}) LIKE '%${likeOperand(p.street)}%' ESCAPE '\\'`,
                  note:"No exact match, so the search was broadened." });
 
   for(const t of tiers){
@@ -960,9 +1009,12 @@ async function findAddresses(raw, limit, signal){
       resultRecordCount:String(limit||A.max)
     },signal);
     const items=(j.features||[]).map(f=>f.attributes).filter(a=>a[A.parcelField]);
-    if(items.length) return {items, note:t.note, parsed:p};
+    // `more` comes from the service, not from items.length: the filter above drops
+    // address points with no parcel ID, so a capped result can arrive here shorter
+    // than the cap. Counting rows would call that list complete.
+    if(items.length) return {items, note:t.note, parsed:p, more:j.exceededTransferLimit===true};
   }
-  return {items:[], note:null, parsed:p};
+  return {items:[], note:null, parsed:p, more:false};
 }
 
 /* --- Suggestions (accessible combobox) --------------------------- */
@@ -973,7 +1025,7 @@ q$.addEventListener("input", ()=>{
   const term=q$.value.trim();
   const task=startTask("suggest");
   if(term.length<3){ activeKind=null; closeList(); say(""); return; }
-  timer=setTimeout(()=>{timer=null; suggest(term,task);},250);
+  timer=setTimeout(()=>{timer=null; suggest(term,task);},CFG.request.suggestDebounceMs);
 });
 
 async function suggest(term,task){
@@ -985,9 +1037,9 @@ async function suggest(term,task){
     finishTask(task);
     return;
   }
-  let found, note;
+  let found, note, more;
   try{
-    ({items:found, note} = await findAddresses(term,null,signal));
+    ({items:found, note, more} = await findAddresses(term,null,signal));
   }catch(e){
     if(mine!==seq || e.kind==="aborted") return;
     console.error("[lookup] address search failed:", e.kind, e.message, e.detail||"");
@@ -999,11 +1051,11 @@ async function suggest(term,task){
   // render() is OUTSIDE the try on purpose: a rendering bug must not be
   // reported to the user as a network failure.
   items = found;
-  render(note);
+  render(note, more);
   finishTask(task);
 }
 
-function render(note){
+function render(note, more){
   list$.textContent="";
   active=-1;
   q$.removeAttribute("aria-activedescendant");
@@ -1024,9 +1076,7 @@ function render(note){
   });
   list$.hidden=false;
   q$.setAttribute("aria-expanded","true");
-  const base = items.length===1
-    ? "1 address match. Use the Down arrow to review it."
-    : items.length+" address matches. Use arrow keys to review them.";
+  const base = matchSummary(items.length, more===true);
   // Tell the user when the search had to be loosened, rather than silently
   // returning something different from what they typed.
   say(note ? note+" "+base : base);
@@ -1112,7 +1162,7 @@ $("#lookup").addEventListener("submit", async e=>{
   say("Searching…");
   try{
     const A=CFG.address;
-    const {items:found, note} = await findAddresses(term,null,task.signal);
+    const {items:found, note, more} = await findAddresses(term,null,task.signal);
     if(task.mine!==seq) return;
     if(!found.length){
       say("No property matches “"+term+"”. Try just the house number and street name — "+
@@ -1122,8 +1172,10 @@ $("#lookup").addEventListener("submit", async e=>{
       return;
     }
     // Several candidates: let the user choose rather than guessing for them.
-    if(found.length>1){
-      items=found; render(note);
+    // `more` counts as several: if the service capped the result, a single
+    // surviving row is not "the" match, so it must not be loaded as if it were.
+    if(found.length>1 || more){
+      items=found; render(note, more);
       q$.focus();
       finishTask(task);
       return;
@@ -1358,8 +1410,8 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
     if(v==null||v==="") return;
     dl1.append(pair(lab,v));
   });
-  if(P.showOwner && String(rec.own_name||"").trim()){
-    dl1.append(ownerPair(rec.own_name, rec.care_of));
+  if(P.showOwner && String(rec[P.ownerField]||"").trim()){
+    dl1.append(ownerPair(rec[P.ownerField], rec[P.careOfField]));
   }
   c1.append(dl1);
   if(parcelSchemaFailed){
@@ -1368,10 +1420,11 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
       document.createTextNode("Parcel field descriptions were temporarily unavailable, so coded values may not be expanded.")]));
     c1.append(d);
   }
-  if(isUrl(rec.slc_link)){
+  const assessorLink=rec[P.assessorLinkField];
+  if(isUrl(assessorLink)){
     c1.append(el("p",{class:"meta"},[
       document.createTextNode("Assessor valuation record: "),
-      el("a",{href:rec.slc_link,rel:"noopener",text:"Salt Lake County Assessor"})
+      el("a",{href:assessorLink,rel:"noopener",text:"Salt Lake County Assessor"})
     ]));
   }
   body$.append(c1);
@@ -1493,10 +1546,14 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
       if(o.files && o.files.length){
         o.files.forEach(f=>{
           const dd=el("dd",{});
+          // Not every service reports a size; describing a plat as "NaN KB" is worse
+          // than not stating its size at all.
+          const size=Number(f.size);
+          const detail=Number.isFinite(size)&&size>0
+            ? " (PDF, "+Math.round(size/1024)+" KB)" : " (PDF)";
           dd.append(el("a",{href:f.url, rel:"noopener",
             text:(o.attachmentLabel||"Attachment")+" — "+
-                 String(o.attrs[Object.keys(o.fields||{})[0]]||f.name)+
-                 " (PDF, "+Math.round(f.size/1024)+" KB)"}));
+                 String(o.attrs[Object.keys(o.fields||{})[0]]||f.name)+detail}));
           dl.append(el("div",{class:"pair"},[
             el("dt",{text:o.attachmentLabel||"Attachment"}), dd]));
         });

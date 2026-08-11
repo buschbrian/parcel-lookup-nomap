@@ -16,6 +16,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # `npm test` runs the Python flood-rank tests, and Playwright's webServer is
+      # `python -m http.server`. Both need `python` on PATH by that name. Provision it
+      # rather than depending on whichever alias the runner image happens to ship.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm test

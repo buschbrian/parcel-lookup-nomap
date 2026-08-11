@@ -171,7 +171,7 @@ Route to GIS at **gis@millcreekut.gov**. The published commitment is **5 busines
 
 ## 3. For GIS staff maintaining the configuration
 
-Everything you need to edit is in the `CFG` object at the top of the `<script>` in `index.html`,
+Everything you need to edit is in the `CFG` object at the top of the `<script>` in `public/index.html`,
 above the line:
 
 ```js
@@ -381,7 +381,7 @@ npm test
       you on load if you do this.
 - [ ] Browser console is clean. Errors are logged as `[lookup] … <kind> <message>` — the kind tells
       you whether it was the network, the browser, rate limiting, or a rejected query.
-- [ ] A CSP error means a new host needs adding to `_headers`.
+- [ ] A CSP error means a new host needs adding to `public/_headers`.
 - [ ] Print preview still includes the disclaimer.
 - [ ] Copied text includes warnings, data notes, links and the public disclaimer.
 
@@ -391,7 +391,7 @@ commit, run `npm run check:deployment` to compare the live HTML and security hea
 ### Adding a layer from a different host
 
 The CSP currently allows Millcreek ArcGIS Online and FEMA hazards services. Add any new origin to
-`connect-src` in `_headers` or every query to it fails:
+`connect-src` in `public/_headers` or every query to it fails:
 
 ```
 Content-Security-Policy: … connect-src https://services9.arcgis.com https://hazards.fema.gov https://newhost.example.gov; …

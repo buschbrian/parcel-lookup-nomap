@@ -461,7 +461,14 @@ const CFG = {
     sourceOwner: "Millcreek GIS; parcel records originate with Salt Lake County",
     reviewedOn: "2026-08-09",
     // Owner of record is public record (Salt Lake County Assessor).
-    showOwner: true
+    showOwner: true,
+    // Named here, not read by name in the rendering code, because
+    // `npm run check:services` verifies whatever CFG declares. A field the page
+    // reads but CFG does not name is a field no check can notice going away:
+    // the block would simply stop appearing in every result.
+    ownerField: "own_name",
+    careOfField: "care_of",
+    assessorLinkField: "slc_link"
   },
 
   // Single place to change public contact details.
@@ -1394,8 +1401,8 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
     if(v==null||v==="") return;
     dl1.append(pair(lab,v));
   });
-  if(P.showOwner && String(rec.own_name||"").trim()){
-    dl1.append(ownerPair(rec.own_name, rec.care_of));
+  if(P.showOwner && String(rec[P.ownerField]||"").trim()){
+    dl1.append(ownerPair(rec[P.ownerField], rec[P.careOfField]));
   }
   c1.append(dl1);
   if(parcelSchemaFailed){
@@ -1404,10 +1411,11 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
       document.createTextNode("Parcel field descriptions were temporarily unavailable, so coded values may not be expanded.")]));
     c1.append(d);
   }
-  if(isUrl(rec.slc_link)){
+  const assessorLink=rec[P.assessorLinkField];
+  if(isUrl(assessorLink)){
     c1.append(el("p",{class:"meta"},[
       document.createTextNode("Assessor valuation record: "),
-      el("a",{href:rec.slc_link,rel:"noopener",text:"Salt Lake County Assessor"})
+      el("a",{href:assessorLink,rel:"noopener",text:"Salt Lake County Assessor"})
     ]));
   }
   body$.append(c1);

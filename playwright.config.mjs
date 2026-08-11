@@ -12,7 +12,9 @@ export default defineConfig({
     trace: "retain-on-failure"
   },
   webServer: {
-    command: "python -m http.server 4173 --bind 127.0.0.1",
+    // Serve only the publish directory, so a local run cannot reach a file the
+    // deployed site does not serve.
+    command: "python -m http.server 4173 --bind 127.0.0.1 --directory public",
     url: "http://127.0.0.1:4173/index.html",
     reuseExistingServer: true,
     timeout: 15_000

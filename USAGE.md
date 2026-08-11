@@ -171,7 +171,7 @@ Route to GIS at **gis@millcreekut.gov**. The published commitment is **5 busines
 
 ## 3. For GIS staff maintaining the configuration
 
-Everything you need to edit is in the `CFG` object at the top of the `<script>` in `index.html`,
+Everything you need to edit is in the `CFG` object at the top of the `<script>` in `public/index.html`,
 above the line:
 
 ```js

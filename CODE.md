@@ -61,7 +61,7 @@ Everything above the `No further edits needed below this line` marker is the mai
 | `referenceWebMap` | Public Planning web-map item used for source-parity checks |
 | `request` | Fetch timeout, one-retry delay and suggestion debounce delay |
 | `address` | Address service, field names, synonyms and safe local aliases |
-| `parcel` | Parcel service, identifier, centroid fields and owner visibility |
+| `parcel` | Parcel service, identifier, centroid fields, owner/care-of/Assessor-link field names and owner visibility |
 | `contact` | Phone, email and staffed response commitment |
 | `planning` | Planning & Zoning contact for binding determinations |
 | `LAYERS` | Local or absolute ArcGIS sources, spatial method and display rules |
@@ -74,6 +74,12 @@ Every displayed layer carries:
 - `cardinality`, normally `"one"`, so an unexpected overlap becomes a warning;
 - an explicit `fields` map for resident-facing output;
 - optional `boolean`, `note`, `geometryMode`, `kind`, distance, link or attachment settings.
+
+Every parcel field the page displays is named in `CFG`, including `ownerField`, `careOfField` and
+`assessorLinkField`. That is not decoration: `npm run check:services` verifies exactly what `CFG`
+declares, so a field read by name in the rendering code is a field no check can notice disappearing.
+When the County renames one, the result is not an error — the owner block or the valuation link
+simply stops appearing, in every result, silently. Name a field in `CFG` before displaying it.
 
 Layer indices are service-specific and are not assumed to be zero. `DATA-SOURCES.md` is the review
 register; a newer-looking ArcGIS item is not adopted without data-owner approval and comparison.

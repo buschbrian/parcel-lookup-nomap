@@ -17,7 +17,11 @@ async function json(url){
 const specs=[
   {key:"address",url:CFG.address.url,fields:[CFG.address.searchField,CFG.address.parcelField,
     CFG.address.numField,CFG.address.nameField,...CFG.address.extra]},
+  // Owner, care-of and the Assessor link are named in CFG rather than read by name in
+  // the page, so they are verified here too. Without them a County rename would drop
+  // the owner block and the valuation link from every result and pass every check.
   {key:"parcel",url:CFG.parcel.url,fields:[CFG.parcel.idField,CFG.parcel.latField,CFG.parcel.lonField,
+    CFG.parcel.ownerField,CFG.parcel.careOfField,CFG.parcel.assessorLinkField,
     ...CFG.PARCEL_FACTS.map(([field])=>field),...CFG.PARCEL_FLAGS.map(flag=>flag.field)]},
   ...CFG.LAYERS.map(layer=>({key:layer.key,url:layer.url,
     fields:[...Object.keys(layer.fields||{}),...(layer.nameField?[layer.nameField]:[]),

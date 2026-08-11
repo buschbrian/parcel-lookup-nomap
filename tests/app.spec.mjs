@@ -161,6 +161,42 @@ test("lookup preserves zeroes and copy includes links, notes, and disclaimer",as
   expect(copied).toContain("not a zoning verification letter");
 });
 
+/* The Assessor stores several owners in one field, separated by semicolons, with
+   tenancy codes like "(JT)". A screen reader reads that as one run-on string, so it
+   becomes a real list with the codes expanded. Nothing asserted this, which is also
+   what let the field itself go unverified. */
+test("multiple owners of record become a list with tenancy codes expanded",async({page})=>{
+  await loadKnownProperty(page);
+  const owners=page.locator(".pair",{hasText:"Owners of record"});
+  await expect(owners.locator("li")).toHaveCount(2);
+  await expect(owners.locator("li").first()).toHaveText("ALEX EXAMPLE — joint tenants");
+  await expect(owners.locator("li").last()).toHaveText("CASEY EXAMPLE — joint tenants");
+  await expect(page.getByRole("link",{name:"Salt Lake County Assessor"}))
+    .toHaveAttribute("href","https://example.test/assessor");
+});
+
+test("a single owner is labelled in the singular and care-of is shown",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{parcel:{own_name:"ALEX EXAMPLE (TR)",care_of:"EXAMPLE TRUST"}});
+  await page.reload();
+  await loadKnownProperty(page);
+  const owner=page.locator(".pair",{hasText:"Owner of record"});
+  await expect(owner).toContainText("ALEX EXAMPLE — trustee");
+  await expect(owner).toContainText("Care of: EXAMPLE TRUST");
+  await expect(owner.locator("li")).toHaveCount(0);
+});
+
+// A vanished owner field must not take the rest of the result down with it.
+test("a missing owner field leaves the remaining parcel record intact",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{parcel:{own_name:null,care_of:null,slc_link:null}});
+  await page.reload();
+  await loadKnownProperty(page);
+  await expect(page.locator("#results-body")).toContainText("3300 E SANTA ROSA AVE");
+  await expect(page.locator("#results-body")).not.toContainText("Owner of record");
+  await expect(page.getByRole("link",{name:"Salt Lake County Assessor"})).toHaveCount(0);
+});
+
 test("a missing FEMA classification is Unknown rather than No",async({page})=>{
   await page.unrouteAll({behavior:"wait"});
   await mockArcGIS(page,{femaFeatures:[]});

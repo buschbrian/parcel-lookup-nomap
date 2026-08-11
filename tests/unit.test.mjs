@@ -136,6 +136,37 @@ test("the licensing page is limited to published STR parcels and buffers",()=>{
   assert.doesNotMatch(licensingHtml,/801-214-2754/);
 });
 
+/* Every parcel field the page reads has to be named in CFG, because the live
+   service-contract check derives what it verifies from CFG. Owner of record, care-of
+   and the Assessor link were read straight out of the record by name, so they were
+   invisible to that check: a rename at the County would have removed the owner block
+   and the valuation link from every result with no failing test and no error — the
+   page would simply stop showing them. */
+test("parcel fields read by the page are declared in configuration",()=>{
+  const {CFG}=pureApp();
+  for(const key of ["idField","latField","lonField","ownerField","careOfField",
+    "assessorLinkField"]){
+    assert.equal(typeof CFG.parcel[key],"string","CFG.parcel."+key+" is declared");
+    assert.ok(CFG.parcel[key].length,"CFG.parcel."+key+" is not empty");
+  }
+});
+
+test("the page reads parcel fields through configuration, not by hardcoded name",()=>{
+  const {CFG}=pureApp();
+  const configured=[CFG.parcel.ownerField,CFG.parcel.careOfField,CFG.parcel.assessorLinkField];
+  const belowConfig=script.slice(script.indexOf("No further edits"));
+  for(const field of configured)
+    assert.doesNotMatch(belowConfig,new RegExp("rec\\."+field+"\\b"),
+      field+" is read by name below the configuration block, so the contract check cannot see it");
+});
+
+test("the live service contract derives parcel fields from configuration",async()=>{
+  const source=await readFile(new URL("../scripts/check-services.mjs",import.meta.url),"utf8");
+  for(const key of ["ownerField","careOfField","assessorLinkField"])
+    assert.match(source,new RegExp("CFG\\.parcel\\."+key),
+      "check-services.mjs verifies CFG.parcel."+key);
+});
+
 test("zoning follows the public map and does not display density",()=>{
   const {CFG}=pureApp();
   const zone=CFG.LAYERS.find(layer=>layer.key==="zone");

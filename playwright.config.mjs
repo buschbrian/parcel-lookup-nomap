@@ -16,7 +16,9 @@ export default defineConfig({
     // deployed site does not serve.
     command: "python -m http.server 4173 --bind 127.0.0.1 --directory public",
     url: "http://127.0.0.1:4173/index.html",
-    reuseExistingServer: true,
+    // Locally, reuse a server that is already running. In CI, never: an unexpected
+    // listener on this port would silently become the thing under test.
+    reuseExistingServer: !process.env.CI,
     timeout: 15_000
   }
 });

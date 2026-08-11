@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 
-const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 assert.ok(script, "index.html contains an inline script");
-const licensingHtml = await readFile(new URL("../business-licensing.html", import.meta.url), "utf8");
+const licensingHtml = await readFile(new URL("../public/business-licensing.html", import.meta.url), "utf8");
 const licensingScript = licensingHtml.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 assert.ok(licensingScript, "business-licensing.html contains an inline script");
 
@@ -162,8 +162,35 @@ test("every displayed layer carries source-governance metadata",()=>{
   }
 });
 
+/* What is deployed is an allowlist, not the repository. Publishing the repository
+   root served every engineering file over HTTP — walkthroughs, migration notes,
+   review registers, the service-contract script and its known test parcels — none of
+   which a resident needs and none of which was reviewed as public writing. Naming
+   what ships is durable; denying paths one at a time is not, because the next file
+   added to the repository is public by default. */
+test("only the public site is published",async()=>{
+  const toml=await readFile(new URL("../netlify.toml",import.meta.url),"utf8");
+  const publishDir=toml.match(/^\s*publish\s*=\s*"([^"]+)"/m)?.[1];
+  assert.ok(publishDir,"netlify.toml declares a publish directory");
+  assert.notEqual(publishDir,".","the repository root must not be the publish directory");
+
+  const entries=await readdir(new URL("../"+publishDir+"/",import.meta.url),{recursive:true});
+  const served=entries.map(entry=>entry.split(/[\\/]/).join("/"));
+
+  // `_headers` is only honoured from inside the publish directory: if it is left
+  // behind, every security header silently disappears from the deployed site.
+  for(const required of ["index.html","business-licensing.html","_headers",
+    "assets/millcreek-logo.png"])
+    assert.ok(served.includes(required),publishDir+"/ is missing "+required);
+
+  const engineering=/^(docs|scripts|tests|node_modules|\.github)\//;
+  const repoFile=/^(package(-lock)?\.json|playwright\.config\.mjs|netlify\.toml|LICENSE|CODE\.md|USAGE\.md|README\.md|DATA-SOURCES\.md|WEB-MAP-REVIEW\.md|CHANGES-.+\.md)$/;
+  const leaked=served.filter(name=>engineering.test(name)||repoFile.test(name));
+  assert.deepEqual(leaked,[],publishDir+"/ would serve engineering files: "+leaked.join(", "));
+});
+
 test("security policy permits authoritative sources and Planning uses its own contact",async()=>{
-  const headers=await readFile(new URL("../_headers",import.meta.url),"utf8");
+  const headers=await readFile(new URL("../public/_headers",import.meta.url),"utf8");
   assert.match(headers,/connect-src[^\n]+https:\/\/hazards\.fema\.gov/);
   assert.match(html,/Planning &amp; Zoning[\s\S]{0,200}801-214-2700/);
   assert.doesNotMatch(html,/Planning and Development Services[\s\S]{0,100}801-214-2754/);

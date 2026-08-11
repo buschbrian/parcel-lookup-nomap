@@ -109,11 +109,12 @@ to a broken page.
 ## Repository layout
 
 ```
-index.html      The general property lookup, self-contained by design.
-business-licensing.html The focused short-term-rental and 400-foot buffer lookup.
-assets/         Municipal brand assets stored locally for reliable rendering.
-_headers        Netlify security headers, including the CSP.
-netlify.toml    Netlify build/redirect configuration.
+public/         Everything the deployed site serves — and nothing else.
+  index.html      The general property lookup, self-contained by design.
+  business-licensing.html The focused short-term-rental and 400-foot buffer lookup.
+  assets/         Municipal brand assets stored locally for reliable rendering.
+  _headers        Netlify security headers, including the CSP.
+netlify.toml    Netlify build/redirect configuration; publishes `public/`.
 README.md       This file.
 USAGE.md        For residents, front-counter staff, and GIS staff maintaining the config.
 CODE.md         Full code walkthrough — every function explained.
@@ -176,8 +177,10 @@ is a documented display precedence, not a FEMA risk score.
 
 ### Deploying
 
-Static hosting. Currently Netlify, auto-deploying from `main`. `_headers` and `netlify.toml` are
-picked up automatically.
+Static hosting. Currently Netlify, auto-deploying from `main`. `netlify.toml` is read from the
+repository root; `public/_headers` is read from the publish directory. Netlify publishes `public/`,
+so a new file is served only when it is added there — committing a document elsewhere in the
+repository does not put it on the public site.
 
 Deploy this as its **own** site. Do not place it inside the Experience Builder site's publish
 directory — an ExB Developer Edition publish replaces that whole directory and would silently

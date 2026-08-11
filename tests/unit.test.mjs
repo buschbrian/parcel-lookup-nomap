@@ -28,6 +28,34 @@ function businessConfig(){
   return vm.runInNewContext(licensingScript.slice(start,end)+"\n;CFG;");
 }
 
+/* Two pages, one request layer, held byte-identical on purpose.
+
+   ADR-0001 replaces both inline scripts with shared modules. Divergent copies would
+   force a merge decision per difference during that migration, with no tests on the
+   differences; identical copies extract mechanically and the diff proves parity.
+   This is the guard that keeps them from drifting apart again in the meantime. */
+function sharedRegion(src,name){
+  const start=src.indexOf("/* ==== SHARED "+name);
+  const end=src.indexOf("/* ==== END SHARED "+name);
+  assert.ok(start>=0,name+" region has no opening marker");
+  assert.ok(end>start,name+" region has no closing marker after its opening marker");
+  return src.slice(start,end);
+}
+
+test("both pages carry one byte-identical request layer",()=>{
+  assert.equal(sharedRegion(licensingScript,"REQUEST LAYER"),sharedRegion(script,"REQUEST LAYER"));
+});
+
+test("the shared request layer classifies errors and retries only transient ones",()=>{
+  const region=sharedRegion(script,"REQUEST LAYER");
+  assert.match(region,/function svcError/);
+  assert.match(region,/\["network","busy","server","timeout"\]\.includes/);
+  assert.match(region,/function explain/);
+  // Both pages need a contact number for explain() to offer the staffed route.
+  assert.match(pureApp().CFG.contact.phone,/^\d{3}-\d{3}-\d{4}$/);
+  assert.match(businessConfig().contact.phone,/^\d{3}-\d{3}-\d{4}$/);
+});
+
 test("the inline production JavaScript parses",()=>{
   assert.doesNotThrow(()=>new Function(script));
   assert.doesNotThrow(()=>new Function(licensingScript));

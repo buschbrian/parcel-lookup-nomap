@@ -721,7 +721,16 @@ function say(msg, tone){
   if(tone) status$.dataset.tone = tone; else delete status$.dataset.tone;
 }
 
-/* --- REST helper -------------------------------------------------
+/* ==== SHARED REQUEST LAYER — keep byte-identical across both lookup pages ====
+   A unit test compares this block verbatim between index.html and
+   business-licensing.html. Do not reformat it, and do not specialise it for one
+   page: divergent copies are what produced two different retry policies and two
+   different cancellation contracts. ADR-0001 extracts this into one module, and
+   identical copies extract mechanically while divergent ones do not.
+
+   Requires from CFG: org, request.timeoutMs, request.retryDelayMs, contact.phone.
+
+   --- REST helper -------------------------------------------------
    Errors are CLASSIFIED (err.kind) rather than collapsed into one
    message. "The browser blocked the request", "the server rejected the
    query" and "the network is down" need different words, and telling a
@@ -819,6 +828,8 @@ function explain(e, what){
       return "Something went wrong loading this."+call;
   }
 }
+/* ==== END SHARED REQUEST LAYER ==== */
+
 // Field aliases + coded-value domains, read from the service itself.
 async function schema(path,signal){
   if(schemaCache.has(path)) return schemaCache.get(path);

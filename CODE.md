@@ -92,6 +92,21 @@ specialized: no returned classification renders Unknown rather than No.
 
 ## 4. DOM and request helpers
 
+Both pages carry the request layer — `svcError`, `RUNNING_FROM_FILE`, `fetchJson`, `withRetry`,
+`layerUrl`, `rawQuery`, `query` and `explain` — between `==== SHARED REQUEST LAYER ====` markers, and
+a unit test compares the two copies **byte for byte**. Do not reformat that block or specialise it
+for one page. It reads `org`, `request.timeoutMs`, `request.retryDelayMs` and `contact.phone` from
+whichever `CFG` it is embedded in, so the licensing page offers Business Licensing's number and the
+general page offers GIS's.
+
+Holding two copies identical looks like the opposite of removing duplication, and it is deliberate.
+Divergence is what produced the defects: one page retried rejected queries and permanent HTTP errors,
+one sent superseded requests to the network, and the two reported failures in different vocabularies.
+ADR-0001 replaces both inline scripts with shared modules, and identical copies extract mechanically
+while divergent ones force an undocumented merge decision per difference. Converging them is a step
+toward that extraction, not a substitute for it. `el()`, `flagPair` and the address parser are the
+next candidates.
+
 `el(tag, attributes, children)` is the only general element builder. Attribute values and text are
 assigned without `innerHTML`.
 

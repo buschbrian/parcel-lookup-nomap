@@ -123,7 +123,14 @@ test("informational hazards stay separate from regulatory hazard results",()=>{
   const info=CFG.LAYERS.filter(layer=>layer.group==="Informational hazard screening");
   assert.deepEqual([...info.map(layer=>layer.key)],["liquefaction","debris_flow","alluvial_fan"]);
   assert.ok(info.every(layer=>layer.geometryMode==="parcel"));
-  assert.match(CFG.GROUP_NOTES["Informational hazard screening"],/do not drive a Millcreek ordinance/i);
+  // Pinned deliberately short, and it needs to stay that way. This note is disclaimer
+  // prose under active legal review — it was reworded twice on 13 August alone, and a
+  // longer pin broke on each pass. What the test is actually for is that the group
+  // carries a non-regulatory framing at all, so assert that and let the sentence
+  // around it change. Do not re-pin a full clause without a reason.
+  const infoNote=CFG.GROUP_NOTES["Informational hazard screening"];
+  assert.match(infoNote,/for information only/i);
+  assert.match(infoNote,/site investigation/i);
 });
 
 test("the licensing page is limited to published STR parcels and buffers",()=>{

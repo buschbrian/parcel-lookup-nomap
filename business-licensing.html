@@ -44,7 +44,19 @@ button{white-space:normal;min-width:0;max-width:100%}
    without this those targets get no indicator at all. */
 #main:focus,#r-head:focus{outline:3px solid var(--focus);outline-offset:4px;border-radius:3px}
 header{border-bottom:2px solid var(--line-soft);background:var(--surface)}header .wrap{padding-block:1.25rem}
-.brand-lockup{display:flex;align-items:center;gap:1rem}.brand-logo{display:block;flex:0 0 auto;width:5.5rem;height:auto;padding:.25rem;background:#fff;border:1px solid var(--line-soft);border-radius:var(--radius)}.brand-copy{min-width:0}
+/* 1.4.4 Resize Text. The px `max-width` is load-bearing, not cosmetic: the logo
+   is sized in rem, so at 400% text it reached 288px inside a 320px viewport —
+   past the boundary before a single character of text — and `flex:0 0 auto`
+   forbids shrinking. The logo carries no information, so it must not scale with
+   text. The rem width stays so it still tracks text at ordinary sizes, where it
+   is below the cap.
+
+   Measured at 320px / 400%, doc overflow: no rules 183px, caps alone 0px. So the
+   caps are what satisfies the criterion. `flex-wrap` is kept for layout quality
+   rather than conformance — without it the copy is squeezed into a narrow column
+   beside the logo instead of reflowing below it. Do not delete the caps on the
+   theory that wrapping covers it; it does not. */
+.brand-lockup{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}.brand-logo{display:block;flex:0 0 auto;width:5.5rem;max-width:88px;height:auto;padding:.25rem;background:#fff;border:1px solid var(--line-soft);border-radius:var(--radius)}.brand-copy{min-width:0}
 .eyebrow{margin:0 0 .15rem;font-size:.8125rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--soft)}
 h1{margin:0;font-size:1.75rem;line-height:1.25}h2{margin:2.1rem 0 .5rem;font-size:1.3rem;line-height:1.3}h3{margin:1.4rem 0 .4rem;font-size:1.0625rem}
 p{margin:.5rem 0}.lede{color:var(--soft);max-width:46rem}a{color:var(--accent);text-underline-offset:.15em}a:hover{color:var(--accent-dk)}
@@ -69,7 +81,8 @@ dl{margin:0}.pair{display:grid;grid-template-columns:minmax(11rem,17rem) 1fr;gap
 dt{font-weight:600}dd{margin:0}.flag{display:inline-flex;align-items:baseline;gap:.4rem;font-weight:700}.flag[data-v=yes]{color:var(--yes)}.flag[data-v=no]{color:var(--no);font-weight:600}.flag[data-v=unknown]{color:var(--warn)}.flag .g{font-size:1.05em;line-height:1}
 footer{margin-top:3rem;border-top:2px solid var(--line-soft);background:var(--surface)}footer .wrap{padding-block:1.5rem;font-size:.9375rem;color:var(--soft)}footer h2{font-size:1.0625rem;margin:1.4rem 0 .35rem;color:var(--ink)}footer h2:first-child{margin-top:0}footer strong{color:var(--ink)}
 @media (max-width:34rem){.pair{grid-template-columns:1fr;gap:0}}
-@media (max-width:26rem){.brand-lockup{gap:.75rem}.brand-logo{width:4.5rem}}
+/* px cap alongside the rem width, for the reason given at .brand-logo. */
+@media (max-width:26rem){.brand-lockup{gap:.75rem}.brand-logo{width:4.5rem;max-width:72px}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media print{form,.skip,.nav,#actions,.status{display:none}header,footer{background:#fff;border-color:#000}.card{border-color:#000;break-inside:avoid}body{color:#000;background:#fff;font-size:11pt}a{color:#000}.callout,.notice,.note{border-color:#000;color:#000;background:#fff}}
 </style>

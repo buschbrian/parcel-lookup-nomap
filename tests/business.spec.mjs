@@ -357,3 +357,20 @@ test("licensing status region announces atomically",async({page})=>{
   await expect(page.locator("#status")).toHaveAttribute("aria-live","polite");
   await expect(page.locator("#status")).toHaveAttribute("role","status");
 });
+
+// The header logo is sized in rem, so at 400% text it grew to 288px — past a
+// 320px viewport before any text — and flex:0 0 auto forbids shrinking. It
+// carries no information, so the px cap is correct rather than a workaround, and
+// is easy to mistake for cosmetic and delete. The caps are what satisfy 1.4.4
+// here; the flex-wrap assertion guards layout quality, not conformance.
+test("the licensing brand logo does not scale with text past the viewport",
+  async({page})=>{
+    await page.setViewportSize({width:320,height:900});
+    await page.evaluate(()=>{document.documentElement.style.fontSize="64px"});
+    const header=await page.evaluate(()=>({
+      wrap:getComputedStyle(document.querySelector(".brand-lockup")).flexWrap,
+      logo:document.querySelector(".brand-logo").getBoundingClientRect().width
+    }));
+    expect(header.wrap).toBe("wrap");
+    expect(header.logo).toBeLessThanOrEqual(88);
+  });

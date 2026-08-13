@@ -357,54 +357,39 @@ details > *:not(summary){font-size:.9063rem}
       Resource Center (UGRC) and Salt Lake County.
     </p>
     <p id="public-disclaimer">
-      This tool reports the data of record. It is <strong>not</strong> a zoning
-      verification letter, a flood determination for lending or insurance
-      purposes, or a determination that a property can be developed. For a
-      binding determination, contact <a href="https://millcreekut.gov/151/Planning-Zoning"
+      This lookup is for general information and initial screening only.
+      Results may be incomplete, out of date, or incorrect. They are
+      <strong>not</strong> an official determination, permit decision, survey,
+      title report, zoning verification, flood determination, or statement that
+      a property may be developed. Confirm the information with the responsible
+      agency or department before acting on it. For official zoning and
+      development information, contact <a href="https://millcreekut.gov/151/Planning-Zoning"
       rel="noopener">Planning &amp; Zoning</a> at
       <a href="tel:+18012142700">801-214-2700</a> or
       <a href="mailto:planner@millcreekut.gov">planner@millcreekut.gov</a>.
     </p>
 
     <details>
-      <summary>Full disclaimer of warranty and liability</summary>
+      <summary>General data limitations</summary>
       <p>
-        All data is made available on an &#8220;as is&#8221; basis. Although
-        Millcreek strives to ensure that such published data are accurate,
-        Millcreek makes no warranty, representation, or guaranty of any type as
-        to the content, accuracy, timeliness, completeness or fitness for any
-        particular purpose or use of any published data; nor shall any such
-        warranty be implied, including, without limitation, the implied
-        warranties of merchantability and fitness for a particular purpose.
-      </p>
-      <p>Millcreek assumes no liability for:</p>
-      <ul>
-        <li>any errors, omissions or inaccuracies in the data provided;</li>
-        <li>any decision made or action taken or not taken by anyone using or
-            relying upon such data;</li>
-        <li>any other act identified in any disclaimer of liability or
-            indemnification provision.</li>
-      </ul>
-      <p>
-        This data and any corresponding products, services, or materials do not
-        necessarily represent Millcreek&#8217;s official position or viewpoint,
-        expressed or implied. These content items are not intended for use in
-        establishing liability or calculating cost recovery statutes of
-        limitations. They cannot be relied upon to create any rights,
-        substantive or procedural, enforceable by any party in litigation.
-        Although these data have been processed successfully on secure computer
-        systems, no warranty expressed or implied can be made regarding the
-        accuracy or utility of the data on any other system or for general or
-        scientific purposes, nor shall the act of distribution constitute any
-        such warranty. Millcreek reserves the right to revise its own stewarded
-        datasets pursuant to further analysis and review without public notice.
-        Referenced data from non-Millcreek sources are neither inherently
-        verified nor independently tested by the City in all circumstances.
+        Data and results are provided as available for general information and
+        screening. Source data can contain errors, omissions, outdated records,
+        and approximate boundaries. Millcreek does not promise that the data or
+        results are accurate, complete, current, or suitable for a specific use.
       </p>
       <p>
-        Records shown may include information that is a public record under the
-        Utah Government Records Access and Management Act
-        (Utah Code Title 63G, Chapter 2).
+        Results do not replace official records, professional services, field
+        verification, surveys, site investigations, or decisions by the
+        responsible authority. This lookup does not create an approval, permit,
+        license, entitlement, or other official decision. Source data and
+        results may change without notice.
+      </p>
+      <p>
+        To the extent allowed by law, Millcreek is not responsible for decisions,
+        actions, losses, or damages based on use of or reliance on this lookup.
+        Contact the responsible agency or department to confirm information
+        before using it for legal, financial, insurance, design, construction,
+        permitting, licensing, or property-transaction purposes.
       </p>
     </details>
 
@@ -711,34 +696,22 @@ const CFG = {
   // LAYERS above.
   GROUP_NOTES: {
     "Services":
-      "Utility service area boundaries are compiled from state agency and provider "+
-      "sources, including the Utah Division of Drinking Water and the Utah Geospatial "+
-      "Resource Center. They are approximate. Boundaries are known to contain gaps, "+
-      "overlaps and other mapping errors, they are not always updated when a provider's "+
-      "service area changes, and they are derived here from a single point inside the "+
-      "parcel rather than the whole property. Treat this as a starting point, not proof "+
-      "of service. Your utility bill or meter is the authoritative record of who serves "+
-      "you. Confirm with the provider before relying on this for design, construction, "+
-      "a property transaction, or a connection application.",
+      "Service boundaries are approximate map data and may be incomplete or out of date. "+
+      "This result uses one point inside the parcel and may not represent the whole property. "+
+      "It does not confirm service availability. Contact the provider before relying on it.",
     "Natural hazards":
-      "Flood classifications are queried live from FEMA's National Flood Hazard Layer against "+
-      "the full parcel boundary and compared with the flood layer in Millcreek's public Planning "+
-      "map. Surface fault rupture uses the special-study-area polygon from that same public map. "+
-      "These screening results are not a site survey, site-specific geologic investigation, or "+
-      "flood determination for lending or insurance.",
+      "Hazard maps are for general screening and may not show site-specific conditions. "+
+      "Results do not replace a survey, professional site investigation, or official flood "+
+      "determination. Confirm requirements with the responsible agency or a qualified professional.",
     "Informational hazard screening":
-      "These public-map layers provide generalized geologic context only. They do not drive a "+
-      "Millcreek ordinance in this lookup, establish that a hazard is or is not present on a "+
-      "specific site, replace a site investigation, or determine whether development may proceed. "+
-      "Mapped boundaries and categories can change as source data are revised.",
+      "These generalized map layers are for information only. They do not confirm whether a "+
+      "hazard exists at a site or whether development is allowed. A site investigation may be needed.",
     "Historic designation":
-      "Designation type distinguishes a National Register listing from a Millcreek local "+
-      "ordinance designation. Use the Local ordinance field to determine which is shown, and "+
-      "confirm binding requirements with Planning & Zoning.",
+      "This map may include different types of historic designation. A mapped result does not "+
+      "by itself state which legal requirements apply. Confirm with Planning & Zoning.",
     "Hazard and special designations":
-      "The WUI and Sensitive Land results are queried against the full parcel boundary from the "+
-      "current published Millcreek regulatory layers. A boundary intersection means requirements "+
-      "may apply; confirm project-specific requirements with Planning & Zoning."
+      "Mapped boundaries are for screening. A parcel intersection means requirements may apply, "+
+      "but it is not a project decision. Confirm with Planning & Zoning."
   },
 
   // Field names never shown from generic layers.

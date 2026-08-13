@@ -161,7 +161,12 @@ test("lookup preserves zeroes and copy includes links, notes, and disclaimer",as
   expect(copied).toContain("About this data.");
   expect(copied).toContain("https://example.test/water");
   expect(copied).toContain("DISCLAIMER");
-  expect(copied).toContain("not a zoning verification letter");
+  // The point of this assertion is that the copied output carries the disclaimer, not
+  // that it carries one particular sentence. "not a zoning verification letter" was
+  // replaced on 13 August by a list — official determination, permit decision, survey,
+  // title report, zoning verification, flood determination — so pin the clause that
+  // governs the whole list.
+  expect(copied).toContain("an official determination");
 });
 
 /* The Assessor stores several owners in one field, separated by semicolons, with
@@ -246,7 +251,9 @@ test("informational hazards are full-parcel screens and highest liquefaction is 
   await expect(card).toContainText("Highest mapped liquefaction potential — CategoryHigh");
   await expect(card.locator(".pair",{hasText:"Intersects a mapped debris-flow screening area"})).toContainText("Yes");
   await expect(card.locator(".pair",{hasText:"Intersects mapped alluvial-fan deposits"})).toContainText("Yes");
-  await expect(card).toContainText("do not drive a Millcreek ordinance");
+  // Short on purpose — disclaimer prose is under legal review and was reworded twice
+  // on 13 August. See the matching note in tests/unit.test.mjs.
+  await expect(card).toContainText("for information only");
   await expect(card).toContainText("highest configured category is displayed");
 });
 

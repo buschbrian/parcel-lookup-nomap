@@ -105,7 +105,7 @@ footer{margin-top:3rem;border-top:2px solid var(--line-soft);background:var(--su
 <main id="main" class="wrap" tabindex="-1">
   <p class="lede">Use an address or parcel number to screen two published licensing-map questions: whether the parcel appears in Millcreek's June 2026 short-term-rental layer, and whether it touches the published 400-foot buffer around another listed property.</p>
   <div class="notice">
-    <p><strong>This is an initial screen, not a license decision.</strong> A clear result does not reserve a license or show compliance with primary-residence, district-cap, parking, inspection, tax, or other requirements. Business Licensing makes the official determination.</p>
+    <p><strong>This lookup is for initial screening only.</strong> It does not show whether a property is eligible for or holds a current license, reserve a license, or approve or deny an application. Business Licensing makes official decisions.</p>
   </div>
 
   <form id="lookup" novalidate><fieldset>
@@ -148,8 +148,8 @@ footer{margin-top:3rem;border-top:2px solid var(--line-soft);background:var(--su
 
 <footer><div class="wrap">
   <h2>Data source and interpretation</h2>
-  <p id="public-disclaimer">Results use the <strong>Short Term Rental Parcels - June 2026</strong> and <strong>Short Term Rental Buffer - June 2026</strong> layers published in Millcreek's public Planning web map. The lookup tests the full parcel polygon. A boundary touch counts as an intersection. When the selected parcel itself appears in the rental layer, its own buffer is excluded from the “another published rental” result.</p>
-  <p>The layers are a dated public-map snapshot and may lag a new license, renewal, expiration, revocation, parcel edit, or corrected record. The result is not proof that a property holds a current license and is not approval or denial of an application.</p>
+  <p id="public-disclaimer">Results use dated public map layers and may be incomplete or out of date. The lookup compares the selected parcel boundary with mapped short-term-rental parcels and buffers. A boundary touch counts as a map intersection, and the selected parcel's own buffer is not counted as another rental.</p>
+  <p>This is a map screen, not an official distance measurement, current-license record, approval, denial, or reservation of an available license. Confirm the result and all licensing requirements with Business Licensing before acting on it.</p>
   <h2>Accessibility</h2>
   <p>If this page prevents you from getting a licensing screen, call Business Licensing at <a href="tel:+18012142759">801-214-2759</a>. Staff can look up the property and provide the result in an accessible format.</p>
   <p id="build"></p>
@@ -420,12 +420,12 @@ function renderResult(record,parcelId,activeResult,bufferResult,label){
   list.append(flagPair("Appears in the June 2026 published STR parcel layer",activeState),flagPair("Within 400 feet of another published STR",nearbyState));screen.append(list);
   let meaning;
   if(activeState==="unknown"||nearbyState==="unknown")meaning="At least one source did not return a result. Business Licensing must verify both the listing and separation screen.";
-  else if(activeState==="yes"&&nearbyState==="yes")meaning="The selected parcel appears in the published STR layer and also intersects one or more buffers belonging to other published STR parcels. Existing-license treatment and any future application must be confirmed by Business Licensing.";
-  else if(activeState==="yes")meaning="The selected parcel appears in the published STR layer. That is a dated map record, not proof of current license status; confirm renewals or changes with Business Licensing.";
-  else if(nearbyState==="yes")meaning="The selected parcel intersects at least one 400-foot buffer from another published STR parcel. The separation requirement may affect a new application; Business Licensing makes the official measurement and decision.";
-  else meaning="No listed STR parcel or other published STR buffer intersected this parcel in the June 2026 snapshot. Other licensing requirements and newer records are not evaluated here.";
+  else if(activeState==="yes"&&nearbyState==="yes")meaning="The map shows the selected parcel in the published rental layer and in one or more mapped buffers for other published rentals. Business Licensing must confirm what this means for a current license or future application.";
+  else if(activeState==="yes")meaning="The map shows the selected parcel in the published rental layer. This dated map result is not proof of current license status. Confirm it with Business Licensing.";
+  else if(nearbyState==="yes")meaning="The map shows the selected parcel touching at least one buffer for another published rental. This may affect an application, but Business Licensing makes the official measurement and decision.";
+  else meaning="No match was found in the dated rental parcel or buffer layers. This does not mean the property is eligible for a license. Newer records and other licensing requirements are not evaluated here.";
   screen.append(paragraphBox("callout","What this means. ",meaning));
-  screen.append(paragraphBox("note","About this data. ","The full parcel boundary is compared with the two published June 2026 map layers. A parcel's own buffer is excluded from the second answer. This is not a current-license certificate, distance survey, approval, denial, or reservation of an available license."));body$.append(screen);
+  screen.append(paragraphBox("note","About this data. ","This is a map screen, not a current-license record, distance survey, approval, denial, or reservation of an available license. Confirm the result with Business Licensing."));body$.append(screen);
   results$.hidden=false;head$.focus();say(activeState==="unknown"||nearbyState==="unknown"?"Results ready with an unavailable data source. Verify with Business Licensing.":"Results ready. Two licensing-map checks completed.")
 }
 async function load(parcelId,label){

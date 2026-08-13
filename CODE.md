@@ -317,5 +317,21 @@ asserts is declared in `public/_headers`, so a failure points at something in th
 than at a hosting default. It asserts HSTS directives, not merely the presence of `max-age`, because
 a shortened window or a dropped `includeSubDomains` is a downgrade worth failing on.
 
+> **This check currently cannot pass, and the byte comparison has never gated anything.** Netlify's
+> Pretty URLs post-processing rewrites `href="/business-licensing.html"` to
+> `href='/business-licensing'` in the deployed HTML, so the live bytes match no commit in the
+> repository and `assert.equal(deployed, html)` fails first, before any header or allowlist assertion
+> runs. It was first run with network access on 13 August 2026 and failed immediately.
+>
+> Everything after that first assertion was verified by hand instead and passes — all six headers on
+> both pages, and 17 repository paths confirmed unpublished. Note that `/netlify.toml` returns
+> Netlify's own 404 page rather than the app, because Netlify reserves that path, so that probe needs
+> to accept a 404 whichever repair is chosen.
+>
+> Two repairs are on the table — normalise the expected HTML, or turn Pretty URLs off and keep the
+> assertion strict. `netlify.toml` already routes `/business-licensing` explicitly, so the second is
+> preferable. See CHANGES-2026-08-13.md §7. **Until it is fixed, treat the post-deploy gate as
+> manual.**
+
 Automated checks do not replace the manual keyboard, reflow, zoom, forced-colors, print and NVDA
 matrix documented in `USAGE.md`.

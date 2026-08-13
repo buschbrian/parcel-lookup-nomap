@@ -388,6 +388,11 @@ npm test
 Then run `npm run check:services` against the public ArcGIS schemas. After Netlify deploys the
 commit, run `npm run check:deployment` to compare the live HTML and security headers with the repo.
 
+> `check:deployment` currently fails on its HTML comparison for a hosting reason, not a deployment
+> fault — Netlify rewrites one link in the deployed page. It aborts before reaching the header checks,
+> which were verified by hand and pass. Check headers manually until it is repaired, and do not treat
+> it as a rollback signal. See CHANGES-2026-08-13.md §7.
+
 ### Adding a layer from a different host
 
 The CSP currently allows Millcreek ArcGIS Online and FEMA hazards services. Add any new origin to

@@ -310,7 +310,7 @@ test("address suggestions without parcel IDs are discarded",async({page})=>{
    (2.4.7), neither of which axe can detect.
    --------------------------------------------------------------------------- */
 
-for(const scale of [200]){
+for(const scale of [200,400]){
   test(`licensing page reflows at 320px with text scaled to ${scale}%`,async({page})=>{
     await page.setViewportSize({width:320,height:900});
     await loadByKeyboard(page);

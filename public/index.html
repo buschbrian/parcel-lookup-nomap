@@ -51,11 +51,25 @@ body{
    Real offenders in this data: 14-digit parcel numbers (16264570030000) and
    email addresses. Measured before this rule, at a 320px container:
    200% text -> 358px content; 400% text -> 675px content.
-   dt/dd/li/headings use `anywhere` rather than `break-word` deliberately —
-   only `anywhere` reduces the min-content contribution CSS Grid uses to size
-   the label column, so `break-word` alone would not stop the grid overflowing. */
+   dt/dd/li use `anywhere` rather than `break-word` deliberately — only
+   `anywhere` reduces the min-content contribution CSS Grid uses to size the
+   label column, so `break-word` alone would not stop the grid overflowing.
+   Headings are deliberately NOT in that list: `anywhere` would let an <h3>
+   break mid-word, and excluding them still passes 200% at exactly 320px.
+
+   The min-width/max-width rules below are what make 400% work. The culprit was
+   never the input — it was the <fieldset>, which carries an intrinsic
+   `min-width: min-content` that `width:100%` cannot override, so the fieldset
+   sat at 466px inside a 320px container and every child inherited that width.
+   <legend> and <button> size intrinsically for the same reason.
+   Measured at a 320px container: 400% text went 675px -> 530px (wrap alone)
+   -> 469px (+fieldset) -> 320px (+legend/button). */
 body{overflow-wrap:break-word}
-dt,dd,li,h1,h2,h3{overflow-wrap:anywhere}
+dt,dd,li{overflow-wrap:anywhere}
+fieldset{min-width:0}
+legend{max-width:100%}
+input[type=text]{min-width:0}
+button{white-space:normal;min-width:0;max-width:100%}
 
 /* --- Focus: visible, 3:1+, never removed (2.4.7 / 2.4.11) --- */
 :focus{outline:none}
@@ -409,9 +423,9 @@ const CFG = {
 
   // Static release metadata. Do not derive these dates from the visitor's clock.
   release: {
-    version: "2026.08.09",
-    publishedOn: "2026-08-09",
-    dataReviewedOn: "2026-08-09"
+    version: "2026.08.13",
+    publishedOn: "2026-08-13",
+    dataReviewedOn: "2026-08-13"
   },
 
   // Public interactive-map reference used for layer-parity checks.

@@ -49,6 +49,36 @@ while hiding the form and buttons.
 holds standing source limitations. Keeping those styles distinct prevents permanent caveats from
 making actual warnings easy to ignore.
 
+### Two CSS rules that look cosmetic and are not (added 13 August 2026)
+
+```css
+body{overflow-wrap:break-word}
+dt,dd,li,h1,h2,h3{overflow-wrap:anywhere}
+```
+
+Without these, enlarged text forced horizontal scrolling — at a 320 px container, 200% text produced
+358 px of content, failing 1.4.10 and 1.4.4. The offenders are data rather than prose: 14-digit
+parcel numbers and email addresses have no break opportunity.
+
+`anywhere` on the list children is load-bearing. Only `anywhere` reduces the **min-content
+contribution** that CSS Grid uses to size the label column; `break-word` alone leaves the track too
+wide and the overflow survives. Do not collapse one into the other.
+
+```css
+#main:focus,#r-head:focus{outline:3px solid var(--focus);outline-offset:4px}
+```
+
+Script moves focus to `#r-head` after every lookup and to `#main` via the skip link. `:focus` is
+cleared globally in favour of `:focus-visible`, but **`:focus-visible` does not match programmatic
+focus on a non-interactive `tabindex="-1"` element** — so without this rule those two targets get no
+indicator at all, and a sighted keyboard user has focus relocated with nothing on screen to show it.
+This deliberately uses `:focus`, because the focus is always programmatic.
+
+Both rules are covered by regression tests. Note that a computed-style assertion cannot verify the
+focus rule: `outlineStyle` reads `none` whenever the window lacks OS focus, and `outlineWidth` reads
+the UA default `medium` even when no rule exists. The tests therefore check behaviour and CSSOM
+declaration separately.
+
 ---
 
 ## 3. Configuration (`CFG`)

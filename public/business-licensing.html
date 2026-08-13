@@ -19,9 +19,20 @@
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:1rem/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
 .wrap{max-width:52rem;margin:0 auto;padding:1rem}
+/* 1.4.10 Reflow / 1.4.4 Resize Text — long unbreakable tokens (14-digit parcel
+   numbers, email addresses) otherwise force horizontal scrolling at 200%/400%
+   text. dt/dd/li/headings use `anywhere` because only `anywhere` reduces the
+   min-content contribution CSS Grid uses to size the label column. */
+body{overflow-wrap:break-word}
+dt,dd,li,h1,h2,h3{overflow-wrap:anywhere}
 :focus{outline:none}:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:3px}
 .skip{position:absolute;left:-9999px;top:0;z-index:99;background:var(--bg);color:var(--ink);padding:.75rem 1rem;border:2px solid var(--focus);font-weight:700}
 .skip:focus{left:.5rem;top:.5rem}
+/* 2.4.7 Focus Visible — focus is moved programmatically to #r-head after each
+   lookup and to #main via the skip link. :focus-visible does not match
+   programmatic focus on a tabindex="-1" element and :focus is cleared above, so
+   without this those targets get no indicator at all. */
+#main:focus,#r-head:focus{outline:3px solid var(--focus);outline-offset:4px;border-radius:3px}
 header{border-bottom:2px solid var(--line-soft);background:var(--surface)}header .wrap{padding-block:1.25rem}
 .brand-lockup{display:flex;align-items:center;gap:1rem}.brand-logo{display:block;flex:0 0 auto;width:5.5rem;height:auto;padding:.25rem;background:#fff;border:1px solid var(--line-soft);border-radius:var(--radius)}.brand-copy{min-width:0}
 .eyebrow{margin:0 0 .15rem;font-size:.8125rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--soft)}
@@ -87,7 +98,9 @@ footer{margin-top:3rem;border-top:2px solid var(--line-soft);background:var(--su
       <button type="button" class="secondary" id="clear">Clear</button>
     </div>
   </fieldset></form>
-  <div id="status" class="status" role="status" aria-live="polite"></div>
+  <!-- aria-atomic="true": the whole message is replaced each update, so the whole
+       message should be announced, not just the changed portion. -->
+  <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <section id="results" hidden aria-labelledby="r-head">
     <h2 id="r-head" tabindex="-1">Results</h2>

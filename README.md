@@ -246,13 +246,13 @@ origins; adding another host requires adding its origin to `public/_headers`.
 
 | Data | Origin |
 |:--|:--|
-| Parcels, ownership, valuation | Salt Lake County Recorder and Assessor |
+| Parcels, ownership, valuation | Salt Lake County |
 | Addresses | Utah Geospatial Resource Center (UGRC), Salt Lake County |
 | Zoning, overlays, future land use, subdivisions | Millcreek |
 | Flood hazard | FEMA |
-| Surface fault rupture special-study area | Salt Lake County data published by Millcreek |
+| Surface fault rupture special-study area | Utah Geological Survey (UGS) data published by Millcreek |
 | Liquefaction, debris flow and alluvial fans | Public-map geologic layers; only liquefaction explicitly credits UGS/UGRC |
-| Short-term-rental parcels and 400-foot buffers | Millcreek Business Licensing data published in the Planning web map |
+| Short-term-rental parcels and 400-foot buffers | Millcreek Business Licensing data published on ArcGIS Online matching the interactive map |
 | Utility service areas | Utah Division of Drinking Water, UGRC, providers |
 
 ### On data quality

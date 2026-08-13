@@ -13,8 +13,10 @@ export default defineConfig({
   },
   webServer: {
     // Serve only the publish directory, so a local run cannot reach a file the
-    // deployed site does not serve.
-    command: "python -m http.server 4173 --bind 127.0.0.1 --directory public",
+    // deployed site does not serve. Post ADR-0001 that directory is `dist/`,
+    // the built artifact — `npm run test:e2e` builds first, so the suite
+    // exercises exactly what deploys rather than unbuilt source.
+    command: "python -m http.server 4173 --bind 127.0.0.1 --directory dist",
     url: "http://127.0.0.1:4173/index.html",
     // Locally, reuse a server that is already running. In CI, never: an unexpected
     // listener on this port would silently become the thing under test.

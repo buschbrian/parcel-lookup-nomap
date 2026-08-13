@@ -6,4 +6,11 @@ playwright-report/
 test-results/
 
 # Vite build output (ADR-0001). The deployed artifact is built, never committed.
+# It was briefly tracked on main in 28f7543 and untracked again in ca2a5b2; if it
+# reappears in `git status`, something has committed a build.
 dist/
+
+# Attorney review material. Kept out of git deliberately: this repository is public
+# on GitHub, so committing it would publish it.
+counsel-review/Public-Facing-GIS-Disclaimer-Review.docx
+counsel-review/~$blic-Facing-GIS-Disclaimer-Review.docx

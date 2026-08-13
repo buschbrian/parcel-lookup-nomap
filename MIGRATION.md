@@ -32,10 +32,47 @@ compares against `dist/` or source — the migration cannot break the deployment
   reads through `readApp()` / `readBusinessApp()`, so it will not need changing again at the next
   structural step.
 
-**Still unverified on this branch:** `npm run test:e2e` (Playwright) and `npm run check:deployment`.
-Neither can run in the authoring environment — `npm install` was performed on Windows, so
-`node_modules` holds `rollup-win32-*` and `esbuild win32-x64` rather than the Linux binaries, and
-there is no network to fetch them. **Run `npm test` on Windows before merging.**
+### Verified on Windows, 13 August 2026 — and it found a bug
+
+**Both gaps below are now closed.** `npm install` resolved **vite 7.3.6**; `npm run build` succeeds;
+`dist/index.html` and `dist/business-licensing.html` are byte-identical to their sources by SHA-256;
+`dist/` contains only the two entries plus `_headers` and `assets/`; `dist/_headers` retains the full
+CSP; the inline `<script>` is still present, so nothing has been bundled out of it yet.
+
+| Gate | Result |
+|:--|:--|
+| `npm run build` | pass, pages byte-identical to source |
+| `npm run test:unit` | 23 pass |
+| `npm run test:python` | 4 pass |
+| `npm run test:e2e` | **62 pass** — was 58 pass / 2 fail before the fix below |
+| `npm run check:services` | 51/51 against live services |
+| `npm run check:deployment` | **red, and structurally cannot pass** — see below |
+
+The two e2e failures were **not** caused by this migration. They were the 400% reflow assertion
+re-enabled on `main` earlier the same day, which had never been run in a real browser: the header logo
+is sized in `rem` and reached 288 px inside a 320 px viewport. Fixed on `main` and merged forward; git
+followed the `public/` → root renames without conflict. See CHANGES-2026-08-13.md §7.
+
+That is the migration's first real dividend, incidentally — the branch is what caused the suite to be
+run at all.
+
+**`check:deployment` fails at `assert.equal(deployed, html)` for a pre-existing reason.** Netlify's
+Pretty URLs post-processing rewrites `href="/business-licensing.html"` to `href='/business-licensing'`
+in the deployed HTML, so the live bytes match no commit in the repository and byte-equality can never
+hold while that setting is on. The risk named below — "if `dist/` is missing it falls back to source
+and says so" — is real but is not what happened: the fallback line correctly printed `dist/`. The
+assertions it aborts before reaching were verified by hand and pass: every security header on both
+pages, and 17 repository paths confirmed unpublished.
+
+**This matters more after the migration than before it.** Once Netlify publishes `dist/`, this check is
+the only automated proof that the build produced what the repository intended and that the publish
+allowlist still holds. **Repair it before switching the publish directory** — §7 of the changelog sets
+out the two options and recommends turning Pretty URLs off, since `netlify.toml` already routes
+`/business-licensing` explicitly.
+
+**One more thing to know before step 2:** `dist/` was briefly committed on `main` in `28f7543` and
+untracked again in `ca2a5b2`. It is ignored on both branches now. If it ever shows up in `git status`,
+a build has been committed.
 
 ---
 
@@ -99,15 +136,27 @@ npm test               # 23 unit, 4 Python, ~58 browser/axe
 
 Then confirm by hand, because these are the things a green suite will not tell you:
 
-- [ ] `dist/_headers` exists and still contains the full CSP.
-- [ ] `dist/assets/millcreek-logo.png` exists and the logo renders in `npm run preview`.
-- [ ] `dist/` contains **no** `.md`, no `tests/`, no `scripts/`, no `package.json`.
-- [ ] Both pages perform a real lookup in `npm run preview`.
-- [ ] `dist/index.html` still contains the inline `<script>` — at step 1 nothing should be bundled
-      out of it yet.
+- [x] `dist/_headers` exists and still contains the full CSP. **Verified 13 August.**
+- [x] `dist/assets/millcreek-logo.png` exists and resolves from `dist/`. **Verified** — the file is
+      present and the browser suite, which serves `dist/`, fetched it at HTTP 200 on every page load.
+      Not visually confirmed in `npm run preview`.
+- [x] `dist/` contains no `tests/`, no `scripts/`, no `package.json`. **Verified** — contents are
+      exactly both entry pages, `_headers`, `assets/millcreek-logo.png` and `assets/README.md`. Note
+      that last one **is** a `.md`, so the check as originally written does not pass literally; it was
+      equally published before the migration, so it is not a regression, but `public/assets/README.md`
+      is worth removing or moving if the intent is a strictly Markdown-free artifact.
+- [ ] Both pages perform a real lookup in `npm run preview`. **Not done.** The browser suite exercises
+      `dist/` with mocked ArcGIS responses, which is not the same as one live lookup through the built
+      artifact. `check:services` passing 51/51 covers the services themselves, so the untested seam is
+      specifically built-page-to-live-service. **Do this before deploying.**
+- [x] `dist/index.html` still contains the inline `<script>` — at step 1 nothing should be bundled
+      out of it yet. **Verified**, and the built pages are byte-identical to source, which is the
+      stronger form of the same claim.
 
-Deploy only after all five pass. Then run `npm run check:deployment`, which will now compare against
-`dist/`.
+Deploy only after all five pass — **four do; the live-lookup-in-preview check is still open.** Then run
+`npm run check:deployment`, which will now compare against `dist/` — but see the verification note
+above: that check cannot currently pass, and repairing it should come before the publish directory
+changes.
 
 > **Rollback:** revert the commit and the two `git mv`s. Netlify returns to publishing `public/`.
 > Nothing about the application code has changed at this step, which is exactly why it goes first.
@@ -179,7 +228,13 @@ fix it before continuing rather than adjusting the test.
 - The publish directory is an **allowlist**. No repository file becomes public by being committed.
 - Every security header in `public/_headers` reaches the deployed site.
 - Both pages remain independently usable with the keyboard and a screen reader.
-- The three accessibility fixes from 13 August survive: `overflow-wrap`, the programmatic focus
-  outline, and `aria-atomic` on the status regions.
+- The **four** accessibility fixes from 13 August survive: `overflow-wrap`, the programmatic focus
+  outline, `aria-atomic` on the status regions, and the reflow sizing set — `fieldset`/`input`
+  `min-width:0`, wrapping button labels, and the `.brand-logo` px caps. The logo caps are the easiest
+  of these to mistake for cosmetic: without them, 400% text overflows a 320 px viewport by 32 px even
+  with `flex-wrap` in force. Two rules set that cap, at two breakpoints; sabotaging one proves nothing.
 - `CFG` stays editable by GIS staff without touching control flow — that is the point of step 5, and
   the reason it comes last rather than first.
+- Disclaimer wording is under legal review. Three test assertions deliberately pin **short** phrases
+  rather than full sentences for that reason — see the comments in `tests/unit.test.mjs` and
+  `tests/app.spec.mjs`. Do not tighten them into full-clause matches during an extraction step.

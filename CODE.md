@@ -318,10 +318,20 @@ than at a hosting default. It asserts HSTS directives, not merely the presence o
 a shortened window or a dropped `includeSubDomains` is a downgrade worth failing on.
 
 > **This check currently cannot pass, and the byte comparison has never gated anything.** Netlify's
-> Pretty URLs post-processing rewrites `href="/business-licensing.html"` to
-> `href='/business-licensing'` in the deployed HTML, so the live bytes match no commit in the
-> repository and `assert.equal(deployed, html)` fails first, before any header or allowlist assertion
-> runs. It was first run with network access on 13 August 2026 and failed immediately.
+> Pretty URLs post-processing rewrites links in the deployed HTML, so the live bytes match no commit in
+> the repository and `assert.equal(deployed, html)` fails first, before any header or allowlist
+> assertion runs. It was first run with network access on 13 August 2026 and failed immediately.
+>
+> **There are two rewrite forms, and both must be handled by any normalising repair:**
+>
+> | Page | Repository | Live |
+> |:--|:--|:--|
+> | `index.html` | `href="/business-licensing.html"` | `href='/business-licensing'` |
+> | `business-licensing.html` | `href="/index.html"` | `href='/'` |
+>
+> The second is not extension-stripping but `/index.html` collapsing to the directory root, so a repair
+> that only strips `.html` will make the property page pass while the licensing page keeps failing.
+> Apart from these, the live property page is byte-equal to its source — there is no other drift.
 >
 > Everything after that first assertion was verified by hand instead and passes — all six headers on
 > both pages, and 17 repository paths confirmed unpublished. Note that `/netlify.toml` returns
@@ -329,9 +339,9 @@ a shortened window or a dropped `includeSubDomains` is a downgrade worth failing
 > to accept a 404 whichever repair is chosen.
 >
 > Two repairs are on the table — normalise the expected HTML, or turn Pretty URLs off and keep the
-> assertion strict. `netlify.toml` already routes `/business-licensing` explicitly, so the second is
-> preferable. See CHANGES-2026-08-13.md §7. **Until it is fixed, treat the post-deploy gate as
-> manual.**
+> assertion strict. `netlify.toml` already routes `/business-licensing` explicitly, and turning it off
+> avoids encoding both rewrite forms into the test, so the second is preferable. See
+> CHANGES-2026-08-13.md §7. **Until it is fixed, treat the post-deploy gate as manual.**
 
 Automated checks do not replace the manual keyboard, reflow, zoom, forced-colors, print and NVDA
 matrix documented in `USAGE.md`.

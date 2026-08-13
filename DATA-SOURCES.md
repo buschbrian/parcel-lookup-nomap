@@ -33,8 +33,12 @@ coverage and results, update `CFG`, this register and tests together, and record
 | Culinary water | `Water_Services_2021/3` | Parcel-centroid intersection; expected one provider | Utah Division of Drinking Water and providers | Review gaps and overlaps at every update |
 | Electrical | `Electrical_Service/0` | Parcel-centroid intersection | Utility providers; Millcreek GIS service steward | Confirm provider boundary updates |
 
-All configured endpoints and fields passed the live schema contract check on 9 August 2026. Local
-source URLs used by this lookup are also checked against the public Planning web-map item.
+All configured endpoints and fields passed the live schema contract check on 9 August 2026, and again
+on **13 August 2026** (51/51 — see the review record below). Local source URLs used by this lookup are
+also checked against the public Planning web-map item.
+
+The register header above still reads 9 August because no source was replaced on 13 August: that run
+re-verified the existing sources rather than reviewing candidates for change.
 
 ## ArcGIS Online and Enterprise metadata expectations
 

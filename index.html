@@ -98,9 +98,22 @@ button{white-space:normal;min-width:0;max-width:100%}
 
 header[role=banner]{border-bottom:2px solid var(--line-soft); background:var(--surface)}
 header .wrap{padding-block:1.25rem}
-.brand-lockup{display:flex;align-items:center;gap:1rem}
+/* 1.4.4 Resize Text. The px `max-width` is load-bearing, not cosmetic: the logo
+   is sized in rem, so at 400% text it reached 288px inside a 320px viewport —
+   past the boundary before a single character of text — and `flex:0 0 auto`
+   forbids shrinking. The logo carries no information, so it must not scale with
+   text. The rem width stays so it still tracks text at ordinary sizes, where it
+   is below the cap.
+
+   Measured at 320px / 400%, doc overflow: no rules 149px, flex-wrap alone 32px,
+   caps alone 0px, both 0px. So the caps are what satisfies the criterion.
+   `flex-wrap` is kept for layout quality rather than conformance — without it
+   the copy is squeezed into a narrow column beside the logo instead of
+   reflowing below it. Do not delete the caps on the theory that wrapping
+   covers it; it does not. */
+.brand-lockup{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
 .brand-logo{
-  display:block;flex:0 0 auto;width:5.5rem;height:auto;padding:.25rem;
+  display:block;flex:0 0 auto;width:5.5rem;max-width:88px;height:auto;padding:.25rem;
   background:#fff;border:1px solid var(--line-soft);border-radius:var(--radius);
 }
 .brand-copy{min-width:0}
@@ -235,7 +248,8 @@ details > *:not(summary){font-size:.9063rem}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media (max-width:26rem){
   .brand-lockup{gap:.75rem}
-  .brand-logo{width:4.5rem}
+  /* Cap in px alongside the rem width, for the reason given at .brand-logo. */
+  .brand-logo{width:4.5rem;max-width:72px}
 }
 @media print{
   form,.skip,#actions,.status{display:none}

@@ -570,3 +570,24 @@ test("form containers can shrink below their intrinsic width",async({page})=>{
   expect(sizing.input).toBe("0px");
   expect(sizing.button).toBe("normal");
 });
+
+// Same trap as the fieldset, in the header. The logo is sized in rem, so at 400%
+// text it grew to 288px — past a 320px viewport before any text — and flex:0 0
+// auto forbids shrinking. It carries no information, so the px cap is correct
+// rather than a workaround. Asserted at 400% because at ordinary sizes the rem
+// width is below the cap and the bug is invisible.
+//
+// Verified discriminating: with the caps removed this reports 288px and the 400%
+// reflow test reports 32px of overflow. The flex-wrap assertion is the weaker of
+// the two — reflow passes without it — and is here to stop a layout regression,
+// not to carry the criterion. The caps carry it.
+test("the brand logo does not scale with text past the viewport",async({page})=>{
+  await page.setViewportSize({width:320,height:900});
+  await page.evaluate(()=>{document.documentElement.style.fontSize="64px"});
+  const header=await page.evaluate(()=>({
+    wrap:getComputedStyle(document.querySelector(".brand-lockup")).flexWrap,
+    logo:document.querySelector(".brand-logo").getBoundingClientRect().width
+  }));
+  expect(header.wrap).toBe("wrap");
+  expect(header.logo).toBeLessThanOrEqual(88);
+});

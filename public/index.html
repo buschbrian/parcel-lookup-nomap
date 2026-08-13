@@ -46,6 +46,17 @@ body{
 /* Reflow: content works to 320px with no 2-D scrolling */
 .wrap{max-width:52rem;margin:0 auto;padding:1rem}
 
+/* 1.4.10 Reflow / 1.4.4 Resize Text.
+   Long unbreakable tokens force horizontal scrolling once text is enlarged.
+   Real offenders in this data: 14-digit parcel numbers (16264570030000) and
+   email addresses. Measured before this rule, at a 320px container:
+   200% text -> 358px content; 400% text -> 675px content.
+   dt/dd/li/headings use `anywhere` rather than `break-word` deliberately —
+   only `anywhere` reduces the min-content contribution CSS Grid uses to size
+   the label column, so `break-word` alone would not stop the grid overflowing. */
+body{overflow-wrap:break-word}
+dt,dd,li,h1,h2,h3{overflow-wrap:anywhere}
+
 /* --- Focus: visible, 3:1+, never removed (2.4.7 / 2.4.11) --- */
 :focus{outline:none}
 :focus-visible{
@@ -57,6 +68,19 @@ body{
   border:2px solid var(--focus); font-weight:600;
 }
 .skip:focus{left:.5rem; top:.5rem}
+
+/* Programmatic focus targets — 2.4.7 Focus Visible.
+   Script moves focus to #r-head after every lookup and to #main via the skip
+   link. Chrome does not match :focus-visible for programmatic focus on a
+   non-interactive tabindex="-1" element, and :focus is cleared globally above,
+   so without this rule these two targets receive NO indicator at all: focus is
+   relocated with nothing on screen to show where it went.
+   These use :focus, not :focus-visible, because the focus is always programmatic. */
+#main:focus,#r-head:focus{
+  outline:3px solid var(--focus);
+  outline-offset:4px;
+  border-radius:3px;
+}
 
 header[role=banner]{border-bottom:2px solid var(--line-soft); background:var(--surface)}
 header .wrap{padding-block:1.25rem}
@@ -266,7 +290,10 @@ details > *:not(summary){font-size:.9063rem}
   </form>
 
   <!-- Polite live region: announces counts, progress and errors (4.1.3) -->
-  <div id="status" class="status" role="status" aria-live="polite"></div>
+  <!-- aria-atomic="true": the whole message is replaced on every update, so the
+       whole message should be announced. Without it assistive technology may
+       announce only the changed portion of the text node. -->
+  <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <section id="results" hidden aria-labelledby="r-head">
     <h2 id="r-head" tabindex="-1">Results</h2>

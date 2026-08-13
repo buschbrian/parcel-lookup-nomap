@@ -302,3 +302,58 @@ test("address suggestions without parcel IDs are discarded",async({page})=>{
   await expect(page.locator("#sugg")).toBeHidden();
   await expect(page.locator("#status")).toContainText("No addresses match");
 });
+
+/* ---------------------------------------------------------------------------
+   Reflow-under-zoom and focus-visibility regressions, matching app.spec.mjs.
+   The existing 320px assertion above covers 1.4.10 at default text size; these
+   add the enlarged-text case (1.4.4) and the programmatic focus indicator
+   (2.4.7), neither of which axe can detect.
+   --------------------------------------------------------------------------- */
+
+for(const scale of [200]){
+  test(`licensing page reflows at 320px with text scaled to ${scale}%`,async({page})=>{
+    await page.setViewportSize({width:320,height:900});
+    await loadByKeyboard(page);
+    await page.evaluate(pct=>{
+      document.documentElement.style.fontSize=(16*pct/100)+"px";
+    },scale);
+    await page.waitForTimeout(150);
+    const doc=await page.evaluate(()=>
+      document.documentElement.scrollWidth-document.documentElement.clientWidth);
+    expect(doc).toBeLessThanOrEqual(1);
+  });
+}
+
+test("licensing page allows long unbreakable tokens to break",async({page})=>{
+  await loadByKeyboard(page);
+  const wrap=await page.evaluate(()=>({
+    body:getComputedStyle(document.body).overflowWrap,
+    dd:getComputedStyle(document.querySelector("#results-body dd")).overflowWrap
+  }));
+  expect(wrap.body).toBe("break-word");
+  expect(wrap.dd).toBe("anywhere");
+});
+
+test("licensing programmatic focus targets declare a visible focus outline",async({page})=>{
+  await loadByKeyboard(page);
+  expect(await page.evaluate(()=>document.activeElement.id)).toBe("r-head");
+  const declared=await page.evaluate(()=>
+    [...document.styleSheets]
+      .flatMap(sheet=>{try{return [...sheet.cssRules]}catch{return []}})
+      .filter(rule=>rule.selectorText&&/#(main|r-head):focus\b/.test(rule.selectorText))
+      .map(rule=>({selector:rule.selectorText,
+        outline:rule.style.outline||rule.style.outlineWidth||""})));
+  const targets=declared.map(rule=>rule.selector).join(" ");
+  expect(targets).toContain("#r-head:focus");
+  expect(targets).toContain("#main:focus");
+  for(const rule of declared){
+    expect(rule.outline).not.toBe("");
+    expect(rule.outline).not.toMatch(/\bnone\b/);
+  }
+});
+
+test("licensing status region announces atomically",async({page})=>{
+  await expect(page.locator("#status")).toHaveAttribute("aria-atomic","true");
+  await expect(page.locator("#status")).toHaveAttribute("aria-live","polite");
+  await expect(page.locator("#status")).toHaveAttribute("role","status");
+});

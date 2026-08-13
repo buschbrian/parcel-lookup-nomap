@@ -89,7 +89,11 @@ zero.
 - Every result announced through an `aria-live` status region (4.1.3)
 - Focus moves to the results heading after a lookup
 - Status **never** conveyed by colour alone — always glyph **and** word **and** colour (1.4.1)
-- Reflows to 320 px with no two-dimensional scrolling (1.4.10)
+- Reflows to 320 px with no two-dimensional scrolling (1.4.10), and at 200% text (1.4.4). Long
+  unbreakable tokens — 14-digit parcel numbers, email addresses — are allowed to break, which is
+  what stops them forcing horizontal scrolling when text is enlarged
+- Programmatic focus targets (the results heading, and the main region via the skip link) carry an
+  explicit `:focus` outline, because `:focus-visible` does not match programmatic focus (2.4.7)
 - Interactive targets ≥ 44 × 44 px (2.5.8)
 - Visible focus indicator at 3 px, never removed (2.4.7)
 - Respects `prefers-reduced-motion` and `prefers-color-scheme`
@@ -97,8 +101,16 @@ zero.
 - Automated unit, browser and axe checks cover structure, keyboard behavior, deterministic ArcGIS
   responses, result semantics, copying, contrast and common accessibility failures
 
-**Not yet verified:** manual keyboard-only pass and NVDA pass. Automated testing catches roughly
-25–40% of WCAG issues, so **no public conformance claim should be made until those are complete.**
+**Keyboard pass: done** (13 August 2026). It found three defects the automated suite structurally
+could not — horizontal scrolling once text was enlarged, no visible focus indicator on the
+programmatic focus targets, and a status region that could be announced partially. All three are
+fixed in both pages and covered by regression tests. See `CHANGES-2026-08-13.md`.
+
+**Not yet verified: the screen-reader pass.** Automated testing catches roughly 25–40% of WCAG
+issues, so **no public conformance claim should be made until it is complete.** The remaining checks
+are written up as a runnable script at
+[`docs/manual-screen-reader-test.md`](docs/manual-screen-reader-test.md) — about an hour with NVDA,
+and it needs no prior accessibility expertise.
 
 If JavaScript is unavailable the lookup cannot run, but the staffed fallback — phone, email,
 response-time commitment — is static HTML and still renders. The service degrades to a human, not

@@ -456,3 +456,103 @@ test("full-parcel layers still run when parcel centroid coordinates are missing"
   await expect(page.locator(".pair",{hasText:"Base zoning"}))
     .toContainText("Temporarily unavailable");
 });
+
+/* ---------------------------------------------------------------------------
+   Reflow and focus-visibility regressions.
+
+   These cover two defects the axe pass above structurally cannot detect:
+   axe does not evaluate layout at a reduced viewport, and it does not evaluate
+   whether a programmatic focus target has a visible indicator. Both were found
+   by manual audit on 13 August 2026 and both were present in the shipped build.
+   --------------------------------------------------------------------------- */
+
+// 1.4.10 Reflow: 320 CSS px wide, no horizontal scrolling.
+test("reflows at 320px with no horizontal scrolling",async({page})=>{
+  await page.setViewportSize({width:320,height:900});
+  await loadKnownProperty(page);
+  const overflow=await page.evaluate(()=>({
+    doc:document.documentElement.scrollWidth-document.documentElement.clientWidth,
+    wide:[...document.querySelectorAll("body *")]
+      .filter(el=>el.offsetParent!==null &&
+        el.getBoundingClientRect().width>window.innerWidth+1)
+      .map(el=>el.tagName.toLowerCase()+"."+String(el.className||"").split(" ")[0])
+  }));
+  expect(overflow.wide).toEqual([]);
+  expect(overflow.doc).toBeLessThanOrEqual(1);
+});
+
+// 1.4.4 Resize Text: enlarged text must not introduce horizontal scrolling.
+// The offenders are unbreakable tokens — 14-digit parcel numbers and email
+// addresses — which is what the overflow-wrap rules exist to break.
+//
+// 200% only, deliberately. 1.4.10 is satisfied by the 320px default-text case
+// above; 1.4.4 requires 200%. Scaling text to 400% *inside* a 320px viewport is
+// roughly 1280% effective zoom, which neither criterion requires, and at that
+// size the search input and the button row are each intrinsically wider than the
+// viewport. Measured and documented rather than asserted.
+for(const scale of [200]){
+  test(`reflows at 320px with text scaled to ${scale}% and no horizontal scrolling`,
+    async({page})=>{
+      await page.setViewportSize({width:320,height:900});
+      await loadKnownProperty(page);
+      await page.evaluate(pct=>{
+        document.documentElement.style.fontSize=(16*pct/100)+"px";
+      },scale);
+      await page.waitForTimeout(150);
+      const doc=await page.evaluate(()=>
+        document.documentElement.scrollWidth-document.documentElement.clientWidth);
+      expect(doc).toBeLessThanOrEqual(1);
+    });
+}
+
+// The rules themselves, so a future refactor cannot silently drop them.
+test("long unbreakable tokens are allowed to break",async({page})=>{
+  await loadKnownProperty(page);
+  const wrap=await page.evaluate(()=>({
+    body:getComputedStyle(document.body).overflowWrap,
+    dd:getComputedStyle(document.querySelector("#results-body dd")).overflowWrap,
+    dt:getComputedStyle(document.querySelector("#results-body dt")).overflowWrap
+  }));
+  expect(wrap.body).toBe("break-word");
+  expect(wrap.dd).toBe("anywhere");
+  expect(wrap.dt).toBe("anywhere");
+});
+
+// 2.4.7 Focus Visible for programmatic targets. Focus is moved to #r-head after
+// every lookup; :focus-visible does not match programmatic focus on a
+// tabindex="-1" element, so an explicit :focus rule is required.
+//
+// Asserted in two independent halves on purpose. A computed-style check is not
+// usable here: when the browser window lacks OS focus, :focus does not match and
+// outlineStyle reads "none" even though the rule is present, while outlineWidth
+// reads the UA default "medium" (3px) even when no rule exists at all — so the
+// obvious test is both flaky and vacuous. Behaviour and declaration are
+// therefore checked separately, and both are deterministic.
+test("a lookup moves focus to the results heading",async({page})=>{
+  await loadKnownProperty(page);
+  expect(await page.evaluate(()=>document.activeElement.id)).toBe("r-head");
+});
+
+test("programmatic focus targets declare a visible focus outline",async({page})=>{
+  const declared=await page.evaluate(()=>
+    [...document.styleSheets]
+      .flatMap(sheet=>{try{return [...sheet.cssRules]}catch{return []}})
+      .filter(rule=>rule.selectorText&&/#(main|r-head):focus\b/.test(rule.selectorText))
+      .map(rule=>({selector:rule.selectorText,
+        outline:rule.style.outline||rule.style.outlineWidth||""})));
+  const targets=declared.map(rule=>rule.selector).join(" ");
+  expect(targets,"a :focus rule must exist for #main and #r-head").toContain("#r-head:focus");
+  expect(targets,"a :focus rule must exist for #main and #r-head").toContain("#main:focus");
+  for(const rule of declared){
+    expect(rule.outline,`${rule.selector} must declare an outline`).not.toBe("");
+    expect(rule.outline,`${rule.selector} must not suppress the outline`).not.toMatch(/\bnone\b/);
+  }
+});
+
+// 4.1.3 Status Messages: the whole message is replaced each time, so the whole
+// message must be announced rather than only the changed portion.
+test("status region announces atomically",async({page})=>{
+  await expect(page.locator("#status")).toHaveAttribute("aria-atomic","true");
+  await expect(page.locator("#status")).toHaveAttribute("aria-live","polite");
+  await expect(page.locator("#status")).toHaveAttribute("role","status");
+});

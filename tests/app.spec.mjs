@@ -485,12 +485,12 @@ test("reflows at 320px with no horizontal scrolling",async({page})=>{
 // The offenders are unbreakable tokens — 14-digit parcel numbers and email
 // addresses — which is what the overflow-wrap rules exist to break.
 //
-// 200% only, deliberately. 1.4.10 is satisfied by the 320px default-text case
-// above; 1.4.4 requires 200%. Scaling text to 400% *inside* a 320px viewport is
-// roughly 1280% effective zoom, which neither criterion requires, and at that
-// size the search input and the button row are each intrinsically wider than the
-// viewport. Measured and documented rather than asserted.
-for(const scale of [200]){
+// 200% and 400%. 400% was excluded on 13 August because it still overflowed at
+// 530px. The cause turned out to be the <fieldset>, not the input: a fieldset
+// carries an intrinsic min-width:min-content that width:100% cannot override, so
+// it sat at 466px inside a 320px container and every descendant inherited it.
+// With fieldset/legend/button sizing constrained, 320px holds through 400%.
+for(const scale of [200,400]){
   test(`reflows at 320px with text scaled to ${scale}% and no horizontal scrolling`,
     async({page})=>{
       await page.setViewportSize({width:320,height:900});
@@ -555,4 +555,18 @@ test("status region announces atomically",async({page})=>{
   await expect(page.locator("#status")).toHaveAttribute("aria-atomic","true");
   await expect(page.locator("#status")).toHaveAttribute("aria-live","polite");
   await expect(page.locator("#status")).toHaveAttribute("role","status");
+});
+
+// The fieldset min-width fix is easy to mistake for cosmetic and delete. Without
+// it a <fieldset> holds its intrinsic min-content width — 466px inside a 320px
+// container — and every descendant inherits it, so reflow fails at 400%.
+test("form containers can shrink below their intrinsic width",async({page})=>{
+  const sizing=await page.evaluate(()=>({
+    fieldset:getComputedStyle(document.querySelector("fieldset")).minWidth,
+    input:getComputedStyle(document.querySelector("#q")).minWidth,
+    button:getComputedStyle(document.querySelector("#go")).whiteSpace
+  }));
+  expect(sizing.fieldset).toBe("0px");
+  expect(sizing.input).toBe("0px");
+  expect(sizing.button).toBe("normal");
 });

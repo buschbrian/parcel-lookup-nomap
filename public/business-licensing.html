@@ -21,10 +21,20 @@ body{margin:0;background:var(--bg);color:var(--ink);font:1rem/1.6 system-ui,-app
 .wrap{max-width:52rem;margin:0 auto;padding:1rem}
 /* 1.4.10 Reflow / 1.4.4 Resize Text — long unbreakable tokens (14-digit parcel
    numbers, email addresses) otherwise force horizontal scrolling at 200%/400%
-   text. dt/dd/li/headings use `anywhere` because only `anywhere` reduces the
-   min-content contribution CSS Grid uses to size the label column. */
+   text. dt/dd/li use `anywhere` because only `anywhere` reduces the min-content
+   contribution CSS Grid uses to size the label column. Headings are excluded on
+   purpose so an <h3> cannot break mid-word.
+   The min-width rules are what make 400% work: <fieldset> carries an intrinsic
+   `min-width:min-content` that `width:100%` cannot override, so it sat at 466px
+   inside a 320px container and every child inherited that width. <legend> and
+   <button> size intrinsically for the same reason.
+   Measured at a 320px container: 675px -> 320px. */
 body{overflow-wrap:break-word}
-dt,dd,li,h1,h2,h3{overflow-wrap:anywhere}
+dt,dd,li{overflow-wrap:anywhere}
+fieldset{min-width:0}
+legend{max-width:100%}
+input[type=text]{min-width:0}
+button{white-space:normal;min-width:0;max-width:100%}
 :focus{outline:none}:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:3px}
 .skip{position:absolute;left:-9999px;top:0;z-index:99;background:var(--bg);color:var(--ink);padding:.75rem 1rem;border:2px solid var(--focus);font-weight:700}
 .skip:focus{left:.5rem;top:.5rem}
@@ -138,7 +148,7 @@ footer{margin-top:3rem;border-top:2px solid var(--line-soft);background:var(--su
    ================================================================== */
 const CFG = {
   org:"https://services9.arcgis.com/XRrSFvEwSsReIxuA/arcgis/rest/services",
-  release:{version:"2026.08.09",publishedOn:"2026-08-09",sourceSnapshot:"June 2026"},
+  release:{version:"2026.08.13",publishedOn:"2026-08-13",sourceSnapshot:"June 2026"},
   request:{timeoutMs:12000,retryDelayMs:700,suggestDebounceMs:250},
   // The shared request layer offers this number when a service fails. It is
   // Business Licensing, not GIS: this page answers licensing questions.

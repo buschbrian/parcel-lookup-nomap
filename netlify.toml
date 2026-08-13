@@ -9,17 +9,21 @@
 # that site's own routing configuration. Deployment and rollback notes live in README.md.
 
 [build]
-  # No build step. Both lookup pages are static, self-contained HTML by design.
+  # ADR-0001: the site is built by Vite and the published artifact is `dist/`.
   #
-  # Publish `public/`, not the repository root. The root contains the code
-  # walkthrough, migration notes, the data-source review register, the service
-  # contract script with its known test parcels, and the test suite — all of which
-  # were served over HTTP when this was ".". What ships is an allowlist: add a file
-  # to `public/` to publish it, and nothing else becomes public by being committed.
-  # `_headers` lives inside `public/` because Netlify only honours it from the
-  # publish directory; moving it out silently drops every security header.
-  publish = "public"
-  command = ""
+  # Publish the BUILD OUTPUT, never the repository root. The root contains the
+  # code walkthrough, migration notes, the data-source review register, the
+  # service contract script with its known test parcels, and the test suite —
+  # all of which were served over HTTP when this was ".". What ships remains an
+  # allowlist, now enforced by the build rather than by directory discipline:
+  # only entry HTML, its bundled assets, and everything in `public/` reach
+  # `dist/`. `scripts/check-deployment.mjs` proves it after every deploy.
+  #
+  # `_headers` still lives in `public/` — Netlify only honours it from the
+  # publish directory, and Vite copies `public/` into `dist/` verbatim, so it
+  # lands at `dist/_headers`. Moving it out silently drops every security header.
+  publish = "dist"
+  command = "npm run build"
 
 [[redirects]]
   # A readable URL for the focused short-term-rental licensing screen.

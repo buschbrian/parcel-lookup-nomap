@@ -1,18 +1,23 @@
 {
   "name": "millcreek-property-lookup",
-  "version": "2026.8.9",
+  "version": "2026.8.13",
   "private": true,
-  "description": "Developer-only checks for the dependency-free Millcreek Property Lookup.",
+  "type": "module",
+  "description": "Millcreek Property Lookup: two accessible, text-only municipal lookups, built with Vite.",
   "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "test": "npm run test:unit && npm run test:python && npm run test:e2e",
     "test:unit": "node --test tests/unit.test.mjs",
     "test:python": "python -m unittest tests/test_flood_rank.py",
-    "test:e2e": "playwright test",
+    "test:e2e": "npm run build && playwright test",
     "check:services": "node scripts/check-services.mjs",
     "check:deployment": "node scripts/check-deployment.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
-    "@playwright/test": "1.62.1"
+    "@playwright/test": "1.62.1",
+    "vite": "^7"
   }
 }

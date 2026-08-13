@@ -90,3 +90,15 @@ For an approved source change, record in the pull request and this file:
 5. known-address comparisons, including boundary parcels;
 6. updated `reviewedOn` and `CFG.release.dataReviewedOn` dates;
 7. passing `npm test`, `npm run check:services`, manual accessibility checks and post-deploy check.
+
+**Post-deploy check, as of 13 August 2026.** `npm run check:deployment` fails on its HTML byte
+comparison for a hosting reason rather than a deployment fault, and aborts before its header and
+allowlist assertions run — so it cannot currently satisfy item 7 on its own. Verify the security
+headers and publish allowlist by hand until it is repaired. See CHANGES-2026-08-13.md §7.
+
+**Review record, 13 August 2026.** `npm run check:services` passed 51/51 against live services: all 22
+configured endpoints, both known-parcel lookups, 21 spatial queries, FEMA/Millcreek flood congruence
+including the known hazard parcel, the two historic designation types, the STR parcel and 400-foot
+buffer, and parity with the public Planning web map across 21 adopted local layers. No source URL,
+field or domain changed; this substantiates `CFG.release.dataReviewedOn = 2026-08-13` rather than
+recording a migration.

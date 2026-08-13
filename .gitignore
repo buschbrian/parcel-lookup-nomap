@@ -9,3 +9,5 @@ test-results/
 # Tracking it means every build dirties the tree and conflicts with feat/vite-migration,
 # which ignores it. Deploy from a build, not from committed output.
 dist/
+counsel-review/Public-Facing-GIS-Disclaimer-Review.docx
+counsel-review/~$blic-Facing-GIS-Disclaimer-Review.docx

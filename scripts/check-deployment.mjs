@@ -1,8 +1,25 @@
 import assert from "node:assert/strict";
-import { readApp, readBusinessApp } from "./app-config.mjs";
+import { readApp, readBusinessApp, readBuiltPage } from "./app-config.mjs";
 
-const {html}=await readApp();
-const {html:businessHtml}=await readBusinessApp();
+/* What the deployment is compared against.
+   -----------------------------------------------------------------------
+   Before ADR-0001 the deployed bytes were the repository bytes, because
+   `public/` was published verbatim. Once Vite builds the site, the deployed
+   bytes are the BUILT bytes — Vite rewrites entry HTML — so comparing against
+   source would fail for a correct deployment and, worse, would pass only while
+   the build was doing nothing.
+
+   So: prefer `dist/` when it exists, and say which was used. Run
+   `npm run build` before this check once the migration has landed. */
+const builtIndex=await readBuiltPage("index.html");
+const builtBusiness=await readBuiltPage("business-licensing.html");
+const usingBuild=builtIndex!==null&&builtBusiness!==null;
+
+const html=usingBuild?builtIndex:(await readApp()).html;
+const businessHtml=usingBuild?builtBusiness:(await readBusinessApp()).html;
+console.log(usingBuild
+  ? "comparing the deployment against dist/ (built artifact)"
+  : "comparing the deployment against source HTML (no dist/ found — run `npm run build` if the site is now built)");
 const url=process.env.DEPLOY_URL||"https://parcel-lookup-millcreek.netlify.app/";
 const response=await fetch(url,{signal:AbortSignal.timeout(20_000)});
 assert.equal(response.ok,true,"deployment returned HTTP "+response.status);

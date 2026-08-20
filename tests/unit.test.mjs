@@ -3,10 +3,16 @@ import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 
-const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
+/* Entry HTML moved from `public/` to the repository root in ADR-0001 step 1,
+   because Vite copies `publicDir` verbatim and would have bypassed the build.
+   Read through the shared resolver rather than a hardcoded path, so this file
+   does not have to change again at the next structural step. */
+import { readApp, readBusinessApp } from "../scripts/app-config.mjs";
+
+const { html } = await readApp();
 const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 assert.ok(script, "index.html contains an inline script");
-const licensingHtml = await readFile(new URL("../public/business-licensing.html", import.meta.url), "utf8");
+const { html: licensingHtml } = await readBusinessApp();
 const licensingScript = licensingHtml.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 assert.ok(licensingScript, "business-licensing.html contains an inline script");
 
@@ -212,19 +218,55 @@ test("only the public site is published",async()=>{
   assert.ok(publishDir,"netlify.toml declares a publish directory");
   assert.notEqual(publishDir,".","the repository root must not be the publish directory");
 
-  const entries=await readdir(new URL("../"+publishDir+"/",import.meta.url),{recursive:true});
-  const served=entries.map(entry=>entry.split(/[\\/]/).join("/"));
+  const required=["index.html","business-licensing.html","_headers","assets/millcreek-logo.png"];
+  const engineering=/^(docs|scripts|tests|node_modules|\.github|src)\//;
+  const repoFile=/^(package(-lock)?\.json|playwright\.config\.mjs|vite\.config\.mjs|netlify\.toml|LICENSE|CODE\.md|USAGE\.md|README\.md|MIGRATION\.md|DATA-SOURCES\.md|WEB-MAP-REVIEW\.md|CHANGES-.+\.md)$/;
 
-  // `_headers` is only honoured from inside the publish directory: if it is left
-  // behind, every security header silently disappears from the deployed site.
-  for(const required of ["index.html","business-licensing.html","_headers",
-    "assets/millcreek-logo.png"])
-    assert.ok(served.includes(required),publishDir+"/ is missing "+required);
+  let entries=null;
+  try{
+    entries=await readdir(new URL("../"+publishDir+"/",import.meta.url),{recursive:true});
+  }catch(error){
+    if(error.code!=="ENOENT") throw error;
+  }
 
-  const engineering=/^(docs|scripts|tests|node_modules|\.github)\//;
-  const repoFile=/^(package(-lock)?\.json|playwright\.config\.mjs|netlify\.toml|LICENSE|CODE\.md|USAGE\.md|README\.md|DATA-SOURCES\.md|WEB-MAP-REVIEW\.md|CHANGES-.+\.md)$/;
-  const leaked=served.filter(name=>engineering.test(name)||repoFile.test(name));
-  assert.deepEqual(leaked,[],publishDir+"/ would serve engineering files: "+leaked.join(", "));
+  if(entries){
+    // The publish directory exists: assert exactly what would be served.
+    const served=entries.map(entry=>entry.split(/[\\/]/).join("/"));
+    // `_headers` is only honoured from inside the publish directory: if it is left
+    // behind, every security header silently disappears from the deployed site.
+    for(const name of required)
+      assert.ok(served.includes(name),publishDir+"/ is missing "+name);
+    const leaked=served.filter(name=>engineering.test(name)||repoFile.test(name));
+    assert.deepEqual(leaked,[],publishDir+"/ would serve engineering files: "+leaked.join(", "));
+    return;
+  }
+
+  /* The publish directory is a build output that has not been built yet
+     (ADR-0001 step 1: `dist/` is generated and gitignored). Assert the INPUTS
+     that must end up there instead, so deleting `_headers` or an entry page
+     still fails this test rather than passing silently until deploy.
+
+     Entry HTML may sit at the repository root (post `git mv`) or still in
+     `public/` (pre-move) — see MIGRATION.md step 1. */
+  assert.match(toml,/^\s*command\s*=\s*"(?!\s*")/m,
+    publishDir+"/ does not exist, so netlify.toml must declare a build command that creates it");
+
+  const exists=async candidates=>{
+    for(const candidate of candidates){
+      try{ await readdir(new URL(candidate,import.meta.url)); return true; }
+      catch(error){
+        if(error.code==="ENOTDIR") return true;          // it is a file: good enough
+        if(error.code!=="ENOENT") throw error;
+      }
+    }
+    return false;
+  };
+  for(const [name,candidates] of [
+    ["index.html",["../index.html","../public/index.html"]],
+    ["business-licensing.html",["../business-licensing.html","../public/business-licensing.html"]],
+    ["_headers",["../public/_headers"]],
+    ["assets/millcreek-logo.png",["../public/assets/millcreek-logo.png"]]
+  ]) assert.ok(await exists(candidates),"no source found that would publish "+name);
 });
 
 /* HSTS was being served by the hosting platform rather than declared here, so the

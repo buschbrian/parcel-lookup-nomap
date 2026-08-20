@@ -121,12 +121,15 @@ to a broken page.
 ## Repository layout
 
 ```
-public/         Everything the deployed site serves — and nothing else.
-  index.html      The general property lookup, self-contained by design.
-  business-licensing.html The focused short-term-rental and 400-foot buffer lookup.
+index.html      The general property lookup, self-contained by design. A Vite entry point.
+business-licensing.html The focused short-term-rental and 400-foot buffer lookup. Also an entry.
+public/         Static passthrough. Copied verbatim into `dist/`, never processed.
   assets/         Municipal brand assets stored locally for reliable rendering.
   _headers        Netlify security headers, including the CSP.
-netlify.toml    Netlify build/redirect configuration; publishes `public/`.
+dist/           Build output and the deployed artifact. Generated, git-ignored, never edited.
+vite.config.mjs MPA build configuration; both HTML files are entry points.
+netlify.toml    Netlify build/redirect configuration; runs `npm run build`, publishes `dist/`.
+MIGRATION.md    ADR-0001 migration state, step by step, with what is verified and what is not.
 README.md       This file.
 USAGE.md        For residents, front-counter staff, and GIS staff maintaining the config.
 CODE.md         Full code walkthrough — every function explained.
@@ -136,6 +139,10 @@ tests/          Developer-only deterministic unit, browser and accessibility tes
 scripts/        Live service-contract and deployment checks.
 docs/           Migration proposal and architecture decision records.
 ```
+
+> **The entry pages must not live in `public/`.** Vite copies `publicDir` verbatim without processing,
+> so an entry left there would silently bypass the build — everything would appear to work while
+> nothing was actually built. `public/` now holds only `assets/` and `_headers`.
 
 ### Why each page is self-contained
 
@@ -152,18 +159,31 @@ for inline `<style>` and `<script>`; that accepted tradeoff is documented in `pu
 
 ## Quick start
 
-No production build step and no runtime dependencies.
+There is a build step now (Vite, ADR-0001), but still **no runtime dependencies** — the built pages
+ship as self-contained HTML with an inline script, exactly as before.
 
 ```bash
 git clone <this repo>
-cd parcel-lookup
-python3 -m http.server 8080 --directory public     # or: npx serve public
-# open http://localhost:8080
+cd parcel-lookup-nomap
+npm install
+npm run dev        # dev server on http://127.0.0.1:5173
 ```
 
-Serve `public/`, not the repository root, so local browsing matches what the deployed site
+To look at what actually deploys rather than the dev server:
+
+```bash
+npm run build      # writes dist/
+npm run preview    # serves dist/ on http://127.0.0.1:4173
+```
+
+Serve through one of those, not the repository root, so local browsing matches what the deployed site
 serves. Opening the file directly with `file://` will not work: the browser blocks the
 cross-origin requests to ArcGIS, and both pages say so rather than blaming the service.
+
+At the current migration step the build is a verified pass-through — `dist/index.html` and
+`dist/business-licensing.html` are byte-identical to their sources — so `python3 -m http.server 8080
+--directory dist` remains a valid way to serve the artifact if you would rather not use Vite's
+preview.
 
 To run developer checks, install the dev-only dependencies and tests:
 
@@ -194,9 +214,16 @@ is a documented display precedence, not a FEMA risk score.
 ### Deploying
 
 Static hosting. Currently Netlify, auto-deploying from `main`. `netlify.toml` is read from the
-repository root; `public/_headers` is read from the publish directory. Netlify publishes `public/`,
-so a new file is served only when it is added there — committing a document elsewhere in the
-repository does not put it on the public site.
+repository root and runs `npm run build`; Netlify publishes **`dist/`**. `_headers` still lives in
+`public/` because Netlify only honours it from the publish directory, and Vite copies `public/` into
+`dist/` verbatim, so it lands at `dist/_headers` — moving it out silently drops every security header.
+
+What ships is still an allowlist, now enforced by the build rather than by directory discipline: only
+the entry pages, their assets, and everything in `public/` reach `dist/`. Committing a document
+elsewhere in the repository does not put it on the public site.
+
+**A failed build is now a failed deploy.** That is the intended trade, but it is a new failure mode on
+a live public service — watch the first build-based deploy rather than assuming it.
 
 Deploy this as its **own** site. Do not place it inside the Experience Builder site's publish
 directory — an ExB Developer Edition publish replaces that whole directory and would silently

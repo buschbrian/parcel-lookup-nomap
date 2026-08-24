@@ -372,6 +372,37 @@ test("deterministic CI is reproducible and preserves failure evidence",async()=>
     "CI generates the Playwright HTML report that the workflow retains");
 });
 
+test("live service monitoring is isolated from deterministic merge quality",async()=>{
+  const quality=await readFile(new URL("../.github/workflows/quality.yml",import.meta.url),"utf8");
+  const monitor=await readFile(
+    new URL("../.github/workflows/live-service-monitor.yml",import.meta.url),"utf8")
+    .catch(()=>"");
+
+  assert.doesNotMatch(quality,/^\s+schedule:/m,
+    "deterministic quality has no external-service schedule");
+  assert.doesNotMatch(quality,/check:services|live-service-contract/,
+    "deterministic quality contains no live-service job");
+
+  assert.match(monitor,/workflow_dispatch:/,"the monitor can be run deliberately");
+  assert.match(monitor,/schedule:\s*\n\s+- cron:/,"the monitor observes services on a schedule");
+  assert.doesNotMatch(monitor,/^\s+push:|^\s+pull_request:/m,
+    "external availability is not a pull-request or push gate");
+  assert.match(monitor,/permissions:\s*\n\s+contents:\s*read/,
+    "the monitor declares least-privilege repository access");
+  assert.match(monitor,/actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\s+# v7\.0\.1/);
+  assert.match(monitor,/actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020\s+# v7\.0\.0/);
+  assert.doesNotMatch(monitor,/uses:\s*actions\/[\w-]+@v\d/,
+    "monitor actions are pinned to immutable reviewed commits");
+  assert.match(monitor,/node-version-file:\s*['"]?\.nvmrc/);
+  assert.match(monitor,/npm run check:services/);
+  assert.match(monitor,/GITHUB_STEP_SUMMARY/,
+    "the monitor writes a concise Actions summary even when a contract fails");
+  assert.match(monitor,/PIPESTATUS\[0\]/,
+    "the monitor preserves the service command exit code through tee");
+  assert.match(monitor,/exit "\$status"/,
+    "the monitor remains visibly failed after writing evidence");
+});
+
 test("security policy permits authoritative sources and Planning uses its own contact",async()=>{
   const headers=await readFile(new URL("../public/_headers",import.meta.url),"utf8");
   assert.match(headers,/connect-src[^\n]+https:\/\/hazards\.fema\.gov/);

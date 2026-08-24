@@ -187,6 +187,11 @@ preview.
 
 To run developer checks, install the dev-only dependencies and tests:
 
+The required release toolchain is **Node 22.15.0 with npm 10.9.2**. `.nvmrc` is the single source
+for the Node version consumed by developers, GitHub Actions, and Netlify; load that version before
+installing dependencies. The exact Node/npm contract is mirrored in `package.json` (`engines` and
+`packageManager`) and covered by a drift test, so update those declarations together.
+
 ```bash
 npm ci
 npx playwright install chromium

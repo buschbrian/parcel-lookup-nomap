@@ -59,14 +59,14 @@ availability produces a clear operational alert without obscuring repository cor
 
 **Acceptance criteria:**
 
-- [ ] A dedicated workflow runs on schedule and manual dispatch only.
-- [ ] The deterministic workflow contains no scheduled external-service job.
-- [ ] The monitor records a concise step summary and fails visibly when its contract fails.
+- [x] A dedicated workflow runs on schedule and manual dispatch only.
+- [x] The deterministic workflow contains no scheduled external-service job.
+- [x] The monitor records a concise step summary and fails visibly when its contract fails.
 
 **Verification:**
 
-- [ ] RED: workflow contract assertion detects the current mixed workflow.
-- [ ] GREEN: `npm run test:unit` validates trigger and job separation.
+- [x] RED: workflow contract assertion detects the current mixed workflow.
+- [x] GREEN: `npm run test:unit` validates trigger and job separation.
 - [ ] Manual monitor run succeeds or reports the exact failed service check.
 
 **Dependencies:** Task 2.

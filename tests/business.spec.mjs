@@ -374,3 +374,35 @@ test("the licensing brand logo does not scale with text past the viewport",
     expect(header.wrap).toBe("wrap");
     expect(header.logo).toBeLessThanOrEqual(88);
   });
+
+// The back-link is the only inline-block on either page, and inline-block is
+// shrink-to-fit: its used width comes from min-content, i.e. its longest word.
+// body{overflow-wrap:break-word} breaks words visually but does not reduce the
+// min-content contribution, so without a cap the link holds its intrinsic width
+// and pushes the page sideways. Only `anywhere` reduces min-content, and that is
+// scoped to dt,dd,li so an <h3> cannot break mid-word.
+//
+// This shipped broken and passed locally for weeks: CI measured 58px of overflow
+// on Linux while Windows measured 0, because Segoe UI is simply narrow enough to
+// fit where the Linux default sans is not. The platform default font decided
+// whether a WCAG 1.4.4 criterion passed. The token below takes the font out of
+// the question - no font fits it - so the assertion fails on every platform.
+//
+// Verified discriminating: with the cap removed this reports the link at 1356px
+// inside a 192px container. Asserted against the container rather than a fixed
+// px number so any correct fix passes, not only max-width.
+test("the licensing back-link cannot outgrow its container",async({page})=>{
+  await page.setViewportSize({width:320,height:900});
+  await page.evaluate(()=>{document.documentElement.style.fontSize="64px"});
+  const nav=await page.evaluate(()=>{
+    const link=document.querySelector(".nav a");
+    link.textContent="Backtothegeneralpropertylookupwithnobreaks";
+    return {
+      link:link.getBoundingClientRect().width,
+      container:link.parentElement.getBoundingClientRect().width,
+      doc:document.documentElement.scrollWidth-document.documentElement.clientWidth
+    };
+  });
+  expect(nav.link).toBeLessThanOrEqual(nav.container);
+  expect(nav.doc).toBeLessThanOrEqual(1);
+});

@@ -322,11 +322,54 @@ test("the release toolchain is pinned consistently",async()=>{
     "the locked Vite package matches the declared version");
 });
 
-test("CI sets up the Python that the test suite and preview server need",async()=>{
+test("deterministic CI is reproducible and preserves failure evidence",async()=>{
   const workflow=await readFile(new URL("../.github/workflows/quality.yml",import.meta.url),"utf8");
-  // npm test runs `python -m unittest`, and Playwright's webServer is python http.server.
-  assert.match(workflow,/actions\/setup-python/,
-    "the workflow provisions Python rather than relying on the runner image");
+  const playwrightConfig=await readFile(
+    new URL("../playwright.config.mjs",import.meta.url),"utf8");
+
+  assert.match(workflow,/permissions:\s*\n\s+contents:\s*read/,
+    "the workflow declares least-privilege repository access");
+  assert.match(workflow,/concurrency:[\s\S]*cancel-in-progress:\s*true/,
+    "superseded branch runs are cancelled");
+  assert.match(workflow,/push:\s*\n\s+branches:\s*\[main\]/,
+    "push CI is limited to main");
+  assert.match(workflow,/pull_request:\s*\n\s+branches:\s*\[main\]/,
+    "pull-request CI targets main");
+  assert.match(workflow,/runs-on:\s*ubuntu-24\.04/,
+    "the runner image is fixed rather than floating on ubuntu-latest");
+
+  for(const [action,sha,tag] of [
+    ["actions/checkout","3d3c42e5aac5ba805825da76410c181273ba90b1","v7.0.1"],
+    ["actions/setup-node","820762786026740c76f36085b0efc47a31fe5020","v7.0.0"],
+    ["actions/setup-python","5fda3b95a4ea91299a34e894583c3862153e4b97","v7.0.0"],
+    ["actions/upload-artifact","043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","v7.0.1"]
+  ]){
+    assert.match(workflow,new RegExp(action.replace("/","\\/")+"@"+sha+"\\s+# "+tag),
+      action+" is pinned to the reviewed "+tag+" commit");
+  }
+  assert.doesNotMatch(workflow,/uses:\s*actions\/[\w-]+@v\d/,
+    "official actions are never referenced by a mutable major tag");
+
+  assert.match(workflow,/node-version-file:\s*['"]?\.nvmrc/,
+    "CI consumes the repository Node version contract");
+  for(const [name,command] of [
+    ["Install locked dependencies","npm ci"],
+    ["Audit production toolchain","npm audit --audit-level=high"],
+    ["Run unit tests","npm run test:unit"],
+    ["Run Python tests","npm run test:python"],
+    ["Build production artifact","npm run build"],
+    ["Install Chromium","npx playwright install --with-deps chromium"],
+    ["Run browser tests","npx playwright test"]
+  ]){
+    assert.match(workflow,new RegExp("name: "+name+"[\\s\\S]{0,100}run: "+command
+      .replace(/[.*+?^${}()|[\]\\]/g,"\\$&")),name+" is an independent CI step");
+  }
+  assert.doesNotMatch(workflow,/run:\s*npm test\s*$/m,
+    "CI does not hide several suites inside one npm test step");
+  assert.match(workflow,/if:\s*failure\(\)[\s\S]{0,300}path:\s*\|[\s\S]{0,120}playwright-report\/[\s\S]{0,120}test-results\//,
+    "browser diagnostics are uploaded on failure");
+  assert.match(playwrightConfig,/\["html",\{[^}]*outputFolder:"playwright-report"[^}]*open:"never"/,
+    "CI generates the Playwright HTML report that the workflow retains");
 });
 
 test("security policy permits authoritative sources and Planning uses its own contact",async()=>{

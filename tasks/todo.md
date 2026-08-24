@@ -34,15 +34,15 @@ first failing gate and its artifacts are available without reading one monolithi
 
 **Acceptance criteria:**
 
-- [ ] Run on pull requests, pushes to `main`, and manual dispatch with concurrency cancellation.
-- [ ] Use a fixed Ubuntu image, the repository Node contract, and reviewed action commit SHAs.
-- [ ] Name install, audit, unit, Python, build, browser-install, and Playwright steps separately; upload
+- [x] Run on pull requests, pushes to `main`, and manual dispatch with concurrency cancellation.
+- [x] Use a fixed Ubuntu image, the repository Node contract, and reviewed action commit SHAs.
+- [x] Name install, audit, unit, Python, build, browser-install, and Playwright steps separately; upload
       Playwright report and test-results artifacts on failure.
 
 **Verification:**
 
-- [ ] RED: workflow contract assertions fail against the current monolithic workflow.
-- [ ] GREEN: `npm run test:unit` validates triggers, pins, named steps, and artifacts.
+- [x] RED: workflow contract assertions fail against the current monolithic workflow.
+- [x] GREEN: `npm run test:unit` validates triggers, pins, named steps, and artifacts.
 - [ ] The first pushed run identifies one exact failing step and preserves its browser evidence.
 
 **Dependencies:** Task 1.

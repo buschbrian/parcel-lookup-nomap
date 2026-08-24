@@ -2,37 +2,89 @@ name: Quality checks
 
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
   schedule:
     - cron: "17 13 * * 1"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deterministic-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: '.nvmrc'
           cache: npm
-      # `npm test` runs the Python flood-rank tests, and Playwright's webServer is
-      # `python -m http.server`. Both need `python` on PATH by that name. Provision it
-      # rather than depending on whichever alias the runner image happens to ship.
-      - uses: actions/setup-python@v5
+
+      # The Python unit suite and Playwright's local static server both require the
+      # `python` command. Provision it instead of relying on the runner image.
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: npm test
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Audit production toolchain
+        run: npm audit --audit-level=high
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Run Python tests
+        run: npm run test:python
+
+      - name: Build production artifact
+        run: npm run build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser tests
+        run: npx playwright test
+
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-failure-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14
 
   live-service-contract:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
-      - run: npm ci
-      - run: npm run check:services
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Check live service contracts
+        run: npm run check:services

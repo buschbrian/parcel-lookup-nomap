@@ -11,15 +11,15 @@ Actions, and Netlify without changing application behavior.
 
 **Acceptance criteria:**
 
-- [ ] Add a checked-in Node version file and matching `engines`/`packageManager` declarations.
-- [ ] Pin Vite to the already locked `7.3.6` release and keep `package-lock.json` consistent.
-- [ ] Add a unit assertion that fails if these release-critical pins drift independently.
+- [x] Add a checked-in Node version file and matching `engines`/`packageManager` declarations.
+- [x] Pin Vite to the already locked `7.3.6` release and keep `package-lock.json` consistent.
+- [x] Add a unit assertion that fails if these release-critical pins drift independently.
 
 **Verification:**
 
-- [ ] RED: focused unit assertion fails before the declarations are added.
-- [ ] GREEN: `npm run test:unit` passes.
-- [ ] Clean-room `npm ci`, `npm audit --audit-level=high`, and `npm run build` pass.
+- [x] RED: focused unit assertion fails before the declarations are added.
+- [x] GREEN: `npm run test:unit` passes.
+- [x] Clean-room `npm ci`, `npm audit --audit-level=high`, and `npm run build` pass.
 
 **Dependencies:** None.
 

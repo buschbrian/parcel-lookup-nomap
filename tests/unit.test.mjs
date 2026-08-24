@@ -302,6 +302,26 @@ test("address searches escape typed wildcards in every tier",()=>{
   }
 });
 
+test("the release toolchain is pinned consistently",async()=>{
+  const packageJson=JSON.parse(await readFile(new URL("../package.json",import.meta.url),"utf8"));
+  const lock=JSON.parse(await readFile(new URL("../package-lock.json",import.meta.url),"utf8"));
+  const nodeVersion=(await readFile(new URL("../.nvmrc",import.meta.url),"utf8").catch(()=>""))
+    .trim();
+  const npmVersion=packageJson.packageManager?.match(/^npm@(.+)$/)?.[1];
+
+  assert.match(nodeVersion,/^\d+\.\d+\.\d+$/,".nvmrc pins one exact Node release");
+  assert.equal(packageJson.engines?.node,nodeVersion,
+    "package.json and .nvmrc pin the same Node release");
+  assert.match(npmVersion,/^\d+\.\d+\.\d+$/,"packageManager pins one exact npm release");
+  assert.equal(packageJson.engines?.npm,npmVersion,
+    "packageManager and engines pin the same npm release");
+  assert.equal(packageJson.devDependencies?.vite,"7.3.6","Vite is pinned exactly");
+  assert.equal(lock.packages?.[""]?.devDependencies?.vite,packageJson.devDependencies.vite,
+    "the lockfile root carries the same Vite pin");
+  assert.equal(lock.packages?.["node_modules/vite"]?.version,packageJson.devDependencies.vite,
+    "the locked Vite package matches the declared version");
+});
+
 test("CI sets up the Python that the test suite and preview server need",async()=>{
   const workflow=await readFile(new URL("../.github/workflows/quality.yml",import.meta.url),"utf8");
   // npm test runs `python -m unittest`, and Playwright's webServer is python http.server.

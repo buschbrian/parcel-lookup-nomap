@@ -3,6 +3,11 @@
   "version": "2026.8.13",
   "private": true,
   "type": "module",
+  "packageManager": "npm@10.9.2",
+  "engines": {
+    "node": "22.15.0",
+    "npm": "10.9.2"
+  },
   "description": "Millcreek Property Lookup: two accessible, text-only municipal lookups, built with Vite.",
   "scripts": {
     "dev": "vite",
@@ -18,6 +23,6 @@
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
     "@playwright/test": "1.62.1",
-    "vite": "^7"
+    "vite": "7.3.6"
   }
 }

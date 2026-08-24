@@ -95,7 +95,7 @@ The executable checklist and per-task acceptance criteria live in [`tasks/todo.m
 
 ### Phase 1: Restore trustworthy feedback
 
-- [ ] Task 1: Pin the Node/npm/Vite toolchain.
+- [x] Task 1: Pin the Node/npm/Vite toolchain.
 - [ ] Task 2: Make deterministic CI step-specific and diagnostic.
 - [ ] Task 3: Separate the live-service monitor from merge quality.
 - [ ] Checkpoint A: Push the branch and use the first Linux run to identify and fix the actual CI

@@ -320,6 +320,14 @@ test("the release toolchain is pinned consistently",async()=>{
     "the lockfile root carries the same Vite pin");
   assert.equal(lock.packages?.["node_modules/vite"]?.version,packageJson.devDependencies.vite,
     "the locked Vite package matches the declared version");
+
+  // README states the same contract in prose. Without this it drifts silently while the
+  // machine-readable pins stay perfectly consistent with each other.
+  const readme=await readFile(new URL("../README.md",import.meta.url),"utf8");
+  const documented=readme.match(/\*\*Node (\d+\.\d+\.\d+) with npm (\d+\.\d+\.\d+)\*\*/);
+  assert.ok(documented,"README states the required Node and npm releases");
+  assert.equal(documented[1],nodeVersion,"README documents the pinned Node release");
+  assert.equal(documented[2],npmVersion,"README documents the pinned npm release");
 });
 
 test("deterministic CI is reproducible and preserves failure evidence",async()=>{
@@ -378,15 +386,18 @@ test("live service monitoring is isolated from deterministic merge quality",asyn
     new URL("../.github/workflows/live-service-monitor.yml",import.meta.url),"utf8")
     .catch(()=>"");
 
-  assert.doesNotMatch(quality,/^\s+schedule:|on:\s*\[[^\]]*\bschedule\b/m,
+  assert.doesNotMatch(quality,/^\s+schedule:|^on:\s*\[[^\]]*\bschedule\b/m,
     "deterministic quality has no external-service schedule");
-  assert.doesNotMatch(quality,/check:services|scripts\/check-services\.mjs|live-service-contract/,
-    "deterministic quality contains no live-service job");
+  // `check:deployment` probes the deployed site, so it is candidate verification (Task 6),
+  // never a merge gate. Guard both live-network scripts by command name and by path.
+  assert.doesNotMatch(quality,
+    /check:(?:services|deployment)|scripts\/check-(?:services|deployment)\.mjs|live-service-contract/,
+    "deterministic quality contains no live-network job");
 
   assert.match(monitor,/workflow_dispatch:/,"the monitor can be run deliberately");
   assert.match(monitor,/schedule:\s*\n\s+- cron:/,"the monitor observes services on a schedule");
   assert.doesNotMatch(monitor,
-    /^\s+push:|^\s+pull_request:|on:\s*\[[^\]]*\b(?:push|pull_request)\b/m,
+    /^\s+push:|^\s+pull_request:|^on:\s*\[[^\]]*\b(?:push|pull_request)\b/m,
     "external availability is not a pull-request or push gate");
   assert.match(monitor,/permissions:\s*\n\s+contents:\s*read/,
     "the monitor declares least-privilege repository access");

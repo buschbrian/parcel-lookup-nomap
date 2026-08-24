@@ -378,14 +378,15 @@ test("live service monitoring is isolated from deterministic merge quality",asyn
     new URL("../.github/workflows/live-service-monitor.yml",import.meta.url),"utf8")
     .catch(()=>"");
 
-  assert.doesNotMatch(quality,/^\s+schedule:/m,
+  assert.doesNotMatch(quality,/^\s+schedule:|on:\s*\[[^\]]*\bschedule\b/m,
     "deterministic quality has no external-service schedule");
-  assert.doesNotMatch(quality,/check:services|live-service-contract/,
+  assert.doesNotMatch(quality,/check:services|scripts\/check-services\.mjs|live-service-contract/,
     "deterministic quality contains no live-service job");
 
   assert.match(monitor,/workflow_dispatch:/,"the monitor can be run deliberately");
   assert.match(monitor,/schedule:\s*\n\s+- cron:/,"the monitor observes services on a schedule");
-  assert.doesNotMatch(monitor,/^\s+push:|^\s+pull_request:/m,
+  assert.doesNotMatch(monitor,
+    /^\s+push:|^\s+pull_request:|on:\s*\[[^\]]*\b(?:push|pull_request)\b/m,
     "external availability is not a pull-request or push gate");
   assert.match(monitor,/permissions:\s*\n\s+contents:\s*read/,
     "the monitor declares least-privilege repository access");

@@ -185,12 +185,12 @@ At the current migration step the build is a verified pass-through — `dist/ind
 --directory dist` remains a valid way to serve the artifact if you would rather not use Vite's
 preview.
 
-To run developer checks, install the dev-only dependencies and tests:
-
 The required release toolchain is **Node 22.15.0 with npm 10.9.2**. `.nvmrc` is the single source
 for the Node version consumed by developers, GitHub Actions, and Netlify; load that version before
-installing dependencies. The exact Node/npm contract is mirrored in `package.json` (`engines` and
-`packageManager`) and covered by a drift test, so update those declarations together.
+installing dependencies. The same contract is mirrored in `package.json` (`engines` and
+`packageManager`) and in this paragraph; a drift test covers all three, so update them together.
+
+To run developer checks, install the dev-only dependencies and tests:
 
 ```bash
 npm ci

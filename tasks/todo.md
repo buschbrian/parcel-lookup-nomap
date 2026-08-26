@@ -431,8 +431,10 @@ rules, and release records under accountable institutional control.
       never a lockout to avoid. Corrected, and a second attempt was rejected with `GH006: Protected
       branch update failed`. The configuration read back correctly **both** times — only trying to
       violate it told the truth.
-- [ ] A pull request cannot merge while CI is red or absent. Demonstrated in the ordinary course by
-      the Task 9 pull request itself, which cannot merge until `deterministic-tests` reports.
+- [x] A pull request cannot merge while CI is red or absent. **Demonstrated by the Task 9 pull
+      request itself**: while `deterministic-tests` was pending, GitHub reported the pull request as
+      `BLOCKED`; it moved to `CLEAN` only once the check passed. No contrived test was needed — the
+      control was exercised by the ordinary work that had to pass through it.
 
 **Two artefacts of this task, recorded rather than tidied away:**
 

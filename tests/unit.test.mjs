@@ -688,8 +688,8 @@ test("candidate verification produces evidence and cannot promote a release",asy
    ignored by name, and nothing noticed for six days. `.gitignore` listed files, so a
    document with a slightly different filename fell outside the rule meant to cover
    it. That commit has since been purged from history entirely, which cost a rewrite
-   of every SHA in the repository and a request to GitHub Support — the expensive
-   way to learn that the rule should have named the directory.
+   of every SHA in the repository — the expensive way to learn that the rule should
+   have named the directory rather than the files inside it.
 
    The directory is ignored now, and this asserts the property that actually matters
    — that nothing under it is tracked — rather than the wording of the rule. */

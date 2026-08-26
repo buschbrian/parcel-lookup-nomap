@@ -280,13 +280,23 @@ time it has detected anything.
    copy — branch switching had removed it from disk — so it was extracted before the rewrite. A
    pre-purge backup of the whole repository is beside it as `pre-purge-backup.bundle`.
 
-   **The rewrite is not sufficient on its own, and this is still open.** Immediately after the
-   force-push, GitHub still served both the old commit and the full file through its API and through
-   `raw.githubusercontent.com`. Unreachable objects survive until GitHub garbage-collects, and pull
-   request refs keep them reachable indefinitely. **GitHub Support must be asked to purge the cached
-   view; only the account owner can do that.** Until they confirm, treat the document as still
-   exposed. The exposure window began 20 August 2026 and has not closed. Whether it requires
-   notification remains a records determination, not an engineering one.
+   **The rewrite is not complete on its own.** Immediately after the force-push, GitHub still served
+   both the old commit and the full file through its API and through `raw.githubusercontent.com`.
+   Unreachable objects survive until GitHub garbage-collects, and pull request refs keep them
+   reachable indefinitely. Asking GitHub Support to purge the cached view is the only way to finish
+   the job, and only the account owner can ask.
+
+   **Assessed as low risk and closed, 26 August 2026, by the repository owner** (bbusch), who is the
+   only person who has worked on this repository. No clone or fork by anyone else is known, and the
+   document is a draft review rather than privileged advice on a live matter. On that basis this is
+   recorded as a development artifact rather than a disclosure, and **no notification is being
+   made**. The Support request remains available if that assessment ever changes; the details needed
+   to file it are in the session record of 26 August.
+
+   **The engineering lesson stands regardless**, and is the reason this entry is kept: `.gitignore`
+   listed files by name, so a document whose filename differed slightly from its sibling fell outside
+   the rule meant to cover it. The directory is ignored now, and a unit test asserts that nothing
+   under it is tracked. That test is the control; the rest of this entry is why it exists.
 
 ## Task 7: Bound general-lookup concurrency
 

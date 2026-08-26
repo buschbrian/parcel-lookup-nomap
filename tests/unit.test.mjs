@@ -703,3 +703,82 @@ test("no attorney review document is tracked in this public repository",async()=
     "counsel-review/ is tracked, and this repository is public on GitHub. The "+
     "documents belong on disk and in the municipal record, not in git history.");
 });
+
+/* Repository and release governance — production readiness Task 9.
+
+   Governance files rot in a specific way: written once, with a placeholder where a
+   name should go, and nobody notices because nothing reads them. A CODEOWNERS
+   naming nobody routes review to nobody; a security contact that is an example
+   address means a vulnerability report goes nowhere. These assert that the files
+   exist, name real people, and describe the release convention the repository
+   actually follows. */
+
+const PLACEHOLDERS=/\b(TODO|TBD|FIXME|your-org|your-name|example\.com|placeholder|CHANGEME)\b/i;
+
+test("the resident-facing version agrees with the repository's own",async()=>{
+  /* Three copies, one of which residents paste into emails to staff. They
+     disagreed — 2026.8.13 against 2026.08.13 — for long enough that both were
+     quoted in different documents. RELEASE.md fixes the format as zero-padded
+     CalVer; this is what makes that stick. */
+  const pkg=JSON.parse(await readFile(new URL("../package.json",import.meta.url),"utf8"));
+  const {CFG:appConfig}=await readApp();
+  const {CFG:licensingConfig}=await readBusinessApp();
+  const versions={
+    "package.json":pkg.version,
+    "index.html":appConfig.release.version,
+    "business-licensing.html":licensingConfig.release.version
+  };
+  for(const [where,version] of Object.entries(versions))
+    assert.match(version,/^\d{4}\.\d{2}\.\d{2}$/,
+      where+" must carry a zero-padded CalVer version, got "+version);
+  assert.equal(new Set(Object.values(versions)).size,1,
+    "the three version fields disagree: "+JSON.stringify(versions));
+});
+
+test("the release convention is documented and matches what is published",async()=>{
+  const release=await readFile(new URL("../RELEASE.md",import.meta.url),"utf8");
+  assert.match(release,/YYYY\.MM\.DD/,"the version convention is stated");
+  assert.match(release,/v<version>|v2026\./,"the tag convention is stated");
+  assert.match(release,/CHANGES-YYYY-MM-DD\.md/,"the changelog convention is stated");
+  assert.match(release,/Rollback target/,"a release record names its rollback target");
+  assert.match(release,/Approver/,"a release record names who decided");
+
+  /* dataReviewedOn ages on its own and is shown to every resident. If it is ever
+     removed to stop it looking old, this fails rather than the page quietly
+     dropping the one field that says how current the data is. */
+  const {CFG:appConfig}=await readApp();
+  assert.ok(appConfig.release.dataReviewedOn,"index.html still declares dataReviewedOn");
+  assert.match(appConfig.release.dataReviewedOn,/^\d{4}-\d{2}-\d{2}$/);
+  assert.ok(appConfig.release.publishedOn,"index.html still declares publishedOn");
+});
+
+test("review, security reporting and dependency updates are owned by real people",async()=>{
+  const read=async name=>readFile(new URL("../"+name,import.meta.url),"utf8");
+
+  const codeowners=await read(".github/CODEOWNERS");
+  assert.doesNotMatch(codeowners,PLACEHOLDERS,
+    "CODEOWNERS still contains a placeholder: review would route to nobody");
+  assert.ok([...codeowners.matchAll(/@[\w-]+/g)].length>0,"CODEOWNERS names a reviewer");
+  assert.match(codeowners,/^\*\s+@/m,"every path has a default owner");
+
+  const security=await read("SECURITY.md");
+  assert.doesNotMatch(security,PLACEHOLDERS,
+    "SECURITY.md still contains a placeholder: a vulnerability report would go nowhere");
+  assert.match(security,/@millcreekut\.gov/,
+    "the security contact is a millcreekut.gov address, not a personal or example one");
+  assert.match(security,/Do not open a public GitHub issue/i,
+    "a public repository must say so before someone files a vulnerability in the open");
+  assert.match(security,/\b\d+ (business )?days?\b/i,"a response commitment is stated");
+
+  const dependabot=await read(".github/dependabot.yml");
+  assert.match(dependabot,/package-ecosystem:\s*npm/);
+  assert.match(dependabot,/package-ecosystem:\s*github-actions/,
+    "actions are SHA-pinned, so something has to update the pins");
+  assert.match(dependabot,/interval:\s*weekly/);
+
+  const template=await read(".github/PULL_REQUEST_TEMPLATE.md");
+  assert.match(template,/check:deployment/,"the template asks for deployment evidence");
+  assert.match(template,/SHARED REQUEST LAYER/,"the template protects the shared layer");
+  assert.match(template,/resident data/i,
+    "the template asks whether anything can carry resident data");
+});

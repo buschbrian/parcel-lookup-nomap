@@ -1,0 +1,50 @@
+# Dependency and action updates.
+#
+# Two ecosystems, both deliberate:
+#
+# npm — the toolchain is pinned exactly (vite, playwright, axe are all exact
+# versions, and .nvmrc plus engines pin the runtime). Nothing here floats, so a
+# security fix does not arrive on its own; it arrives as a pull request that runs
+# the full deterministic suite before anyone can merge it. That is the trade this
+# project chose: reproducible builds, and updates that are reviewed rather than
+# absorbed.
+#
+# github-actions — every action is pinned to an immutable commit SHA with its
+# release tag in a trailing comment, and a unit test fails if any is referenced by
+# a mutable tag. Dependabot updates the SHA and rewrites the comment, so the pin
+# stays honest without anyone hand-resolving commits.
+#
+# Weekly, on Monday, ahead of the live-service monitor's Monday run so a failing
+# week is one conversation rather than two.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Denver
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    commit-message:
+      prefix: "chore"
+      include: scope
+    # Group the test toolchain: Playwright's runner and its browser bindings move
+    # together, and splitting them produces pull requests that cannot pass alone.
+    groups:
+      playwright:
+        patterns: ["@playwright/*", "playwright", "@axe-core/*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Denver
+    open-pull-requests-limit: 5
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: "ci"

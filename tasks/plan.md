@@ -127,7 +127,8 @@ The executable checklist and per-task acceptance criteria live in [`tasks/todo.m
 
 ### Phase 4: Establish accountable production delivery
 
-- [ ] Task 9: Establish repository and release governance.
+- [x] Task 9: Establish repository and release governance. Branch protection active on `main`,
+      administrators included; conventions and controls recorded in `RELEASE.md`.
 - [ ] Task 10: Complete accessibility, counsel, privacy, and records gates.
 - [ ] Task 11: Configure institutionally owned staging and production.
 - [ ] Task 12: Rehearse release and rollback, then hold the production go/no-go review.

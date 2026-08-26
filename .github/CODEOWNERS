@@ -1,0 +1,42 @@
+# Who reviews what.
+#
+# Every path has a default owner, so nothing lands without an owner attached.
+#
+# HONEST LIMITATION, 26 August 2026: there is exactly one owner, and he is also
+# the only author. GitHub does not let an author approve their own pull request,
+# so branch protection requires a pull request and a green deterministic CI run
+# but does NOT require an approving review — a requirement that cannot be
+# satisfied is not a control, it is a bypass everyone learns to perform.
+#
+# WHEN A SECOND REVIEWER EXISTS, do two things together:
+#   1. add them below, and
+#   2. raise required_approving_review_count to 1 in branch protection.
+# Neither is worth much without the other. Readiness plan Task 9 and Task 11 own
+# this; open question 2 asks who fills the reviewer role.
+#
+# A GitHub team handle (@millcreek/gis) is preferable to individual accounts once
+# an organization exists, because it survives staff changes and an individual
+# handle does not.
+
+* @buschbrian
+
+# The parts where a mistake is least visible and most expensive.
+#
+# The lookup pages carry the disclaimer wording under legal review, the shared
+# request layer, and every accessibility fix that a plausible-looking CSS change
+# can silently undo.
+/index.html                @buschbrian
+/business-licensing.html   @buschbrian
+
+# The gates themselves. A weakened check is worse than a missing one, because it
+# reports success. Review these as carefully as the code they guard.
+/scripts/                  @buschbrian
+/tests/                    @buschbrian
+/.github/                  @buschbrian
+/netlify.toml              @buschbrian
+/public/_headers           @buschbrian
+
+# The record: what was decided, by whom, and what evidence it rested on.
+/RELEASE.md                @buschbrian
+/tasks/                    @buschbrian
+/DATA-SOURCES.md           @buschbrian

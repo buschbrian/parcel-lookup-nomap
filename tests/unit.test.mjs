@@ -554,3 +554,47 @@ test("the production smoke run cannot capture resident data",async()=>{
   for(const path of ["test-results-production/","production-evidence/"])
     assert.ok(ignored.includes(path),path+" must not be committable");
 });
+
+/* Candidate verification is the evidence a production promotion rests on — readiness
+   Task 6. It must stay a verifier and never become a deployer: no environment, no
+   secret, no promotion step. It must also verify the candidate against the artifact
+   built from the same commit, or its content gate compares two different versions
+   and reports a version gap as deployment drift. */
+test("candidate verification produces evidence and cannot promote a release",async()=>{
+  const workflow=await readFile(new URL("../.github/workflows/verify-deployment.yml",
+    import.meta.url),"utf8");
+
+  assert.match(workflow,/on:\s*[\s\S]*workflow_dispatch:/,"it is run deliberately, by a person");
+  assert.match(workflow,/workflow_call:/,"a release workflow can reuse it");
+  assert.doesNotMatch(workflow,/^\s*(push|schedule):/m,
+    "verification must not be triggered by a push or a timer: it verifies a candidate "+
+    "someone has already deployed");
+
+  assert.match(workflow,/candidate_url:/,"the candidate URL is an explicit input");
+  assert.match(workflow,/required:\s*true/,"the candidate URL cannot be omitted");
+  assert.match(workflow,/permissions:\s*\n\s*contents:\s*read/,"least privilege");
+  assert.doesNotMatch(workflow,/environment:/,
+    "no environment: an environment is how a deployment credential would reach this");
+  assert.doesNotMatch(workflow,/secrets\./,"verification needs no secret");
+  assert.doesNotMatch(workflow,/netlify deploy|--prod|gh release create/,
+    "verification must not deploy or promote anything");
+
+  assert.match(workflow,/timeout-minutes:/,"the job is bounded");
+  assert.doesNotMatch(workflow,/uses:\s*actions\/[\w-]+@v\d/,
+    "actions are pinned to immutable reviewed commits, not to moving tags");
+
+  assert.match(workflow,/npm ci/,"the locked dependency graph, not a fresh resolve");
+  assert.match(workflow,/npm run build/,
+    "the candidate is compared against the artifact this commit builds");
+  assert.match(workflow,/npm run check:deployment/,"content, allowlist and header gates");
+  assert.match(workflow,/npm run test:production/,"both live user flows");
+  assert.match(workflow,/DEPLOY_URL:\s*\$\{\{\s*inputs\.candidate_url\s*\}\}/,
+    "both checks are pointed at the candidate rather than at the default site");
+
+  assert.match(workflow,/sha256sum/,"the built artifact hash is part of the release record");
+  assert.match(workflow,/upload-artifact/,"evidence is retained");
+  assert.match(workflow,/production-evidence\//,"the sanitized smoke evidence is uploaded");
+  assert.doesNotMatch(workflow,/test-results-production\//,
+    "the Playwright output directory is not uploaded: its failure snapshots are "+
+    "redacted but are not release evidence");
+});

@@ -155,15 +155,25 @@ candidate URL and retains the resulting release evidence.
 
 **Acceptance criteria:**
 
-- [ ] Workflow requires a candidate URL and runs deployment integrity plus live browser smoke.
-- [ ] It uses pinned actions, least privileges, bounded timeouts, and uploads sanitized evidence.
-- [ ] The workflow is not an automatic production promotion and has no production credentials.
+- [x] Workflow requires a candidate URL and runs deployment integrity plus live browser smoke.
+      It also builds from the checked-out commit and records the artifact SHA-256, so the content
+      gate compares the candidate against the artifact that commit produces.
+- [x] It uses pinned actions, `contents: read`, a 20-minute bound, and uploads the deployment output
+      and the sanitized smoke evidence for 90 days. The Playwright output directory is deliberately
+      not uploaded.
+- [x] The workflow is not an automatic production promotion: no `environment`, no `secrets.`, no
+      push or schedule trigger, and a unit test fails if any of those appear.
 
 **Verification:**
 
-- [ ] `npm run test:unit` validates workflow permissions, inputs, pins, and commands.
-- [ ] A manual run passes against a Netlify deploy preview.
-- [ ] An intentionally wrong candidate URL produces a clear failed gate.
+- [x] `npm run test:unit` validates triggers, inputs, permissions, pins, commands and evidence paths
+      — and was confirmed to bite by temporarily adding `environment: production` and an unpinned
+      action, which failed it.
+- [ ] A manual run passes against a Netlify deploy preview. **Needs the branch pushed** — a preview
+      does not exist until then. This is Checkpoint B.
+- [x] An intentionally wrong candidate URL produces a clear failed gate: locally, both flows fail on
+      an unresolvable host. The workflow additionally rejects a non-https `candidate_url` before
+      checking anything out. Re-confirm at Checkpoint B through the workflow itself.
 
 **Dependencies:** Tasks 4 and 5.
 

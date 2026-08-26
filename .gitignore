@@ -14,3 +14,10 @@ dist/
 # on GitHub, so committing it would publish it.
 counsel-review/Public-Facing-GIS-Disclaimer-Review.docx
 counsel-review/~$blic-Facing-GIS-Disclaimer-Review.docx
+
+# Release-candidate smoke run (`npm run test:production`). The JSON evidence is
+# sanitized by construction — counts and timings, never result content — but it
+# describes one deployment at one moment and belongs with the release record, not
+# in the repository.
+test-results-production/
+production-evidence/

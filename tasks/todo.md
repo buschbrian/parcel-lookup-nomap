@@ -121,15 +121,25 @@ published synthetic address, without logging returned owner or property details.
 
 **Acceptance criteria:**
 
-- [ ] General and licensing lookups reach “Results ready” against a configurable `DEPLOY_URL`.
-- [ ] The check fails on page errors, failed critical requests, HTTP errors, or axe violations.
-- [ ] Output contains timings, request counts, and pass/fail state but no returned resident data.
+- [x] General and licensing lookups reach “Results ready” against a configurable `DEPLOY_URL`, which
+      is required rather than defaulted, so the suite cannot smoke-test production by accident.
+- [x] The check fails on page errors, failed critical requests, HTTP errors, axe violations, or a
+      status reporting an unavailable data source.
+- [x] Output contains timings, request counts, peak concurrency and pass/fail state but no returned
+      resident data. Tracing, screenshots and video are off; the results body is blanked before the
+      test body returns, because Playwright writes its `error-context.md` page snapshot after it. A
+      unit test fails if any of that is undone.
 
 **Verification:**
 
-- [ ] RED: the smoke test fails against an intentionally invalid local URL or controlled failed route.
-- [ ] GREEN: it passes against a locally served `dist/` using test-controlled services where needed.
-- [ ] A large/manual run passes against the deploy-preview URL and the current live services.
+- [x] RED: both flows fail against an intentionally unresolvable host.
+- [x] GREEN: both pass against a locally served `dist/` and the live services — 40 and 4 service
+      requests, 0 page errors, 0 failed requests, 0 axe violations.
+- [x] A manual run passes against the live deployment: general 224 ms load / 1,365 ms lookup, 40
+      requests, peak concurrency **36**; licensing 131 ms / 872 ms, 4 requests, peak 2. This closes
+      MIGRATION.md's last open step-1 item, the built-page-to-live-service seam.
+- [x] The measured peak of 36 concurrent requests independently reproduces the plan's baseline
+      figure, and this run is the instrument Task 7 needs to prove its limit.
 
 **Dependencies:** Task 4.
 

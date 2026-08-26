@@ -382,6 +382,18 @@ checks whose prerequisite failed are marked skipped rather than silently missing
 
       1 check skipped — a prerequisite failed.
 
+**Verified against production after the merge, 26 August 2026.** All deployment gates pass — both
+pages byte-exact apart from the tolerated hosting injection, 20/20 repository paths unpublished,
+every declared header present. Both live flows clean at peak concurrency 12. `check:services` 51/51
+through the rewritten monitor.
+
+One measurement worth recording so it is not misread later: the first lookup after a deploy took
+**3.9 s**, the second 3.4 s, then 1.4 s, then **880 ms** twice. That is ArcGIS query-cache and
+connection warm-up, not the concurrency limit — 880 ms is exactly the figure measured locally at 12,
+and the unbounded baseline showed the same spread (1365-2382 ms across runs). **A single timing
+sample taken right after a deploy will look like a regression and will not be one.** Take the
+steady-state number.
+
 - [ ] GIS/data owner accepts the monitoring cadence and alert recipient. **Open — human gate.** Two
       decisions go with it: who receives a failed weekly monitor, and whether `maxConcurrent` should
       be lowered from 12 to trade resident wait for politeness to the public services (see Task 7 —

@@ -120,10 +120,10 @@ The executable checklist and per-task acceptance criteria live in [`tasks/todo.m
 
 ### Phase 3: Harden runtime dependencies
 
-- [ ] Task 7: Bound concurrency in the general lookup.
-- [ ] Task 8: Add transient retry and machine-readable evidence to live-service monitoring.
-- [ ] Checkpoint C: Measure the same public test lookup and confirm bounded request concurrency,
-      unchanged results, no accessibility regressions, and useful monitor failure output.
+- [x] Task 7: Bound concurrency in the general lookup. 36 -> 12, chosen by measurement.
+- [x] Task 8: Add transient retry and machine-readable evidence to live-service monitoring.
+- [x] Checkpoint C: Closed 26 August 2026 apart from its human gate — the GIS/data owner still has to
+      accept the monitoring cadence and alert recipient, and may want `maxConcurrent` lower than 12.
 
 ### Phase 4: Establish accountable production delivery
 

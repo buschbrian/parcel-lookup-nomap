@@ -29,6 +29,11 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      # The script writes its own step summary, naming every failed contract and
+      # separating drift (the published data changed; the page may now be wrong)
+      # from transport failure that survived the retries (the service is down,
+      # which is not Millcreek's to fix). The tee'd log is kept as backup for a
+      # crash before the report is written.
       - name: Check live service contracts
         shell: bash
         run: |
@@ -36,11 +41,30 @@ jobs:
           npm run check:services 2>&1 | tee service-contract.txt
           status=${PIPESTATUS[0]}
           set -e
-          {
-            echo "## Live service contract"
-            echo
-            echo '```text'
-            tail -n 80 service-contract.txt
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          if [ ! -s service-contract-report.json ]; then
+            {
+              echo "## Live service contract"
+              echo
+              echo "The monitor did not produce a report - it failed before finishing."
+              echo
+              echo '```text'
+              tail -n 40 service-contract.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
           exit "$status"
+
+      # Retained whether the run passed or failed. A clean report is the evidence a
+      # release candidate needs; a failed one is what the recipient acts on. It is
+      # sanitized by construction - the parcel queries use outFields=*, so owner
+      # names pass through the process that writes it and must never reach the file.
+      - name: Upload the service contract report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: service-contract-${{ github.run_id }}
+          path: |
+            service-contract-report.json
+            service-contract.txt
+          if-no-files-found: warn
+          retention-days: 90

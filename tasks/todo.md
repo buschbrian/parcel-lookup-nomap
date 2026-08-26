@@ -282,15 +282,38 @@ abort semantics, result ordering, and current accessibility behavior.
 
 **Acceptance criteria:**
 
-- [ ] A configurable conservative limit replaces the current all-layer burst.
-- [ ] Cancellation stops queued work and stale searches cannot update the page.
-- [ ] Complete and degraded results remain in configured layer order.
+- [x] `CFG.request.maxConcurrent` replaces the all-layer burst. The gate is in the shared request
+      layer at `fetchJson`, the one choke point every request already passes through, so queries,
+      schema reads and attachment fetches are all bounded — including any added later. FIFO.
+- [x] Cancellation stops queued work: a superseded request is checked before it is queued and again
+      after it acquires its slot, so it never reaches the network. A browser test clears a search
+      mid-lookup and asserts that not one further request is issued.
+- [x] Complete and degraded results remain in configured layer order, both covered by tests. The
+      degraded case fails a layer in the middle of the configured order, which would reorder the
+      page rather than truncate it if display order followed completion.
 
 **Verification:**
 
-- [ ] RED: a browser test demonstrates current peak concurrency exceeds the intended limit.
-- [ ] GREEN: focused browser tests prove the limit, ordering, cancellation, and degraded results.
-- [ ] Full 89-test baseline (plus new tests), build, axe, and live smoke pass.
+- [x] RED: the concurrency assertion failed before the limit existed, and peak was measured at
+      **36** — on production, and again locally with the limit set to 36.
+- [x] GREEN: four browser tests prove the limit, ordering, degraded ordering, and cancellation.
+- [x] 41 unit, 4 Python, **67** browser/axe (was 63), build, and both live flows pass.
+
+**The value was chosen by measurement, not by feel** — three samples per setting against the live
+services:
+
+| `maxConcurrent` | lookup | cost to a resident |
+|:--|:--|:--|
+| 6 | 1365-1891 ms | +57% to +117% |
+| 8 | ~1386 ms | +59% |
+| **12** | **~879 ms** | **+1%** |
+| unbounded (36) | ~871 ms | — |
+
+12 cuts the burst on the public services by two thirds and costs a resident about 1%; 6 or 8 would
+cost roughly 60% more waiting for no further reduction that matters. The critical path is the
+slowest single request, and at 12 the queue drains inside it. **Lowering the value is always safe**
+— it only makes lookups slower — so the GIS/data owner can trade speed for politeness at Checkpoint
+C without any code change.
 
 **Dependencies:** Task 5.
 

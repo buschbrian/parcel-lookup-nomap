@@ -1,6 +1,6 @@
 {
   "name": "millcreek-property-lookup",
-  "version": "2026.8.13",
+  "version": "2026.08.13",
   "private": true,
   "type": "module",
   "packageManager": "npm@10.9.2",

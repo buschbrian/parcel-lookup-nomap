@@ -221,6 +221,13 @@ failed request. It reports load and lookup timings, request counts and peak conc
 > A unit test fails if any of that is undone. Debug a failure locally against `dist/` with the mocked
 > suite instead, where traces are safe.
 
+Both checks also run as one GitHub workflow, **Verify deployment candidate**, started by hand from
+the Actions tab with the candidate URL. It builds the artifact from the checked-out commit, records
+its SHA-256, runs the deployment gates and both live flows, and retains the output for 90 days as the
+release record. It holds no deployment credential and has no environment: it verifies a candidate,
+and promotion stays a human act. Verify a candidate from the commit it was built from — otherwise the
+content gate compares two versions and reports the gap as drift.
+
 GIS staff can reproduce the FEMA full-parcel selection in ArcGIS Pro, ArcGIS Online Notebook, or
 another environment with ArcGIS API for Python installed:
 

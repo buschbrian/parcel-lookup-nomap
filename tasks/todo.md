@@ -103,7 +103,7 @@ documented legacy Pretty URLs transformations and continuing through all header 
 - [x] `npm run build && npm run check:deployment` reaches every gate against the live site:
       `index.html` matches with the documented rewrite tolerated, 20/20 repository paths are
       unpublished, and both pages carry every declared header. `business-licensing.html` reports a
-      **true** difference — the live deploy predates `81f23dc`, and the same comparison against
+      **true** difference — the live deploy predates `757d483`, and the same comparison against
       `main:business-licensing.html` matches with only the recorded root-collapse rewrite. The gate
       now detects a stale deployment, which is the behaviour it was missing.
 
@@ -213,7 +213,7 @@ time is what exposed them:
    gate in the check**, and it would have fired on any host post-processing at all.
 
 **Against production**, `check:deployment` reaches every gate and reports one real difference:
-`business-licensing.html` on the live site predates `81f23dc`. Against the commit actually deployed
+`business-licensing.html` on the live site predates `757d483`. Against the commit actually deployed
 it matches with only the recorded rewrite. That is the gate detecting a stale deployment — the first
 time it has detected anything.
 
@@ -268,12 +268,25 @@ time it has detected anything.
    nothing under it is tracked. `check:deployment` also probes the path, and the site has never
    served it.
 
-   **It remains in git history and is still readable on GitHub**, at commit `278d895` (20 August
-   2026) and in the merge that carried it to `main`. Erasing it requires rewriting published history
-   and force-pushing a public repository, which invalidates every existing clone and the open pull
-   requests. **Task 10 and open question 4 still own that decision — do not rewrite history before
-   counsel and records direction.** The exposure window to date is 20-26 August 2026; whether that
-   requires notification is a records determination, not an engineering one.
+   **Purged from git history on instruction, 26 August 2026.** `git filter-repo` removed the file
+   from every commit, `main` was force-pushed, and the eight merged branches that still carried the
+   old history were deleted. The rewrite was verified two ways: the document appears in no commit and
+   no blob, and `HEAD`'s tree hash is byte-identical to before — so nothing but the document changed.
+   Every historical commit SHA changed as a result, and the references in this repository were
+   remapped through filter-repo's commit map.
+
+   **The rescued copy is at `U:\Parcel Lookup No Map\Public-Facing-GIS-Disclaimer-One-Page-Review.docx`,
+   outside the repository.** By the time the purge ran, git history was the document's only remaining
+   copy — branch switching had removed it from disk — so it was extracted before the rewrite. A
+   pre-purge backup of the whole repository is beside it as `pre-purge-backup.bundle`.
+
+   **The rewrite is not sufficient on its own, and this is still open.** Immediately after the
+   force-push, GitHub still served both the old commit and the full file through its API and through
+   `raw.githubusercontent.com`. Unreachable objects survive until GitHub garbage-collects, and pull
+   request refs keep them reachable indefinitely. **GitHub Support must be asked to purge the cached
+   view; only the account owner can do that.** Until they confirm, treat the document as still
+   exposed. The exposure window began 20 August 2026 and has not closed. Whether it requires
+   notification remains a records determination, not an engineering one.
 
 ## Task 7: Bound general-lookup concurrency
 
@@ -438,7 +451,7 @@ rules, and release records under accountable institutional control.
 
 **Two artefacts of this task, recorded rather than tidied away:**
 
-1. **An empty probe commit is on `main`** (`5ad062c`, "test: probe branch protection"). It is the
+1. **An empty probe commit is on `main`** (`8e895f0`, "test: probe branch protection"). It is the
    commit that proved the first configuration was wrong. Removing it needs a force push to public
    history, which was declined as too blunt an instrument for the harm — an empty, self-describing
    commit — and that judgement stands unless the records owner disagrees.

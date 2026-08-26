@@ -684,9 +684,13 @@ test("candidate verification produces evidence and cannot promote a release",asy
 
 /* The attorney review material must not be in a public repository.
 
-   One of the two documents was committed in 278d895 while the other was ignored by
-   name, and nothing noticed for six days. `.gitignore` listed files, so a document
-   with a slightly different filename was not covered by the rule meant to cover it.
+   One of the two documents was committed on 20 August 2026 while the other was
+   ignored by name, and nothing noticed for six days. `.gitignore` listed files, so a
+   document with a slightly different filename fell outside the rule meant to cover
+   it. That commit has since been purged from history entirely, which cost a rewrite
+   of every SHA in the repository and a request to GitHub Support — the expensive
+   way to learn that the rule should have named the directory.
+
    The directory is ignored now, and this asserts the property that actually matters
    — that nothing under it is tracked — rather than the wording of the rule. */
 test("no attorney review document is tracked in this public repository",async()=>{

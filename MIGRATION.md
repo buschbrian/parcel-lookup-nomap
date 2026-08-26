@@ -70,8 +70,8 @@ allowlist still holds. **Repair it before switching the publish directory** — 
 out the two options and recommends turning Pretty URLs off, since `netlify.toml` already routes
 `/business-licensing` explicitly.
 
-**One more thing to know before step 2:** `dist/` was briefly committed on `main` in `28f7543` and
-untracked again in `ca2a5b2`. It is ignored on both branches now. If it ever shows up in `git status`,
+**One more thing to know before step 2:** `dist/` was briefly committed on `main` in `fdf5aa3` and
+untracked again in `69ac12c`. It is ignored on both branches now. If it ever shows up in `git status`,
 a build has been committed.
 
 ---

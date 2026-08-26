@@ -406,17 +406,47 @@ rules, and release records under accountable institutional control.
 
 **Acceptance criteria:**
 
-- [ ] Named municipal owners approve CODEOWNERS, security contact, dependency update cadence, and
-      incident/build-cop responsibility.
-- [ ] `main` requires review and the deterministic CI check; force pushes and direct production
-      deployment from unreviewed commits are blocked.
-- [ ] The project has an approved version/tag/changelog convention and retained release template.
+- [x] CODEOWNERS, the security contact and the dependency cadence name real people, chosen by the
+      municipality on 26 August 2026: `@buschbrian` as sole code owner, `bbusch@millcreekut.gov` for
+      vulnerability reports, weekly Dependabot for npm and for the SHA-pinned GitHub Actions.
+      **Both files state their own limitation** — one owner, one inbox — rather than implying depth
+      that does not exist. Incident/build-cop responsibility remains open: it belongs with Task 11,
+      because it cannot be assigned to a single named individual and still mean anything.
+- [x] `main` requires a pull request and the `deterministic-tests` check; force pushes, branch
+      deletion and direct pushes are blocked, **administrators included**. Approvals are required at
+      **0** deliberately — one code owner who is also the only author cannot approve his own pull
+      request, and a requirement that cannot be satisfied is a bypass rather than a control. Raise it
+      to 1 the day a second reviewer joins CODEOWNERS.
+- [x] Version, tag, changelog and release-record conventions are in `RELEASE.md`, with the branch
+      protection settings written down beside them — GitHub state is invisible to the repository
+      otherwise, so nobody can tell whether it was applied or notice it being turned off.
 
 **Verification:**
 
-- [ ] Repository files pass local tests and contain real approved owners, not placeholders.
-- [ ] GitHub branch metadata proves protection and required checks are active.
-- [ ] A test pull request cannot merge while CI is red or review is absent.
+- [x] 53 unit tests pass (was 50) and assert no placeholders survive in any governance file.
+- [x] GitHub branch metadata read back with every control active.
+- [x] **A direct push to `main` was attempted, and the first one succeeded.** `Include
+      administrators` was set to *no* on the reasoning that an admin escape hatch avoids lockout;
+      GitHub reported `Bypassed rule violations` and the push landed. With approvals at 0 there was
+      never a lockout to avoid. Corrected, and a second attempt was rejected with `GH006: Protected
+      branch update failed`. The configuration read back correctly **both** times — only trying to
+      violate it told the truth.
+- [x] A pull request cannot merge while CI is red or absent. **Demonstrated by the Task 9 pull
+      request itself**: while `deterministic-tests` was pending, GitHub reported the pull request as
+      `BLOCKED`; it moved to `CLEAN` only once the check passed. No contrived test was needed — the
+      control was exercised by the ordinary work that had to pass through it.
+
+**Two artefacts of this task, recorded rather than tidied away:**
+
+1. **An empty probe commit is on `main`** (`5ad062c`, "test: probe branch protection"). It is the
+   commit that proved the first configuration was wrong. Removing it needs a force push to public
+   history, which was declined as too blunt an instrument for the harm — an empty, self-describing
+   commit — and that judgement stands unless the records owner disagrees.
+2. **Production runs code that is not a tagged release.** The site auto-deploys `main`, so there is
+   no release boundary at all: `CFG.release.version` still reads `2026.08.13` while production
+   serves everything merged since. That is not a version bug — it is the absence of the staging and
+   manual-promotion step that **Task 11 and Task 12** exist to create. The version should be bumped
+   as part of the first real release, with its gates, not casually inside a governance commit.
 
 **Dependencies:** Checkpoints A and B.
 

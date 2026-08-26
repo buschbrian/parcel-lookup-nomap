@@ -275,13 +275,21 @@ DEPLOY_URL=https://deploy-preview-3--parcel-lookup-millcreek.netlify.app/ npm ru
 The check refuses to run without `dist/`. Netlify publishes the build output, so comparing against
 source HTML would prove nothing — a silent fallback would let a broken build pass.
 
-**Two host transformations are tolerated, and only these two.** Netlify's Pretty URLs
-post-processing rewrites `href="/business-licensing.html"` to `href='/business-licensing'` and
-`href="/index.html"` to `href='/'` in the served HTML. Both forms were measured against the live
-site and are declared in `scripts/deployment-content.mjs`; any other byte difference fails. If
-Pretty URLs is ever turned off, the exact comparison passes on its own and the allowances go inert.
-The unit suite fails if the links they describe are renamed, so an allowance cannot outlive the
-rewrite it permits.
+**Host transformations are tolerated only where they are declared**, in
+`scripts/deployment-content.mjs`, and every tolerated one is named in the output of a passing run.
+Any other byte difference fails.
+
+- **Netlify's marketing injection** — a comment and two meta tags carrying UTM campaign tracking,
+  added to production pages on 26 August 2026. Netlify documents no way off it and it is not
+  removable on this plan. Tolerated under protest and narrowly: all three parts, in order. **Remove
+  the allowance when hosting moves or the plan changes** — see `tasks/todo.md`.
+- **The deploy-preview drawer** — preview builds only. Without it, no deploy preview could pass the
+  gate, which is where a release candidate is verified.
+- **Pretty URLs** — `href="/business-licensing.html"` to `href='/business-licensing'` and
+  `href="/index.html"` to `href='/'`. **Turned off in `netlify.toml` on 26 August 2026**, as
+  CHANGES-2026-08-13.md §7 recommended; the explicit redirect already routes `/business-licensing`.
+  The allowances remain for older deploys and go inert on their own. The unit suite fails if the
+  links they describe are renamed, so an allowance cannot outlive the rewrite it permits.
 
 Use Netlify's prior-deploy rollback if a gate fails. A content difference on a page means the
 deployment is not the artifact this repository built — most often a deploy that is behind the branch

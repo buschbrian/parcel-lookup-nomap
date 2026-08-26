@@ -57,6 +57,39 @@ export function stripPreviewDrawer(html){
     : {text:html,stripped:null};
 }
 
+/* Production only, and not by choice. On 26 August 2026 Netlify began injecting a
+   marketing comment and two meta tags into the served pages of this site:
+
+     <!-- This site is hosted on Netlify. Anyone can build and deploy a site
+          like this one for free: https://netlify.new/?utm_campaign=ai-legible&… -->
+     <meta name="hosting-provider" content="Netlify">
+     <meta name="netlify-deploy" content="https://netlify.new/?…">
+
+   It carries UTM campaign tracking and the site id. Netlify documents no opt-out:
+   post-processing offers snippet injection, Pretty URLs and prerendering, and none
+   of them governs this — `pretty_urls = false` shipped and the injection survived
+   it. Removing it requires a paid plan, and the municipality is waiting on a CDN
+   from its IT provider, so the hosting question is open anyway.
+
+   Tolerated under protest, and deliberately narrowly. The alternative was a gate
+   that is red on every production deploy forever, which teaches everyone to ignore
+   it — the failure mode this check was repaired to escape. The match requires all
+   three parts, in order, contiguous: change any of them and the gate fails loudly
+   rather than widening on its own. It is reported on every passing run, so nobody
+   can forget it is there.
+
+   REMOVE THIS when the site moves to municipally controlled hosting, or when the
+   plan tier changes. tasks/todo.md and open question 3 own that. */
+const HOSTING_INJECTION=/\n<!-- This site is hosted on Netlify\.[\s\S]*?-->\n<meta name="hosting-provider" content="Netlify">\n<meta name="netlify-deploy" content="[^"]*">/;
+
+export function stripHostingInjection(html){
+  return HOSTING_INJECTION.test(html)
+    ? {text:html.replace(HOSTING_INJECTION,""),
+      stripped:"the Netlify hosting-provider marketing injection (not removable on "+
+        "this plan — see scripts/deployment-content.mjs)"}
+    : {text:html,stripped:null};
+}
+
 const MAX_SHOWN=160;
 
 function show(line){
@@ -115,8 +148,9 @@ export function compareDeployedHtml(deployed,built,page="the deployed page"){
   /* A deploy preview carries Netlify's own drawer. Remove it first and report it,
      so a preview is verifiable and an operator still sees what was tolerated. */
   const preview=stripPreviewDrawer(deployed);
-  const tolerated=preview.stripped?[preview.stripped]:[];
-  deployed=preview.text;
+  const hosting=stripHostingInjection(preview.text);
+  const tolerated=[preview.stripped,hosting.stripped].filter(Boolean);
+  deployed=hosting.text;
 
   if(deployed===built)
     return {match:true,page,rewritesApplied:tolerated,firstDifference:null};
@@ -170,7 +204,8 @@ export function unpublishedPathFailure(path,status,body,appHtml){
      so it carries the host's chrome too. Strip it from both sides: comparing a
      drawer-stripped probe against a drawer-carrying reference would report every
      probe on a deploy preview as a published file. */
-  if(compareDeployedHtml(body,stripPreviewDrawer(appHtml).text,path).match) return null;
+  const reference=stripHostingInjection(stripPreviewDrawer(appHtml).text).text;
+  if(compareDeployedHtml(body,reference,path).match) return null;
   return path+" is served from the deployment (HTTP "+status+"): the publish "+
     "directory is exposing repository files\n    served: "+show(body.split("\n")[0]);
 }

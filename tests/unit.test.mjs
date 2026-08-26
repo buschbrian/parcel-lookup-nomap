@@ -302,11 +302,117 @@ test("address searches escape typed wildcards in every tier",()=>{
   }
 });
 
-test("CI sets up the Python that the test suite and preview server need",async()=>{
+test("the release toolchain is pinned consistently",async()=>{
+  const packageJson=JSON.parse(await readFile(new URL("../package.json",import.meta.url),"utf8"));
+  const lock=JSON.parse(await readFile(new URL("../package-lock.json",import.meta.url),"utf8"));
+  const nodeVersion=(await readFile(new URL("../.nvmrc",import.meta.url),"utf8").catch(()=>""))
+    .trim();
+  const npmVersion=packageJson.packageManager?.match(/^npm@(.+)$/)?.[1];
+
+  assert.match(nodeVersion,/^\d+\.\d+\.\d+$/,".nvmrc pins one exact Node release");
+  assert.equal(packageJson.engines?.node,nodeVersion,
+    "package.json and .nvmrc pin the same Node release");
+  assert.match(npmVersion,/^\d+\.\d+\.\d+$/,"packageManager pins one exact npm release");
+  assert.equal(packageJson.engines?.npm,npmVersion,
+    "packageManager and engines pin the same npm release");
+  assert.equal(packageJson.devDependencies?.vite,"7.3.6","Vite is pinned exactly");
+  assert.equal(lock.packages?.[""]?.devDependencies?.vite,packageJson.devDependencies.vite,
+    "the lockfile root carries the same Vite pin");
+  assert.equal(lock.packages?.["node_modules/vite"]?.version,packageJson.devDependencies.vite,
+    "the locked Vite package matches the declared version");
+
+  // README states the same contract in prose. Without this it drifts silently while the
+  // machine-readable pins stay perfectly consistent with each other.
+  const readme=await readFile(new URL("../README.md",import.meta.url),"utf8");
+  const documented=readme.match(/\*\*Node (\d+\.\d+\.\d+) with npm (\d+\.\d+\.\d+)\*\*/);
+  assert.ok(documented,"README states the required Node and npm releases");
+  assert.equal(documented[1],nodeVersion,"README documents the pinned Node release");
+  assert.equal(documented[2],npmVersion,"README documents the pinned npm release");
+});
+
+test("deterministic CI is reproducible and preserves failure evidence",async()=>{
   const workflow=await readFile(new URL("../.github/workflows/quality.yml",import.meta.url),"utf8");
-  // npm test runs `python -m unittest`, and Playwright's webServer is python http.server.
-  assert.match(workflow,/actions\/setup-python/,
-    "the workflow provisions Python rather than relying on the runner image");
+  const playwrightConfig=await readFile(
+    new URL("../playwright.config.mjs",import.meta.url),"utf8");
+
+  assert.match(workflow,/permissions:\s*\n\s+contents:\s*read/,
+    "the workflow declares least-privilege repository access");
+  assert.match(workflow,/concurrency:[\s\S]*cancel-in-progress:\s*true/,
+    "superseded branch runs are cancelled");
+  assert.match(workflow,/push:\s*\n\s+branches:\s*\[main\]/,
+    "push CI is limited to main");
+  assert.match(workflow,/pull_request:\s*\n\s+branches:\s*\[main\]/,
+    "pull-request CI targets main");
+  assert.match(workflow,/runs-on:\s*ubuntu-24\.04/,
+    "the runner image is fixed rather than floating on ubuntu-latest");
+
+  for(const [action,sha,tag] of [
+    ["actions/checkout","3d3c42e5aac5ba805825da76410c181273ba90b1","v7.0.1"],
+    ["actions/setup-node","820762786026740c76f36085b0efc47a31fe5020","v7.0.0"],
+    ["actions/setup-python","5fda3b95a4ea91299a34e894583c3862153e4b97","v7.0.0"],
+    ["actions/upload-artifact","043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","v7.0.1"]
+  ]){
+    assert.match(workflow,new RegExp(action.replace("/","\\/")+"@"+sha+"\\s+# "+tag),
+      action+" is pinned to the reviewed "+tag+" commit");
+  }
+  assert.doesNotMatch(workflow,/uses:\s*actions\/[\w-]+@v\d/,
+    "official actions are never referenced by a mutable major tag");
+
+  assert.match(workflow,/node-version-file:\s*['"]?\.nvmrc/,
+    "CI consumes the repository Node version contract");
+  for(const [name,command] of [
+    ["Install locked dependencies","npm ci"],
+    ["Audit production toolchain","npm audit --audit-level=high"],
+    ["Run unit tests","npm run test:unit"],
+    ["Run Python tests","npm run test:python"],
+    ["Build production artifact","npm run build"],
+    ["Install Chromium","npx playwright install --with-deps chromium"],
+    ["Run browser tests","npx playwright test"]
+  ]){
+    assert.match(workflow,new RegExp("name: "+name+"[\\s\\S]{0,100}run: "+command
+      .replace(/[.*+?^${}()|[\]\\]/g,"\\$&")),name+" is an independent CI step");
+  }
+  assert.doesNotMatch(workflow,/run:\s*npm test\s*$/m,
+    "CI does not hide several suites inside one npm test step");
+  assert.match(workflow,/if:\s*failure\(\)[\s\S]{0,300}path:\s*\|[\s\S]{0,120}playwright-report\/[\s\S]{0,120}test-results\//,
+    "browser diagnostics are uploaded on failure");
+  assert.match(playwrightConfig,/\["html",\{[^}]*outputFolder:"playwright-report"[^}]*open:"never"/,
+    "CI generates the Playwright HTML report that the workflow retains");
+});
+
+test("live service monitoring is isolated from deterministic merge quality",async()=>{
+  const quality=await readFile(new URL("../.github/workflows/quality.yml",import.meta.url),"utf8");
+  const monitor=await readFile(
+    new URL("../.github/workflows/live-service-monitor.yml",import.meta.url),"utf8")
+    .catch(()=>"");
+
+  assert.doesNotMatch(quality,/^\s+schedule:|^on:\s*\[[^\]]*\bschedule\b/m,
+    "deterministic quality has no external-service schedule");
+  // `check:deployment` probes the deployed site, so it is candidate verification (Task 6),
+  // never a merge gate. Guard both live-network scripts by command name and by path.
+  assert.doesNotMatch(quality,
+    /check:(?:services|deployment)|scripts\/check-(?:services|deployment)\.mjs|live-service-contract/,
+    "deterministic quality contains no live-network job");
+
+  assert.match(monitor,/workflow_dispatch:/,"the monitor can be run deliberately");
+  assert.match(monitor,/schedule:\s*\n\s+- cron:/,"the monitor observes services on a schedule");
+  assert.doesNotMatch(monitor,
+    /^\s+push:|^\s+pull_request:|^on:\s*\[[^\]]*\b(?:push|pull_request)\b/m,
+    "external availability is not a pull-request or push gate");
+  assert.match(monitor,/permissions:\s*\n\s+contents:\s*read/,
+    "the monitor declares least-privilege repository access");
+  assert.match(monitor,/actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\s+# v7\.0\.1/);
+  assert.match(monitor,/actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020\s+# v7\.0\.0/);
+  assert.doesNotMatch(monitor,/uses:\s*actions\/[\w-]+@v\d/,
+    "monitor actions are pinned to immutable reviewed commits");
+  assert.match(monitor,/node-version-file:\s*['"]?\.nvmrc/);
+  assert.match(monitor,/npm run check:services/);
+  assert.match(monitor,/GITHUB_STEP_SUMMARY/,
+    "the monitor writes a concise Actions summary even when a contract fails");
+  assert.match(monitor,/PIPESTATUS\[0\]/,
+    "the monitor preserves the service command exit code through tee");
+  assert.match(monitor,/exit "\$status"/,
+    "the monitor remains visibly failed after writing evidence");
 });
 
 test("security policy permits authoritative sources and Planning uses its own contact",async()=>{

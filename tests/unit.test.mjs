@@ -428,3 +428,97 @@ test("current documentation does not advertise removed features or stale deploym
   assert.doesNotMatch(readme,/firework restrictions/i);
   assert.match(changes,/resolved/i);
 });
+
+/* Deployed-content verification — ADR-0001 / production readiness Task 4.
+
+   `check:deployment` is the only automated proof that what Netlify serves is what
+   the build produced. It has never gated anything, because Netlify's Pretty URLs
+   post-processing rewrites two links and the check asserted exact bytes and then
+   aborted on the first failure, never reaching the header and allowlist gates.
+
+   The rules below are the contract: exact bytes pass, the two rewrites recorded in
+   CHANGES-2026-08-13.md §7 pass, and everything else fails with a located
+   difference. The comparison is pure so it can be tested without a deployment. */
+import { PRETTY_URL_REWRITES, compareDeployedHtml, missingHeaderDirectives,
+  unpublishedPathFailure } from "../scripts/deployment-content.mjs";
+
+const builtFixture=[
+  "<!DOCTYPE html>","<html lang=\"en-US\">","<body>",
+  "<a href=\"/business-licensing.html\">licensing</a>",
+  "<a href=\"/index.html\">back</a>","</body>","</html>"
+].join("\n");
+
+test("a deployment that matches the built bytes exactly needs no allowance",()=>{
+  const result=compareDeployedHtml(builtFixture,builtFixture,"index.html");
+  assert.equal(result.match,true);
+  assert.deepEqual(result.rewritesApplied,[]);
+});
+
+test("both documented Pretty URLs rewrites are accepted and named",()=>{
+  const deployed=builtFixture
+    .replace("href=\"/business-licensing.html\"","href='/business-licensing'")
+    .replace("href=\"/index.html\"","href='/'");
+  const result=compareDeployedHtml(deployed,builtFixture,"index.html");
+  assert.equal(result.match,true,result.message);
+  assert.equal(result.rewritesApplied.length,PRETTY_URL_REWRITES.length,
+    "both rewrite forms are reported, not just the one that happened to match");
+});
+
+test("an undocumented rewrite of the same link is drift, not an allowance",()=>{
+  // Same href, different transformation: extension kept, quotes changed. Nothing
+  // in the record says Netlify does this, so it must not be waved through.
+  const deployed=builtFixture.replace("href=\"/business-licensing.html\"",
+    "href='/business-licensing.html'");
+  assert.equal(compareDeployedHtml(deployed,builtFixture,"index.html").match,false);
+});
+
+test("unexpected drift is reported with the page and the first differing line",()=>{
+  const deployed=builtFixture.replace("<body>","<body><script>alert(1)</script>");
+  const result=compareDeployedHtml(deployed,builtFixture,"business-licensing.html");
+  assert.equal(result.match,false);
+  assert.equal(result.firstDifference.line,3,"the injected line is located, not just declared");
+  assert.match(result.message,/business-licensing\.html/,"the failing page is named");
+  assert.match(result.message,/line 3/);
+  assert.match(result.message,/alert\(1\)/,"the actual deployed line is shown");
+});
+
+test("truncated deployments are drift rather than a silent match",()=>{
+  const result=compareDeployedHtml(builtFixture.split("\n").slice(0,4).join("\n"),
+    builtFixture,"index.html");
+  assert.equal(result.match,false);
+  assert.equal(result.firstDifference.line,5);
+});
+
+test("the built pages still contain the links the rewrite allowances describe",async()=>{
+  // If a link is renamed, its allowance becomes dead permission to accept a rewrite
+  // that can no longer occur. Fail here rather than let the allowance rot.
+  for(const rewrite of PRETTY_URL_REWRITES){
+    const pages=[html,licensingHtml].filter(page=>page.includes(rewrite.from));
+    assert.ok(pages.length>0,
+      "no page contains "+rewrite.from+", so its Pretty URLs allowance is now dead");
+  }
+});
+
+test("every missing security directive is reported, not only the first",()=>{
+  const headers=new Map([["referrer-policy","strict-origin-when-cross-origin"],
+    ["strict-transport-security","max-age=600"]]);
+  const missing=missingHeaderDirectives({get:name=>headers.get(name)??null},{
+    "referrer-policy":["strict-origin-when-cross-origin"],
+    "strict-transport-security":["max-age=31536000","includeSubDomains"],
+    "x-content-type-options":["nosniff"]
+  });
+  assert.equal(missing.length,3,"a shortened HSTS window, a dropped subdomain flag "+
+    "and an absent header are three findings, not one");
+  assert.ok(missing.every(finding=>/strict-transport-security|x-content-type-options/.test(finding)));
+});
+
+test("a repository path is unpublished when it 404s or answers with the app",()=>{
+  const app=builtFixture;
+  const served=app.replace("href=\"/index.html\"","href='/'");
+  assert.equal(unpublishedPathFailure("/README.md",404,"Not Found",app),null,
+    "a 404 proves the file is not published");
+  assert.equal(unpublishedPathFailure("/README.md",200,served,app),null,
+    "the catch-all rewrite answers with the app, post-processing included");
+  assert.match(unpublishedPathFailure("/README.md",200,"# Millcreek Property Lookup",app),
+    /README\.md/,"repository content served at 200 is the failure this gate exists for");
+});

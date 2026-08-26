@@ -446,7 +446,8 @@ test("current documentation does not advertise removed features or stale deploym
    CHANGES-2026-08-13.md §7 pass, and everything else fails with a located
    difference. The comparison is pure so it can be tested without a deployment. */
 import { PRETTY_URL_REWRITES, compareDeployedHtml, missingHeaderDirectives,
-  stripPreviewDrawer, unpublishedPathFailure } from "../scripts/deployment-content.mjs";
+  stripHostingInjection, stripPreviewDrawer,
+  unpublishedPathFailure } from "../scripts/deployment-content.mjs";
 
 const builtFixture=[
   "<!DOCTYPE html>","<html lang=\"en-US\">","<body>",
@@ -499,6 +500,38 @@ test("a probe answered by a preview's catch-all is not a published file",()=>{
   // it. Comparing a stripped probe against an unstripped reference reported all
   // twenty allowlist probes as published files on the first real preview run.
   assert.equal(unpublishedPathFailure("/README.md",200,previewFixture,previewFixture),null);
+});
+
+/* Tolerated under protest: Netlify injects this into production pages and offers no
+   way off it below a paid plan. The allowance is narrow on purpose — all three parts,
+   in order — so it cannot widen into cover for real drift. */
+const injectionFixture=builtFixture.replace("<html lang=\"en-US\">",
+  "<html lang=\"en-US\">\n<!-- This site is hosted on Netlify. Anyone can build and deploy a site\n"+
+  "     like this one for free: https://netlify.new/?utm_campaign=ai-legible -->\n"+
+  "<meta name=\"hosting-provider\" content=\"Netlify\">\n"+
+  "<meta name=\"netlify-deploy\" content=\"https://netlify.new/?utm_campaign=ai-legible\">");
+
+test("the production hosting injection is tolerated and named on every passing run",()=>{
+  const result=compareDeployedHtml(injectionFixture,builtFixture,"index.html");
+  assert.equal(result.match,true,result.message);
+  assert.ok(result.rewritesApplied.some(name=>/hosting-provider/.test(name)),
+    "a tolerated injection must be reported, so nobody forgets the allowance is there");
+});
+
+test("the hosting allowance needs all three parts and covers nothing else",()=>{
+  // Two of the three: the comment and one meta tag. Not the documented injection,
+  // so not covered — an allowance that matched partially could cover real drift.
+  const partial=injectionFixture.replace(
+    "\n<meta name=\"netlify-deploy\" content=\"https://netlify.new/?utm_campaign=ai-legible\">","");
+  assert.equal(compareDeployedHtml(partial,builtFixture,"index.html").match,false,
+    "a partial match is drift, not the known injection");
+
+  const withDrift=injectionFixture.replace("<body>","<body><script>alert(1)</script>");
+  assert.equal(compareDeployedHtml(withDrift,builtFixture,"index.html").match,false,
+    "content injected elsewhere is still caught while the allowance applies");
+
+  assert.equal(stripHostingInjection(builtFixture).stripped,null,
+    "a page without the injection is returned untouched");
 });
 
 test("an undocumented rewrite of the same link is drift, not an allowance",()=>{
@@ -590,6 +623,15 @@ test("the production smoke run cannot capture resident data",async()=>{
   assert.match(defaultConfig,/testIgnore:\s*"production\.spec\.mjs"/,
     "the deterministic browser suite globs **/*.spec.mjs, so it must exclude the "+
     "production spec explicitly or `npm test` runs a live lookup");
+  /* A `vite preview` from an unrelated project on this machine was listening on
+     4173 — Vite's default preview port — and Playwright reused it. All 63 tests
+     ran against a stranger's page and failed with `CFG is not defined`. The suite
+     must start its own server, always, on a port nothing else defaults to. */
+  assert.match(defaultConfig,/reuseExistingServer:\s*false/,
+    "the browser suite must never adopt a server it did not start");
+  assert.doesNotMatch(defaultConfig,/127\.0\.0\.1:4173/,
+    "4173 is Vite's default preview port and is contended on any machine with "+
+    "another Vite project");
 
   const ignored=await readFile(new URL("../.gitignore",import.meta.url),"utf8");
   for(const path of ["test-results-production/","production-evidence/"])

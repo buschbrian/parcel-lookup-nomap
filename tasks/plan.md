@@ -184,7 +184,12 @@ Every release candidate should retain:
 2. Who fills the code reviewer, GIS/data owner, accessibility reviewer, privacy reviewer, records
    officer, incident owner, and production approver roles?
 3. Should the existing Netlify site remain the staging environment, and which approved platform/site
-   becomes production?
+   becomes production? **Update, 26 August 2026: the municipality's IT provider is supplying a CDN,
+   which is the likely production host.** That makes the current Netlify site a strong candidate for
+   staging rather than production, and it sets a date for removing the hosting-injection allowance in
+   `scripts/deployment-content.mjs`. Task 11 should not be started until the CDN's owner, deploy
+   mechanism and header support are known — `public/_headers` is Netlify-specific, and every security
+   header the deployment gate asserts depends on the new host honouring an equivalent.
 4. Is the attorney-returned disclaimer approved for release, and how should the review document be
    retained or removed from the public repository?
 5. What privacy notice and records schedule apply to public owner display, ArcGIS query URLs,

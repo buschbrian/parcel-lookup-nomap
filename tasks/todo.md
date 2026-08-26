@@ -232,10 +232,21 @@ time it has detected anything.
 
    **The content gate caught it within minutes of first being able to catch anything**, which is the
    clearest possible argument for the gate. It is also the plan's named risk "host HTML processing
-   hides real deployment drift" arriving in reality. Netlify documents no opt-out: the only
-   post-processing key in `netlify.toml` is `[build.processing.html] pretty_urls`. Whether disabling
-   it also disables the injection is being measured on a deploy preview. Related: Task 11 — this is
-   an argument for institutionally owned hosting with a reviewed configuration.
+   hides real deployment drift" arriving in reality.
+
+   **Resolved as far as it can be, 26 August 2026.** Netlify documents no opt-out — post-processing
+   offers snippet injection, Pretty URLs and prerendering, and none of them governs this.
+   `[build.processing.html] pretty_urls = false` shipped to production and the injection survived it,
+   which does at least prove it is not post-processing. The municipality reports no way to remove it
+   below a paid plan.
+
+   The gate now tolerates it, narrowly: all three parts, in order, contiguous, reported on every
+   passing run. The alternative was a production gate that is red forever, which teaches everyone to
+   ignore it — the exact failure this check was repaired to escape. Widening the allowance fails the
+   unit suite. **Remove the allowance when hosting moves or the plan changes.**
+
+   Net effect on the production pages: the Pretty URLs rewrite is gone, so the only tolerated
+   difference is this injection. Everything else is byte-exact.
 
 1. **Task 8 has already reproduced itself.** `npm run check:services` hit a TLS `ECONNRESET` after 7
    of 51 checks on one run on 26 August 2026 and passed 51/51 on the next, with no change in between.

@@ -639,3 +639,25 @@ test("candidate verification produces evidence and cannot promote a release",asy
     "the Playwright output directory is not uploaded: its failure snapshots are "+
     "redacted but are not release evidence");
 });
+
+/* The attorney review material must not be in a public repository.
+
+   One of the two documents was committed in 278d895 while the other was ignored by
+   name, and nothing noticed for six days. `.gitignore` listed files, so a document
+   with a slightly different filename was not covered by the rule meant to cover it.
+   The directory is ignored now, and this asserts the property that actually matters
+   — that nothing under it is tracked — rather than the wording of the rule. */
+test("no attorney review document is tracked in this public repository",async()=>{
+  const { execFileSync }=await import("node:child_process");
+  const root=new URL("../",import.meta.url);
+  let tracked;
+  try{
+    tracked=execFileSync("git",["ls-files","counsel-review"],
+      {cwd:root,encoding:"utf8",stdio:["ignore","pipe","ignore"]});
+  }catch{
+    return;  // not a git checkout (a release tarball, say): nothing to assert
+  }
+  assert.equal(tracked.trim(),"",
+    "counsel-review/ is tracked, and this repository is public on GitHub. The "+
+    "documents belong on disk and in the municipal record, not in git history.");
+});

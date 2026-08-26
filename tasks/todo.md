@@ -228,13 +228,23 @@ time it has detected anything.
    the checks that gate a release are being run on a runtime the release does not declare. Whoever
    runs the release rehearsal should be on the pinned version, or the pin should be revised
    deliberately. Related: Task 9.
-3. **The attorney review document is committed to a public repository.** `counsel-review/
-   Public-Facing-GIS-Disclaimer-One-Page-Review.docx` is tracked and the GitHub repository is public,
-   while its sibling `Public-Facing-GIS-Disclaimer-Review.docx` is gitignored with the comment "this
-   repository is public on GitHub, so committing it would publish it". It is not served by the site —
-   `check:deployment` now probes for it — but it is readable on GitHub and is in the history, so
-   removing it needs a history rewrite. **Task 10 and open question 4 own this; do not delete it
-   before counsel and records direction.** Raised 26 August 2026.
+3. **The attorney review document was committed to a public repository.** `counsel-review/
+   Public-Facing-GIS-Disclaimer-One-Page-Review.docx` was tracked while its sibling was gitignored
+   with the comment "this repository is public on GitHub, so committing it would publish it".
+   `.gitignore` listed files by name, so a document with a slightly different filename fell outside
+   the rule meant to cover it, and nothing noticed for six days.
+
+   **Untracked 26 August 2026 on instruction.** The document stays on disk; the whole
+   `counsel-review/` directory is now ignored rather than named files; a unit test asserts that
+   nothing under it is tracked. `check:deployment` also probes the path, and the site has never
+   served it.
+
+   **It remains in git history and is still readable on GitHub**, at commit `278d895` (20 August
+   2026) and in the merge that carried it to `main`. Erasing it requires rewriting published history
+   and force-pushing a public repository, which invalidates every existing clone and the open pull
+   requests. **Task 10 and open question 4 still own that decision — do not rewrite history before
+   counsel and records direction.** The exposure window to date is 20-26 August 2026; whether that
+   requires notification is a records determination, not an engineering one.
 
 ## Task 7: Bound general-lookup concurrency
 

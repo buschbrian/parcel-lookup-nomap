@@ -108,9 +108,15 @@ The executable checklist and per-task acceptance criteria live in [`tasks/todo.m
 - [x] Task 4: Repair exact deployment-content verification.
 - [x] Task 5: Add a privacy-preserving live browser smoke test.
 - [x] Task 6: Add candidate deployment verification with retained evidence.
-- [ ] Checkpoint B: Run all deterministic checks and candidate verification against a Netlify deploy
-      preview derived from the same commit. **Local half done 26 August 2026; the preview half needs
-      the branch pushed.**
+- [x] Checkpoint B: Closed 26 August 2026. Deterministic CI green on Linux, and every deployment gate
+      plus both live flows verified against `deploy-preview-3`, whose artifact is byte-identical to
+      this branch's. Verifying a real preview exposed two defects in the new check — the injected
+      preview drawer and an allowlist cascade — both fixed and covered. No promotion occurred.
+
+      One item remains external: the **Verify deployment candidate** workflow cannot be dispatched
+      until it exists on the default branch, which is a GitHub constraint on `workflow_dispatch`, not
+      a defect. Its contract is unit-tested and both commands it runs were executed by hand against
+      the same preview.
 
 ### Phase 3: Harden runtime dependencies
 

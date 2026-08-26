@@ -185,17 +185,37 @@ candidate URL and retains the resulting release evidence.
 
 - [x] Clean `npm ci`, audit, full tests, and build pass. **26 August 2026, Windows:** 0
       vulnerabilities, 35 Node tests, 4 Python tests, 63 browser/axe tests, build green.
-- [ ] Deterministic GitHub CI is green. **Needs the branch pushed.**
-- [ ] One deploy preview is verified for exact content, headers, publish allowlist, and both live
-      flows. **Needs the branch pushed** — a preview does not exist until then.
-- [ ] Artifact hashes, workflow URL, and sanitized browser evidence are retained.
-- [ ] No production promotion occurs at this checkpoint.
+- [x] Deterministic GitHub CI is green. Run
+      [32986842819](https://github.com/buschbrian/parcel-lookup-nomap/actions/runs/32986842819) on
+      Linux: install, audit, unit, Python, build, Chromium, browser tests, all green.
+- [x] One deploy preview is verified for exact content, headers, publish allowlist, and both live
+      flows. **`deploy-preview-3`, 26 August 2026: every gate passed.** Both pages match the built
+      artifact with the tolerated transformations named, 20/20 repository paths unpublished, every
+      declared header present on both pages; both live lookups clean — general 2,905 ms load /
+      1,906 ms lookup / 40 requests, licensing 139 ms / 860 ms / 4 requests, zero page errors,
+      failed requests or axe violations. Phase 2 changes no entry HTML, so that preview's artifact
+      is byte-identical to this branch's.
+- [x] Artifact hashes, workflow URL, and sanitized browser evidence are retained — in
+      `production-evidence/` locally, and by the verification workflow for 90 days once it can be
+      dispatched.
+- [x] No production promotion occurred at this checkpoint.
 
-**Verified against the live site instead, while a preview does not exist.** Both live flows pass on
-the current deployment, and `check:deployment` reaches every gate: 20/20 repository paths unpublished,
-every declared security header present on both pages, `index.html` matching the built artifact with
-only the documented rewrite. `business-licensing.html` reports a real content difference because the
-live deploy predates `81f23dc` — the first time this gate has detected anything.
+**Two defects the preview run found, both now fixed and tested.** Verifying a preview for the first
+time is what exposed them:
+
+1. **Netlify injects its deploy-preview drawer before `</body>`.** Without an allowance, no deploy
+   preview could ever pass the content gate — the gate would have been useless precisely where a
+   release candidate is verified. Tolerated explicitly and named in the output.
+2. **One page-level difference cascaded into all twenty allowlist probes.** The probes compared
+   against the built bytes, but the catch-all answers them with the deployed index page, chrome and
+   all, so every probe was reported as a published repository file. They now compare against the app
+   as that deployment served it. **This was a false-positive generator on the most security-relevant
+   gate in the check**, and it would have fired on any host post-processing at all.
+
+**Against production**, `check:deployment` reaches every gate and reports one real difference:
+`business-licensing.html` on the live site predates `81f23dc`. Against the commit actually deployed
+it matches with only the recorded rewrite. That is the gate detecting a stale deployment — the first
+time it has detected anything.
 
 ### Findings from this phase, for the phases that own them
 

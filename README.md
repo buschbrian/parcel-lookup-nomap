@@ -197,8 +197,36 @@ npm ci
 npx playwright install chromium
 npm test
 npm run check:services       # live public ArcGIS contract check
-npm run check:deployment     # after Netlify has deployed the commit — see the known issue below
+npm run build                 # check:deployment compares against dist/, so build first
+npm run check:deployment     # after Netlify has deployed the commit, or against DEPLOY_URL
 ```
+
+A release candidate gets one more check that nothing else covers — a real lookup, in a real browser,
+through the deployed pages against the live public services:
+
+```bash
+DEPLOY_URL=https://deploy-preview-4--parcel-lookup-millcreek.netlify.app/ npm run test:production
+```
+
+`npm test` mocks every ArcGIS response, so it proves the code and nothing about the deployment.
+This run mocks nothing. It looks up the published synthetic address on both pages, requires a ready
+status with no unavailable source, scans each results page with axe, and fails on any page error or
+failed request. It reports load and lookup timings, request counts and peak concurrency to
+`production-evidence/`, which belongs with the release record.
+
+> **It touches real resident data, so it retains none.** The address is the synthetic fixture already
+> published in this repository, but the parcel it returns is real — owner name and mailing details.
+> Tracing, screenshots and video are off, the assertions count fields rather than read them, and the
+> results body is blanked before the test ends so Playwright's failure snapshot cannot capture it.
+> A unit test fails if any of that is undone. Debug a failure locally against `dist/` with the mocked
+> suite instead, where traces are safe.
+
+Both checks also run as one GitHub workflow, **Verify deployment candidate**, started by hand from
+the Actions tab with the candidate URL. It builds the artifact from the checked-out commit, records
+its SHA-256, runs the deployment gates and both live flows, and retains the output for 90 days as the
+release record. It holds no deployment credential and has no environment: it verifies a candidate,
+and promotion stays a human act. Verify a candidate from the commit it was built from — otherwise the
+content gate compares two versions and reports the gap as drift.
 
 GIS staff can reproduce the FEMA full-parcel selection in ArcGIS Pro, ArcGIS Online Notebook, or
 another environment with ArcGIS API for Python installed:
@@ -234,16 +262,31 @@ Deploy this as its **own** site. Do not place it inside the Experience Builder s
 directory — an ExB Developer Edition publish replaces that whole directory and would silently
 delete this app.
 
-After Netlify reports a successful deploy, run `npm run check:deployment`. It compares the live
-HTML byte-for-byte with the repository and verifies the security/cache headers. Use Netlify's prior
-deploy rollback if either check fails.
+After Netlify reports a successful deploy, run `npm run build && npm run check:deployment`. It
+compares both live pages against the **built artifact** in `dist/`, proves that no repository file is
+published, and verifies every security and cache header. It runs every gate and reports all findings
+rather than stopping at the first, and it names the page, line and column of any content difference.
+Point it at a deploy preview to verify a release candidate before promoting it:
 
-> **Known issue, as of 13 August 2026: this check fails for a reason that is not a deployment fault.**
-> Netlify's Pretty URLs post-processing rewrites the one `.html` link in the deployed HTML, so the
-> byte comparison can never match and it aborts before checking any header. The headers and the
-> publish allowlist were verified by hand and are correct. Until the check is repaired, confirm a
-> deploy by checking the headers and spot-probing a few repository paths, and do not read a red
-> `check:deployment` as a reason to roll back. See CHANGES-2026-08-13.md §7.
+```bash
+DEPLOY_URL=https://deploy-preview-3--parcel-lookup-millcreek.netlify.app/ npm run check:deployment
+```
+
+The check refuses to run without `dist/`. Netlify publishes the build output, so comparing against
+source HTML would prove nothing — a silent fallback would let a broken build pass.
+
+**Two host transformations are tolerated, and only these two.** Netlify's Pretty URLs
+post-processing rewrites `href="/business-licensing.html"` to `href='/business-licensing'` and
+`href="/index.html"` to `href='/'` in the served HTML. Both forms were measured against the live
+site and are declared in `scripts/deployment-content.mjs`; any other byte difference fails. If
+Pretty URLs is ever turned off, the exact comparison passes on its own and the allowances go inert.
+The unit suite fails if the links they describe are renamed, so an allowance cannot outlive the
+rewrite it permits.
+
+Use Netlify's prior-deploy rollback if a gate fails. A content difference on a page means the
+deployment is not the artifact this repository built — most often a deploy that is behind the branch
+you are checking from, which the reported line will usually make obvious.
+
 
 ---
 

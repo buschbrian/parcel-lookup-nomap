@@ -1,0 +1,139 @@
+# Verify a release candidate that is already deployed somewhere.
+#
+# This workflow does NOT deploy or promote anything. It takes a URL that someone
+# has already published — a Netlify deploy preview, the staging site, or
+# production immediately after a promotion — and answers one question: is what is
+# being served the artifact this repository builds, and does a resident's lookup
+# actually work on it?
+#
+# It holds no deployment credential and has no environment, by design. Promotion
+# is a human act performed by the designated municipal approver (readiness plan
+# Task 12); this workflow only produces the evidence that approval rests on.
+#
+# Run it from the Actions tab, or call it from another workflow with
+# `uses: ./.github/workflows/verify-deployment.yml`.
+
+name: Verify deployment candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_url:
+        description: "URL of the deployed candidate, e.g. https://deploy-preview-4--parcel-lookup-millcreek.netlify.app/"
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      candidate_url:
+        description: "URL of the deployed candidate to verify"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-deployment-${{ inputs.candidate_url }}
+  cancel-in-progress: false
+
+jobs:
+  verify-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DEPLOY_URL: ${{ inputs.candidate_url }}
+    steps:
+      - name: Check the candidate URL is https
+        shell: bash
+        run: |
+          case "$DEPLOY_URL" in
+            https://*) ;;
+            *) echo "candidate_url must be https: got $DEPLOY_URL" >&2; exit 1 ;;
+          esac
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      # The candidate is compared against the artifact THIS commit builds. Verify a
+      # candidate from the commit it was built from, or the comparison is meaningless
+      # and the content gate will report a difference that is really a version gap.
+      - name: Build the artifact to compare against
+        run: npm run build
+
+      - name: Record the artifact hashes
+        shell: bash
+        run: |
+          {
+            echo "## Candidate"
+            echo
+            echo "- URL: \`$DEPLOY_URL\`"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Node: \`$(node --version)\`, npm \`$(npm --version)\`"
+            echo
+            echo "### Built artifact"
+            echo
+            echo '```text'
+            sha256sum dist/index.html dist/business-licensing.html
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify deployed content, publish allowlist and security headers
+        shell: bash
+        run: |
+          set +e
+          npm run check:deployment 2>&1 | tee deployment-check.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          {
+            echo "### Deployment integrity"
+            echo
+            echo '```text'
+            tail -n 60 deployment-check.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # A real lookup on the candidate, against the live public services. This step
+      # retains counts and timings only: see tests/production.spec.mjs on why nothing
+      # that could hold a returned record is captured.
+      - name: Run the live browser smoke test
+        run: npm run test:production
+
+      - name: Summarize the smoke evidence
+        if: always()
+        shell: bash
+        run: |
+          if [ ! -d production-evidence ]; then
+            echo "No smoke evidence was produced." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "### Live flow evidence"
+            echo
+            echo '```json'
+            cat production-evidence/*.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: candidate-verification-${{ github.run_id }}
+          path: |
+            deployment-check.txt
+            production-evidence/
+          if-no-files-found: ignore
+          retention-days: 90

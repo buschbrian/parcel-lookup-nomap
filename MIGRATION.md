@@ -145,10 +145,12 @@ Then confirm by hand, because these are the things a green suite will not tell y
       that last one **is** a `.md`, so the check as originally written does not pass literally; it was
       equally published before the migration, so it is not a regression, but `public/assets/README.md`
       is worth removing or moving if the intent is a strictly Markdown-free artifact.
-- [ ] Both pages perform a real lookup in `npm run preview`. **Not done.** The browser suite exercises
-      `dist/` with mocked ArcGIS responses, which is not the same as one live lookup through the built
-      artifact. `check:services` passing 51/51 covers the services themselves, so the untested seam is
-      specifically built-page-to-live-service. **Do this before deploying.**
+- [x] Both pages perform a real lookup through the built artifact. **Closed 26 August 2026**, and in a
+      stronger form than this checkbox asked for: `npm run test:production` runs both lookups in a real
+      browser against a deployed URL and the live services, with an axe scan on each results page. It
+      passes against `dist/` served locally and against the live site — 0 page errors, 0 failed
+      requests, 0 axe violations, general lookup 1.4 s, licensing 0.9 s. The seam this named —
+      built-page-to-live-service — is now a repeatable gate rather than a manual step.
 - [x] `dist/index.html` still contains the inline `<script>` — at step 1 nothing should be bundled
       out of it yet. **Verified**, and the built pages are byte-identical to source, which is the
       stronger form of the same claim.

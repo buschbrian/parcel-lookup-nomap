@@ -92,15 +92,20 @@ documented legacy Pretty URLs transformations and continuing through all header 
 
 **Acceptance criteria:**
 
-- [ ] Pure comparison logic accepts exact bytes and each precisely documented rewrite form.
-- [ ] Any other byte change fails with the page name and useful first-difference context.
-- [ ] `check:deployment` reaches and enforces repository-path and security-header assertions.
+- [x] Pure comparison logic accepts exact bytes and each precisely documented rewrite form.
+- [x] Any other byte change fails with the page name and useful first-difference context.
+- [x] `check:deployment` reaches and enforces repository-path and security-header assertions.
 
 **Verification:**
 
-- [ ] RED: focused tests reproduce the current Pretty URLs failure and an unexpected-drift case.
-- [ ] GREEN: comparison unit tests and `npm run test:unit` pass.
-- [ ] `npm run build && npm run check:deployment` passes against the current deployment.
+- [x] RED: focused tests reproduce the current Pretty URLs failure and an unexpected-drift case.
+- [x] GREEN: comparison unit tests and `npm run test:unit` pass — 33 tests, 8 new.
+- [x] `npm run build && npm run check:deployment` reaches every gate against the live site:
+      `index.html` matches with the documented rewrite tolerated, 20/20 repository paths are
+      unpublished, and both pages carry every declared header. `business-licensing.html` reports a
+      **true** difference — the live deploy predates `81f23dc`, and the same comparison against
+      `main:business-licensing.html` matches with only the recorded root-collapse rewrite. The gate
+      now detects a stale deployment, which is the behaviour it was missing.
 
 **Dependencies:** Task 1.
 

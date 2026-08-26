@@ -183,11 +183,38 @@ candidate URL and retains the resulting release evidence.
 
 ## Checkpoint B: Prove a release candidate
 
-- [ ] Clean `npm ci`, audit, full tests, and build pass.
-- [ ] Deterministic GitHub CI is green.
-- [ ] One deploy preview is verified for exact content, headers, publish allowlist, and both live flows.
+- [x] Clean `npm ci`, audit, full tests, and build pass. **26 August 2026, Windows:** 0
+      vulnerabilities, 35 Node tests, 4 Python tests, 63 browser/axe tests, build green.
+- [ ] Deterministic GitHub CI is green. **Needs the branch pushed.**
+- [ ] One deploy preview is verified for exact content, headers, publish allowlist, and both live
+      flows. **Needs the branch pushed** — a preview does not exist until then.
 - [ ] Artifact hashes, workflow URL, and sanitized browser evidence are retained.
 - [ ] No production promotion occurs at this checkpoint.
+
+**Verified against the live site instead, while a preview does not exist.** Both live flows pass on
+the current deployment, and `check:deployment` reaches every gate: 20/20 repository paths unpublished,
+every declared security header present on both pages, `index.html` matching the built artifact with
+only the documented rewrite. `business-licensing.html` reports a real content difference because the
+live deploy predates `81f23dc` — the first time this gate has detected anything.
+
+### Findings from this phase, for the phases that own them
+
+1. **Task 8 has already reproduced itself.** `npm run check:services` hit a TLS `ECONNRESET` after 7
+   of 51 checks on one run on 26 August 2026 and passed 51/51 on the next, with no change in between.
+   That is precisely the transient-versus-contract distinction Task 8 exists to draw, and it means the
+   weekly monitor will raise false alarms until it does.
+2. **The developer toolchain drifts from the pin.** `npm ci` warns `EBADENGINE`: the pinned contract
+   is Node 22.15.0 / npm 10.9.2, this machine runs Node 24.16.0 / npm 11.13.0. Everything passes, but
+   the checks that gate a release are being run on a runtime the release does not declare. Whoever
+   runs the release rehearsal should be on the pinned version, or the pin should be revised
+   deliberately. Related: Task 9.
+3. **The attorney review document is committed to a public repository.** `counsel-review/
+   Public-Facing-GIS-Disclaimer-One-Page-Review.docx` is tracked and the GitHub repository is public,
+   while its sibling `Public-Facing-GIS-Disclaimer-Review.docx` is gitignored with the comment "this
+   repository is public on GitHub, so committing it would publish it". It is not served by the site —
+   `check:deployment` now probes for it — but it is readable on GitHub and is in the history, so
+   removing it needs a history rewrite. **Task 10 and open question 4 own this; do not delete it
+   before counsel and records direction.** Raised 26 August 2026.
 
 ## Task 7: Bound general-lookup concurrency
 

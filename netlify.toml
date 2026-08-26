@@ -28,6 +28,22 @@
   publish = "dist"
   command = "npm run build"
 
+# Netlify's HTML post-processing rewrote two links in the served pages — the .html
+# extension stripped and re-quoted, and /index.html collapsed to the directory root —
+# so the deployed bytes matched no commit in the repository and the post-deploy
+# content gate could never pass. CHANGES-2026-08-13.md §7 recommended turning it off
+# rather than teaching the gate to expect mutation: the redirect below already routes
+# /business-licensing explicitly, so the feature is redundant here.
+#
+# It is also the only post-processing control Netlify documents for netlify.toml, and
+# so the only available lever against the marketing comment and hosting-provider meta
+# tags that appeared in the production pages on 26 August 2026. That injection is
+# applied to PRODUCTION DEPLOYS ONLY — a deploy preview of this very commit does not
+# carry it — so whether this setting removes it can only be observed after a
+# production deploy. See tasks/todo.md.
+[build.processing.html]
+  pretty_urls = false
+
 [[redirects]]
   # A readable URL for the focused short-term-rental licensing screen.
   from = "/business-licensing"

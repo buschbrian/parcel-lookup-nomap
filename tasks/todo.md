@@ -219,6 +219,24 @@ time it has detected anything.
 
 ### Findings from this phase, for the phases that own them
 
+0. **Netlify began injecting vendor marketing into both deployed pages, 26 August 2026.** Within
+   twenty minutes of the repaired gate first passing against production, the next deploy started
+   serving an HTML comment advertising Netlify with UTM campaign tracking, plus
+   `<meta name="hosting-provider">` and `<meta name="netlify-deploy">` carrying a `netlify.new`
+   referral URL and the site id. Third-party marketing with campaign tracking on a municipal
+   government page is a policy question, not only an engineering one.
+
+   The lookups are unaffected — `test:production` passes on both flows — and the injection is inert
+   metadata with no script. `deploy-preview-3`, built on 24 August, does not carry it, so it is
+   applied at deploy post-processing rather than at the edge.
+
+   **The content gate caught it within minutes of first being able to catch anything**, which is the
+   clearest possible argument for the gate. It is also the plan's named risk "host HTML processing
+   hides real deployment drift" arriving in reality. Netlify documents no opt-out: the only
+   post-processing key in `netlify.toml` is `[build.processing.html] pretty_urls`. Whether disabling
+   it also disables the injection is being measured on a deploy preview. Related: Task 11 — this is
+   an argument for institutionally owned hosting with a reviewed configuration.
+
 1. **Task 8 has already reproduced itself.** `npm run check:services` hit a TLS `ECONNRESET` after 7
    of 51 checks on one run on 26 August 2026 and passed 51/51 on the next, with no change in between.
    That is precisely the transient-versus-contract distinction Task 8 exists to draw, and it means the

@@ -22,7 +22,7 @@ Audit date: 24 August 2026.
 - `npm audit` reports zero known vulnerabilities in the locked dependency graph.
 - Both deployed lookup flows currently succeed, but one general lookup peaks at 36 concurrent
   requests to ArcGIS/FEMA.
-- GitHub Actions has 16 consecutive failures beginning with `5461270`; private step logs are not
+- GitHub Actions has 16 consecutive failures beginning with `16a795d`; private step logs are not
   available until GitHub CLI authentication is restored.
 - `scripts/check-deployment.mjs` cannot currently pass because Netlify Pretty URLs performs two
   known HTML rewrites before the exact-content assertion.
@@ -100,7 +100,7 @@ The executable checklist and per-task acceptance criteria live in [`tasks/todo.m
 - [x] Task 3: Separate the live-service monitor from merge quality.
 - [x] Checkpoint A: Closed. The first diagnostic Linux run named the failing step, and the failure was
       real — `.nav a` is shrink-to-fit and overflowed a 320 px container at 400% under the Linux
-      default sans while Windows' Segoe UI happened to fit. Fixed in `81f23dc` with a reproduction
+      default sans while Windows' Segoe UI happened to fit. Fixed in `757d483` with a reproduction
       test; no assertion was weakened. Deterministic CI is green (PR #3).
 
 ### Phase 2: Prove a release candidate

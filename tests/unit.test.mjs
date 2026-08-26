@@ -341,8 +341,14 @@ test("deterministic CI is reproducible and preserves failure evidence",async()=>
     "superseded branch runs are cancelled");
   assert.match(workflow,/push:\s*\n\s+branches:\s*\[main\]/,
     "push CI is limited to main");
-  assert.match(workflow,/pull_request:\s*\n\s+branches:\s*\[main\]/,
-    "pull-request CI targets main");
+  /* Deliberately unfiltered. A `branches: [main]` filter here meant a pull request
+     stacked on another branch ran no checks, which is how this plan's phases are
+     reviewed — Phase 2 opened against the Phase 1 branch and got nothing. */
+  assert.doesNotMatch(workflow,/pull_request:\s*\n\s+branches:/,
+    "pull-request CI must not be limited by base branch: a stacked pull request "+
+    "would run no checks and could land unverified");
+  assert.match(workflow,/pull_request:\s*\n\s+workflow_dispatch:/,
+    "the pull_request trigger takes no configuration");
   assert.match(workflow,/runs-on:\s*ubuntu-24\.04/,
     "the runner image is fixed rather than floating on ubuntu-latest");
 

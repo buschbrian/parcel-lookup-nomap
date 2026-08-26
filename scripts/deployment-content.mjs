@@ -36,6 +36,27 @@ export const PRETTY_URL_REWRITES=[
   }
 ];
 
+/* Deploy previews only. Netlify injects its preview drawer immediately before
+   </body> on a deploy-preview build, tagged with the deploy and site ids:
+
+     <div data-netlify-deploy-id="…" data-netlify-site-id="…" data-vcs="github" style="position:fixed">
+       <script async src="/.netlify/scripts/cdp"></script>
+     </div>
+
+   Without an allowance, no deploy preview can ever pass the content gate — which
+   would make the gate useless exactly where a release candidate is verified. The
+   allowance is safe to apply unconditionally because the marker is unforgeable in
+   practice and self-identifying: production does not serve it, and if it ever
+   appeared there the tolerated-transformation line would say so out loud rather
+   than pass in silence. Measured against deploy-preview-3, 26 August 2026. */
+const PREVIEW_DRAWER=/\n<div data-netlify-deploy-id="[^"]*"[\s\S]*?<\/div>(?=\n<\/body>)/;
+
+export function stripPreviewDrawer(html){
+  return PREVIEW_DRAWER.test(html)
+    ? {text:html.replace(PREVIEW_DRAWER,""),stripped:"the Netlify deploy-preview drawer"}
+    : {text:html,stripped:null};
+}
+
 const MAX_SHOWN=160;
 
 function show(line){
@@ -91,11 +112,19 @@ function firstDifference(actual,expected){
    closely — the raw build or the rewritten build — so the message points at the real
    drift rather than at the Pretty URLs link every time. */
 export function compareDeployedHtml(deployed,built,page="the deployed page"){
-  if(deployed===built) return {match:true,page,rewritesApplied:[],firstDifference:null};
+  /* A deploy preview carries Netlify's own drawer. Remove it first and report it,
+     so a preview is verifiable and an operator still sees what was tolerated. */
+  const preview=stripPreviewDrawer(deployed);
+  const tolerated=preview.stripped?[preview.stripped]:[];
+  deployed=preview.text;
+
+  if(deployed===built)
+    return {match:true,page,rewritesApplied:tolerated,firstDifference:null};
   const forms=acceptableForms(built);
   const accepted=forms.find(form=>form.text===deployed);
   if(accepted)
-    return {match:true,page,rewritesApplied:accepted.applied,firstDifference:null};
+    return {match:true,page,rewritesApplied:[...tolerated,...accepted.applied],
+      firstDifference:null};
 
   const candidates=forms.map(form=>({
     label:form.applied.length
@@ -137,7 +166,11 @@ export function missingHeaderDirectives(headers,required){
    path the catch-all does not cover. Returns a failure message, or null. */
 export function unpublishedPathFailure(path,status,body,appHtml){
   if(status===404) return null;
-  if(compareDeployedHtml(body,appHtml,path).match) return null;
+  /* The reference here is usually the app page as this same deployment served it,
+     so it carries the host's chrome too. Strip it from both sides: comparing a
+     drawer-stripped probe against a drawer-carrying reference would report every
+     probe on a deploy preview as a published file. */
+  if(compareDeployedHtml(body,stripPreviewDrawer(appHtml).text,path).match) return null;
   return path+" is served from the deployment (HTTP "+status+"): the publish "+
     "directory is exposing repository files\n    served: "+show(body.split("\n")[0]);
 }

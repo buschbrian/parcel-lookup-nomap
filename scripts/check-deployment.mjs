@@ -79,11 +79,20 @@ const mustNotBePublished=["/CODE.md","/USAGE.md","/README.md","/DATA-SOURCES.md"
   "/tasks/plan.md","/tasks/todo.md","/.github/workflows/quality.yml",
   "/counsel-review/Public-Facing-GIS-Disclaimer-One-Page-Review.docx",
   "/docs/decisions/0001-use-vite-with-build-time-configuration.md"];
+/* Compare each probe against the app AS THIS DEPLOYMENT SERVES IT, not against the
+   built bytes. The catch-all answers unmatched paths with index.html, so whatever
+   the host did to that page — Pretty URLs, a deploy-preview drawer — is in every
+   probe response too. Comparing to the build made one page-level difference cascade
+   into a failure on all twenty paths, none of which was actually published. The
+   served page is the right reference; a published repository file still stands out,
+   because it answers with its own content. Falls back to the build if the page
+   could not be fetched, which is already a reported failure by then. */
+const servedApp=pages["index.html"]?.body??built["index.html"];
 let unpublished=0;
 for(const path of mustNotBePublished){
   const probe=await get(path);
   if(probe.error){fail("probing "+path+" failed: "+probe.error);continue;}
-  const failure=unpublishedPathFailure(path,probe.response.status,probe.body,built["index.html"]);
+  const failure=unpublishedPathFailure(path,probe.response.status,probe.body,servedApp);
   if(failure) fail(failure); else unpublished++;
 }
 note("ok    "+unpublished+"/"+mustNotBePublished.length+" repository paths are not published");

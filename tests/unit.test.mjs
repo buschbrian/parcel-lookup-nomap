@@ -446,7 +446,7 @@ test("current documentation does not advertise removed features or stale deploym
    CHANGES-2026-08-13.md §7 pass, and everything else fails with a located
    difference. The comparison is pure so it can be tested without a deployment. */
 import { PRETTY_URL_REWRITES, compareDeployedHtml, missingHeaderDirectives,
-  unpublishedPathFailure } from "../scripts/deployment-content.mjs";
+  stripPreviewDrawer, unpublishedPathFailure } from "../scripts/deployment-content.mjs";
 
 const builtFixture=[
   "<!DOCTYPE html>","<html lang=\"en-US\">","<body>",
@@ -468,6 +468,37 @@ test("both documented Pretty URLs rewrites are accepted and named",()=>{
   assert.equal(result.match,true,result.message);
   assert.equal(result.rewritesApplied.length,PRETTY_URL_REWRITES.length,
     "both rewrite forms are reported, not just the one that happened to match");
+});
+
+/* Found by pointing the repaired check at a real deploy preview: Netlify injects
+   its preview drawer before </body>, so without this allowance no deploy preview
+   could ever pass the content gate — the gate would be useless exactly where a
+   release candidate is verified. */
+const previewFixture=builtFixture.replace("</body>",
+  "<div data-netlify-deploy-id=\"6a8c9aa\" data-netlify-site-id=\"dc0e170\" "+
+  "data-vcs=\"github\" style=\"position:fixed\">\n  \n  "+
+  "<script async src=\"/.netlify/scripts/cdp\"></script>\n</div>\n</body>");
+
+test("a deploy preview passes the content gate and says what was tolerated",()=>{
+  const result=compareDeployedHtml(previewFixture,builtFixture,"index.html");
+  assert.equal(result.match,true,result.message);
+  assert.ok(result.rewritesApplied.some(name=>/deploy-preview drawer/.test(name)),
+    "the tolerated injection is named in the output, not silently removed");
+});
+
+test("the preview allowance removes the drawer and nothing else",()=>{
+  const sabotaged=previewFixture.replace("<body>","<body><script>alert(1)</script>");
+  const result=compareDeployedHtml(sabotaged,builtFixture,"index.html");
+  assert.equal(result.match,false,"content injected outside the drawer is still drift");
+  assert.equal(stripPreviewDrawer(builtFixture).stripped,null,
+    "a page without a drawer is returned untouched");
+});
+
+test("a probe answered by a preview's catch-all is not a published file",()=>{
+  // The reference page carries the drawer too, because the same deployment served
+  // it. Comparing a stripped probe against an unstripped reference reported all
+  // twenty allowlist probes as published files on the first real preview run.
+  assert.equal(unpublishedPathFailure("/README.md",200,previewFixture,previewFixture),null);
 });
 
 test("an undocumented rewrite of the same link is drift, not an allowance",()=>{

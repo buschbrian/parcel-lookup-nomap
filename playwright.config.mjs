@@ -3,6 +3,11 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests",
   testMatch: "**/*.spec.mjs",
+  /* The release-candidate smoke run is not part of `npm test`. It has no server,
+     mocks nothing, and requires DEPLOY_URL — running it here would point the
+     deterministic suite at live public services and real resident data. It runs
+     under playwright.production.config.mjs, deliberately and by hand. */
+  testIgnore: "production.spec.mjs",
   timeout: 30_000,
   fullyParallel: false,
   reporter: process.env.CI

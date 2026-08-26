@@ -549,6 +549,10 @@ test("the production smoke run cannot capture resident data",async()=>{
     "test:production must run under the production config, not the default one");
   assert.ok(!pkg.scripts.test.includes("test:production"),
     "`npm test` must not hit live services or a deployment");
+  const defaultConfig=await readFile(new URL("../playwright.config.mjs",import.meta.url),"utf8");
+  assert.match(defaultConfig,/testIgnore:\s*"production\.spec\.mjs"/,
+    "the deterministic browser suite globs **/*.spec.mjs, so it must exclude the "+
+    "production spec explicitly or `npm test` runs a live lookup");
 
   const ignored=await readFile(new URL("../.gitignore",import.meta.url),"utf8");
   for(const path of ["test-results-production/","production-evidence/"])

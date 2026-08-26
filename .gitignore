@@ -11,9 +11,10 @@ test-results/
 dist/
 
 # Attorney review material. Kept out of git deliberately: this repository is public
-# on GitHub, so committing it would publish it.
-counsel-review/Public-Facing-GIS-Disclaimer-Review.docx
-counsel-review/~$blic-Facing-GIS-Disclaimer-Review.docx
+# on GitHub, so committing it would publish it. The whole directory is ignored, not
+# named files — the one-page review was committed in 278d895 while its sibling was
+# ignored, and a per-file list is what allowed that. The documents stay on disk.
+counsel-review/
 
 # Release-candidate smoke run (`npm run test:production`). The JSON evidence is
 # sanitized by construction — counts and timings, never result content — but it

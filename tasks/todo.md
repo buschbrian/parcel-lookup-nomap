@@ -329,15 +329,31 @@ retain a machine-readable, privacy-safe report.
 
 **Acceptance criteria:**
 
-- [ ] Retry only network, timeout, 429, and 5xx failures with bounded backoff.
-- [ ] Do not retry or soften schema, field, parity, or known-result mismatches.
-- [ ] Emit a sanitized JSON summary and GitHub step summary identifying every failed contract.
+- [x] Retry only network, timeout, 429 and 5xx, on a bounded backoff of two waits — 500 ms then
+      2 s, three attempts total. `ENOTFOUND` is deliberately excluded: a hostname that does not
+      resolve is a configuration error, and retrying it wastes time and then reports the wrong thing.
+      `EAI_AGAIN`, the transient DNS case, is included.
+- [x] Schema, field, parity and known-result mismatches are never retried. They are raised as an
+      explicit `contractFailure`, marked with a symbol so no amount of wrapping can get them retried
+      — a test asserts that even one carrying `ECONNRESET` stays permanent.
+- [x] A sanitized `service-contract-report.json` and a GitHub step summary name **every** failed
+      contract, split into drift (the published data changed; the page may now be wrong) and
+      transport failure that survived the retries (the service is down, which is not Millcreek's to
+      fix). The reader is deciding whether to wake somebody; the split is what tells them.
 
 **Verification:**
 
-- [ ] RED: focused tests reproduce transient and permanent service failures.
-- [ ] GREEN: retry classification and report tests pass deterministically without live network access.
-- [ ] Manual live monitor passes and uploads its sanitized report.
+- [x] RED: nine focused tests in `tests/service-contract.test.mjs` reproduce transient and permanent
+      failure without a network, and failed before the module existed.
+- [x] GREEN: 50 unit tests pass (was 41), deterministically, with an injected clock.
+- [x] The live monitor passes 51/51 and writes its report. Sanitization was checked against real
+      data, not just fixtures: the owner name for the published test parcel was fetched from ArcGIS
+      and confirmed absent from the report, while the *field name* `own_name` survives, because a
+      renamed owner field is exactly the finding the monitor exists to report.
+
+**The script now records rather than aborts.** It was 41 sequential assertions, so the first failure
+hid the other fifty — the same defect the deployment check had. Every contract is recorded, and
+checks whose prerequisite failed are marked skipped rather than silently missing.
 
 **Dependencies:** Task 3.
 
@@ -348,11 +364,28 @@ retain a machine-readable, privacy-safe report.
 
 ## Checkpoint C: Runtime reliability
 
-- [ ] The production smoke fixture completes with bounded concurrency and unchanged results.
-- [ ] No HTTP, console, page, or axe failures occur.
-- [ ] The live-service monitor demonstrates useful output for both a controlled transient failure and
-      a controlled contract failure.
-- [ ] GIS/data owner accepts the monitoring cadence and alert recipient.
+- [x] The production smoke fixture completes with bounded concurrency and unchanged results: peak
+      **12** where it was 36, the same 40 requests, the same 48 rendered fields.
+- [x] No HTTP, console, page or axe failures occur, on either flow.
+- [x] The monitor demonstrates useful output for both cases. Rendered from a mixed report:
+
+      **3 of 5 service contracts failed.**
+
+      *Contract drift* — what the services publish has changed, so the page may now be wrong. These
+      are never retried: a field that is missing twice is still missing.
+      - **parcel** — missing configured fields: own_name
+      - **public-web-map-parity** — not present in the configured public Planning web map: liquefaction
+
+      *Service unavailable* — retried on a bounded backoff and still failing. This is the hosting
+      service's problem rather than a change in the data.
+      - **flood spatial** — fetch failed (ECONNRESET), after 3 attempts
+
+      1 check skipped — a prerequisite failed.
+
+- [ ] GIS/data owner accepts the monitoring cadence and alert recipient. **Open — human gate.** Two
+      decisions go with it: who receives a failed weekly monitor, and whether `maxConcurrent` should
+      be lowered from 12 to trade resident wait for politeness to the public services (see Task 7 —
+      lowering it needs no code change and cannot break anything).
 
 ## Task 9: Establish repository and release governance
 

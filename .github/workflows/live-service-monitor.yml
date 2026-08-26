@@ -1,0 +1,46 @@
+name: Live service monitor
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 13 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-service-monitor
+  cancel-in-progress: false
+
+jobs:
+  live-service-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Check live service contracts
+        shell: bash
+        run: |
+          set +e
+          npm run check:services 2>&1 | tee service-contract.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          {
+            echo "## Live service contract"
+            echo
+            echo '```text'
+            tail -n 80 service-contract.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"

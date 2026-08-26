@@ -5,6 +5,10 @@ export default defineConfig({
   testMatch: "**/*.spec.mjs",
   timeout: 30_000,
   fullyParallel: false,
+  reporter: process.env.CI
+    ? [["line"],["html",{outputFolder:"playwright-report",open:"never"}]]
+    : "list",
+  outputDir: "test-results",
   use: {
     baseURL: "http://127.0.0.1:4173",
     browserName: "chromium",

@@ -10,6 +10,9 @@
 
 [build]
   # ADR-0001: the site is built by Vite and the published artifact is `dist/`.
+  # Netlify resolves the build Node version from `.nvmrc`, the same source used
+  # by developers and GitHub Actions. Do not remove it or allow it to drift from
+  # the exact `package.json` engines contract.
   #
   # Publish the BUILD OUTPUT, never the repository root. The root contains the
   # code walkthrough, migration notes, the data-source review register, the

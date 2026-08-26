@@ -74,6 +74,10 @@ async function mockArcGIS(page,state={}){
       return json({attachmentInfos:[{id:9,name:"El Serrito 2.pdf",contentType:"application/pdf",size:2472960}]});
     }
     if(path.endsWith("/query")){
+      // One named layer answers with a server error, so a degraded result set can be
+      // exercised: the other layers still render and the page reports the gap.
+      if(state.layerFailure&&name===state.layerFailure)
+        return route.fulfill({status:500,body:"temporary layer failure"});
       if(name==="Address_Points"){
         // ArcGIS caps a result set at resultRecordCount and reports the cap with
         // exceededTransferLimit. Real streets exceed the cap: "Santa Rosa" matches 49.
@@ -597,4 +601,98 @@ test("the brand logo does not scale with text past the viewport",async({page})=>
   }));
   expect(header.wrap).toBe("wrap");
   expect(header.logo).toBeLessThanOrEqual(88);
+});
+
+/* Bounded request concurrency — production readiness Task 7.
+
+   A single lookup fanned out to every configured layer at once, each layer asking
+   for its features and its schema: 36 simultaneous requests to ArcGIS and FEMA,
+   measured on the live site. Nothing was wrong with the results, but a public
+   municipal service should not burst a third-party API that hard on one resident's
+   search, and the browser's own per-host limits mean the last requests queue in the
+   network stack where nothing can reason about them.
+
+   Peak is measured inside the page rather than at the mock, so it reflects what the
+   application scheduled rather than how fast the fixture answered. */
+async function measurePeak(page,run){
+  await page.evaluate(()=>{
+    window.__peak=0;
+    let inFlight=0;
+    const real=window.fetch;
+    window.fetch=(...args)=>{
+      inFlight++;
+      window.__peak=Math.max(window.__peak,inFlight);
+      return real(...args).finally(()=>{inFlight--;});
+    };
+  });
+  await run();
+  return page.evaluate(()=>window.__peak);
+}
+
+test("a lookup does not burst more than the configured number of requests",async({page})=>{
+  const limit=await page.evaluate(()=>CFG.request.maxConcurrent);
+  expect(limit,"the concurrency limit is configuration, not a constant in the code")
+    .toBeGreaterThan(0);
+  const peak=await measurePeak(page,()=>loadKnownProperty(page));
+  expect(peak,"peak simultaneous requests during one property lookup")
+    .toBeLessThanOrEqual(limit);
+  // Guard against passing by doing nothing: the lookup must really have fanned out.
+  expect(peak).toBeGreaterThan(1);
+});
+
+test("bounded concurrency preserves configured layer order in the results",async({page})=>{
+  await loadKnownProperty(page);
+  const order=await page.evaluate(()=>{
+    const labels=CFG.LAYERS.map(layer=>layer.label);
+    const rendered=[...document.querySelectorAll("#results-body dt")]
+      .map(node=>node.textContent.trim())
+      .filter(text=>labels.includes(text));
+    return {expected:labels.filter(label=>rendered.includes(label)),rendered};
+  });
+  expect(order.rendered.length,"configured layers rendered").toBeGreaterThan(3);
+  /* Completion order is nondeterministic once requests are queued behind a limit —
+     more so than with an unbounded burst. Display order must stay the configured
+     order regardless, which is what a resident reading down the page relies on. */
+  expect(order.rendered).toEqual(order.expected);
+});
+
+test("a degraded result set keeps configured layer order too",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  // Liquefaction sits in the middle of the configured order, so a failure there
+  // would reorder the page rather than truncate it if ordering were by completion.
+  await mockArcGIS(page,{layerFailure:"LiquefactionPotential"});
+  await page.reload();
+  await page.evaluate(()=>{ CFG.request.retryDelayMs=1; });
+  await loadKnownProperty(page);
+  const order=await page.evaluate(()=>{
+    const labels=CFG.LAYERS.map(layer=>layer.label);
+    const rendered=[...document.querySelectorAll("#results-body dt")]
+      .map(node=>node.textContent.trim()).filter(text=>labels.includes(text));
+    return {expected:labels.filter(label=>rendered.includes(label)),rendered};
+  });
+  expect(order.rendered.length,"the surviving layers still render").toBeGreaterThan(3);
+  expect(order.rendered).toEqual(order.expected);
+  await expect(page.locator("#status")).toContainText("Results ready");
+});
+
+test("queued requests are abandoned when the search is superseded",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{delayParcel:400});
+  await page.reload();
+  await page.evaluate(()=>{
+    window.__started=0;
+    const real=window.fetch;
+    window.fetch=(...args)=>{ window.__started++; return real(...args); };
+  });
+  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await expect(page.locator("#sugg")).toBeVisible();
+  await page.locator("#q").press("ArrowDown");
+  await page.locator("#q").press("Enter");
+  await page.locator("#clear").click();
+  const afterClear=await page.evaluate(()=>window.__started);
+  await page.waitForTimeout(600);
+  const settled=await page.evaluate(()=>window.__started);
+  expect(settled,"no queued request may be issued after the search was cleared")
+    .toBe(afterClear);
+  await expect(page.locator("#results")).toBeHidden();
 });

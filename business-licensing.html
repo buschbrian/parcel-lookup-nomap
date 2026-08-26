@@ -178,7 +178,11 @@ footer{margin-top:3rem;border-top:2px solid var(--line-soft);background:var(--su
 const CFG = {
   org:"https://services9.arcgis.com/XRrSFvEwSsReIxuA/arcgis/rest/services",
   release:{version:"2026.08.13",publishedOn:"2026-08-13",sourceSnapshot:"June 2026"},
-  request:{timeoutMs:12000,retryDelayMs:700,suggestDebounceMs:250},
+  // maxConcurrent caps simultaneous requests to ArcGIS. This page peaks at 4 requests,
+  // so the cap is never reached here; it is set because the shared request layer
+  // requires it, and a layer added to this screen later should meet the same ceiling.
+  // The value and the measurement behind it are documented in index.html.
+  request:{timeoutMs:12000,retryDelayMs:700,suggestDebounceMs:250,maxConcurrent:12},
   // The shared request layer offers this number when a service fails. It is
   // Business Licensing, not GIS: this page answers licensing questions.
   contact:{phone:"801-214-2759",email:"awendt@millcreekut.gov"},
@@ -224,7 +228,8 @@ function finishTask(task){if(task&&task.mine===sequence)activeKind=null}
    different cancellation contracts. ADR-0001 extracts this into one module, and
    identical copies extract mechanically while divergent ones do not.
 
-   Requires from CFG: org, request.timeoutMs, request.retryDelayMs, contact.phone.
+   Requires from CFG: org, request.timeoutMs, request.retryDelayMs,
+   request.maxConcurrent, contact.phone.
 
    --- REST helper -------------------------------------------------
    Errors are CLASSIFIED (err.kind) rather than collapsed into one
@@ -243,8 +248,39 @@ function svcError(kind, msg, detail){
 // "cannot reach the service" during local testing.
 const RUNNING_FROM_FILE = location.protocol === "file:";
 
+/* --- Bounded concurrency ----------------------------------------
+   One property lookup fans out to every configured layer, and each layer asks
+   for its features and its schema: 36 simultaneous requests to ArcGIS and FEMA,
+   measured on the live site. The answers were correct, but a public municipal
+   service should not burst a third-party API that hard for one resident's
+   search, and beyond the browser's own per-host limit the surplus queues down
+   in the network stack, where neither the timeout below nor the cancellation
+   contract can see it.
+
+   The gate sits here, at the one choke point every request already passes
+   through, so queries, schema reads and attachment fetches are all bounded,
+   including any added later. FIFO: the first layer asked for is the first
+   served.
+
+   Two things this must not break. A request superseded while queued must never
+   reach the network — hence the check after the slot is acquired as well as
+   before queueing. And the timeout must measure the service, not the queue, so
+   it starts once the slot is held; otherwise a busy queue would be reported to
+   a resident as "the service took too long", which would be a lie. */
+let inFlight=0;
+const waiting=[];
+function pump(){
+  while(inFlight<CFG.request.maxConcurrent && waiting.length){ inFlight++; waiting.shift()(); }
+}
+function acquireSlot(){
+  return new Promise(go=>{ waiting.push(go); pump(); });
+}
+function releaseSlot(){ inFlight--; pump(); }
+
 async function fetchJson(url, signal){
   const u = url instanceof URL ? url : new URL(url);
+  if(signal?.aborted) throw svcError("aborted","Request was superseded",String(u));
+  await acquireSlot();
   const controller = new AbortController();
   let timedOut=false;
   const timeout=setTimeout(()=>{ timedOut=true; controller.abort(); }, CFG.request.timeoutMs);
@@ -255,6 +291,7 @@ async function fetchJson(url, signal){
   }
   let r;
   try{
+    if(signal?.aborted) throw svcError("aborted","Request was superseded",String(u));
     r = await fetch(u, {headers:{Accept:"application/json"}, signal:controller.signal});
     if(r.status===429) throw svcError("busy","Service is rate limiting requests (HTTP 429)",String(u));
     if(r.status>=500)  throw svcError("server","Service error (HTTP "+r.status+")",String(u));
@@ -273,6 +310,7 @@ async function fetchJson(url, signal){
   }finally{
     clearTimeout(timeout);
     if(signal) signal.removeEventListener("abort",cancel);
+    releaseSlot();
   }
 }
 

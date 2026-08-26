@@ -92,15 +92,20 @@ documented legacy Pretty URLs transformations and continuing through all header 
 
 **Acceptance criteria:**
 
-- [ ] Pure comparison logic accepts exact bytes and each precisely documented rewrite form.
-- [ ] Any other byte change fails with the page name and useful first-difference context.
-- [ ] `check:deployment` reaches and enforces repository-path and security-header assertions.
+- [x] Pure comparison logic accepts exact bytes and each precisely documented rewrite form.
+- [x] Any other byte change fails with the page name and useful first-difference context.
+- [x] `check:deployment` reaches and enforces repository-path and security-header assertions.
 
 **Verification:**
 
-- [ ] RED: focused tests reproduce the current Pretty URLs failure and an unexpected-drift case.
-- [ ] GREEN: comparison unit tests and `npm run test:unit` pass.
-- [ ] `npm run build && npm run check:deployment` passes against the current deployment.
+- [x] RED: focused tests reproduce the current Pretty URLs failure and an unexpected-drift case.
+- [x] GREEN: comparison unit tests and `npm run test:unit` pass — 33 tests, 8 new.
+- [x] `npm run build && npm run check:deployment` reaches every gate against the live site:
+      `index.html` matches with the documented rewrite tolerated, 20/20 repository paths are
+      unpublished, and both pages carry every declared header. `business-licensing.html` reports a
+      **true** difference — the live deploy predates `81f23dc`, and the same comparison against
+      `main:business-licensing.html` matches with only the recorded root-collapse rewrite. The gate
+      now detects a stale deployment, which is the behaviour it was missing.
 
 **Dependencies:** Task 1.
 
@@ -116,15 +121,25 @@ published synthetic address, without logging returned owner or property details.
 
 **Acceptance criteria:**
 
-- [ ] General and licensing lookups reach “Results ready” against a configurable `DEPLOY_URL`.
-- [ ] The check fails on page errors, failed critical requests, HTTP errors, or axe violations.
-- [ ] Output contains timings, request counts, and pass/fail state but no returned resident data.
+- [x] General and licensing lookups reach “Results ready” against a configurable `DEPLOY_URL`, which
+      is required rather than defaulted, so the suite cannot smoke-test production by accident.
+- [x] The check fails on page errors, failed critical requests, HTTP errors, axe violations, or a
+      status reporting an unavailable data source.
+- [x] Output contains timings, request counts, peak concurrency and pass/fail state but no returned
+      resident data. Tracing, screenshots and video are off; the results body is blanked before the
+      test body returns, because Playwright writes its `error-context.md` page snapshot after it. A
+      unit test fails if any of that is undone.
 
 **Verification:**
 
-- [ ] RED: the smoke test fails against an intentionally invalid local URL or controlled failed route.
-- [ ] GREEN: it passes against a locally served `dist/` using test-controlled services where needed.
-- [ ] A large/manual run passes against the deploy-preview URL and the current live services.
+- [x] RED: both flows fail against an intentionally unresolvable host.
+- [x] GREEN: both pass against a locally served `dist/` and the live services — 40 and 4 service
+      requests, 0 page errors, 0 failed requests, 0 axe violations.
+- [x] A manual run passes against the live deployment: general 224 ms load / 1,365 ms lookup, 40
+      requests, peak concurrency **36**; licensing 131 ms / 872 ms, 4 requests, peak 2. This closes
+      MIGRATION.md's last open step-1 item, the built-page-to-live-service seam.
+- [x] The measured peak of 36 concurrent requests independently reproduces the plan's baseline
+      figure, and this run is the instrument Task 7 needs to prove its limit.
 
 **Dependencies:** Task 4.
 
@@ -140,15 +155,25 @@ candidate URL and retains the resulting release evidence.
 
 **Acceptance criteria:**
 
-- [ ] Workflow requires a candidate URL and runs deployment integrity plus live browser smoke.
-- [ ] It uses pinned actions, least privileges, bounded timeouts, and uploads sanitized evidence.
-- [ ] The workflow is not an automatic production promotion and has no production credentials.
+- [x] Workflow requires a candidate URL and runs deployment integrity plus live browser smoke.
+      It also builds from the checked-out commit and records the artifact SHA-256, so the content
+      gate compares the candidate against the artifact that commit produces.
+- [x] It uses pinned actions, `contents: read`, a 20-minute bound, and uploads the deployment output
+      and the sanitized smoke evidence for 90 days. The Playwright output directory is deliberately
+      not uploaded.
+- [x] The workflow is not an automatic production promotion: no `environment`, no `secrets.`, no
+      push or schedule trigger, and a unit test fails if any of those appear.
 
 **Verification:**
 
-- [ ] `npm run test:unit` validates workflow permissions, inputs, pins, and commands.
-- [ ] A manual run passes against a Netlify deploy preview.
-- [ ] An intentionally wrong candidate URL produces a clear failed gate.
+- [x] `npm run test:unit` validates triggers, inputs, permissions, pins, commands and evidence paths
+      — and was confirmed to bite by temporarily adding `environment: production` and an unpinned
+      action, which failed it.
+- [ ] A manual run passes against a Netlify deploy preview. **Needs the branch pushed** — a preview
+      does not exist until then. This is Checkpoint B.
+- [x] An intentionally wrong candidate URL produces a clear failed gate: locally, both flows fail on
+      an unresolvable host. The workflow additionally rejects a non-https `candidate_url` before
+      checking anything out. Re-confirm at Checkpoint B through the workflow itself.
 
 **Dependencies:** Tasks 4 and 5.
 
@@ -158,11 +183,68 @@ candidate URL and retains the resulting release evidence.
 
 ## Checkpoint B: Prove a release candidate
 
-- [ ] Clean `npm ci`, audit, full tests, and build pass.
-- [ ] Deterministic GitHub CI is green.
-- [ ] One deploy preview is verified for exact content, headers, publish allowlist, and both live flows.
-- [ ] Artifact hashes, workflow URL, and sanitized browser evidence are retained.
-- [ ] No production promotion occurs at this checkpoint.
+- [x] Clean `npm ci`, audit, full tests, and build pass. **26 August 2026, Windows:** 0
+      vulnerabilities, 35 Node tests, 4 Python tests, 63 browser/axe tests, build green.
+- [x] Deterministic GitHub CI is green. Run
+      [32986842819](https://github.com/buschbrian/parcel-lookup-nomap/actions/runs/32986842819) on
+      Linux: install, audit, unit, Python, build, Chromium, browser tests, all green.
+- [x] One deploy preview is verified for exact content, headers, publish allowlist, and both live
+      flows. **`deploy-preview-3`, 26 August 2026: every gate passed.** Both pages match the built
+      artifact with the tolerated transformations named, 20/20 repository paths unpublished, every
+      declared header present on both pages; both live lookups clean — general 2,905 ms load /
+      1,906 ms lookup / 40 requests, licensing 139 ms / 860 ms / 4 requests, zero page errors,
+      failed requests or axe violations. Phase 2 changes no entry HTML, so that preview's artifact
+      is byte-identical to this branch's.
+- [x] Artifact hashes, workflow URL, and sanitized browser evidence are retained — in
+      `production-evidence/` locally, and by the verification workflow for 90 days once it can be
+      dispatched.
+- [x] No production promotion occurred at this checkpoint.
+
+**Two defects the preview run found, both now fixed and tested.** Verifying a preview for the first
+time is what exposed them:
+
+1. **Netlify injects its deploy-preview drawer before `</body>`.** Without an allowance, no deploy
+   preview could ever pass the content gate — the gate would have been useless precisely where a
+   release candidate is verified. Tolerated explicitly and named in the output.
+2. **One page-level difference cascaded into all twenty allowlist probes.** The probes compared
+   against the built bytes, but the catch-all answers them with the deployed index page, chrome and
+   all, so every probe was reported as a published repository file. They now compare against the app
+   as that deployment served it. **This was a false-positive generator on the most security-relevant
+   gate in the check**, and it would have fired on any host post-processing at all.
+
+**Against production**, `check:deployment` reaches every gate and reports one real difference:
+`business-licensing.html` on the live site predates `81f23dc`. Against the commit actually deployed
+it matches with only the recorded rewrite. That is the gate detecting a stale deployment — the first
+time it has detected anything.
+
+### Findings from this phase, for the phases that own them
+
+1. **Task 8 has already reproduced itself.** `npm run check:services` hit a TLS `ECONNRESET` after 7
+   of 51 checks on one run on 26 August 2026 and passed 51/51 on the next, with no change in between.
+   That is precisely the transient-versus-contract distinction Task 8 exists to draw, and it means the
+   weekly monitor will raise false alarms until it does.
+2. **The developer toolchain drifts from the pin.** `npm ci` warns `EBADENGINE`: the pinned contract
+   is Node 22.15.0 / npm 10.9.2, this machine runs Node 24.16.0 / npm 11.13.0. Everything passes, but
+   the checks that gate a release are being run on a runtime the release does not declare. Whoever
+   runs the release rehearsal should be on the pinned version, or the pin should be revised
+   deliberately. Related: Task 9.
+3. **The attorney review document was committed to a public repository.** `counsel-review/
+   Public-Facing-GIS-Disclaimer-One-Page-Review.docx` was tracked while its sibling was gitignored
+   with the comment "this repository is public on GitHub, so committing it would publish it".
+   `.gitignore` listed files by name, so a document with a slightly different filename fell outside
+   the rule meant to cover it, and nothing noticed for six days.
+
+   **Untracked 26 August 2026 on instruction.** The document stays on disk; the whole
+   `counsel-review/` directory is now ignored rather than named files; a unit test asserts that
+   nothing under it is tracked. `check:deployment` also probes the path, and the site has never
+   served it.
+
+   **It remains in git history and is still readable on GitHub**, at commit `278d895` (20 August
+   2026) and in the merge that carried it to `main`. Erasing it requires rewriting published history
+   and force-pushing a public repository, which invalidates every existing clone and the open pull
+   requests. **Task 10 and open question 4 still own that decision — do not rewrite history before
+   counsel and records direction.** The exposure window to date is 20-26 August 2026; whether that
+   requires notification is a records determination, not an engineering one.
 
 ## Task 7: Bound general-lookup concurrency
 

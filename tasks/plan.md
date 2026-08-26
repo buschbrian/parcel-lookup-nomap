@@ -96,18 +96,27 @@ The executable checklist and per-task acceptance criteria live in [`tasks/todo.m
 ### Phase 1: Restore trustworthy feedback
 
 - [x] Task 1: Pin the Node/npm/Vite toolchain.
-- [ ] Task 2: Make deterministic CI step-specific and diagnostic.
-- [ ] Task 3: Separate the live-service monitor from merge quality.
-- [ ] Checkpoint A: Push the branch and use the first Linux run to identify and fix the actual CI
-      regression; do not weaken or skip a failing assertion.
+- [x] Task 2: Make deterministic CI step-specific and diagnostic.
+- [x] Task 3: Separate the live-service monitor from merge quality.
+- [x] Checkpoint A: Closed. The first diagnostic Linux run named the failing step, and the failure was
+      real — `.nav a` is shrink-to-fit and overflowed a 320 px container at 400% under the Linux
+      default sans while Windows' Segoe UI happened to fit. Fixed in `81f23dc` with a reproduction
+      test; no assertion was weakened. Deterministic CI is green (PR #3).
 
 ### Phase 2: Prove a release candidate
 
-- [ ] Task 4: Repair exact deployment-content verification.
-- [ ] Task 5: Add a privacy-preserving live browser smoke test.
-- [ ] Task 6: Add candidate deployment verification with retained evidence.
-- [ ] Checkpoint B: Run all deterministic checks and candidate verification against a Netlify deploy
-      preview derived from the same commit.
+- [x] Task 4: Repair exact deployment-content verification.
+- [x] Task 5: Add a privacy-preserving live browser smoke test.
+- [x] Task 6: Add candidate deployment verification with retained evidence.
+- [x] Checkpoint B: Closed 26 August 2026. Deterministic CI green on Linux, and every deployment gate
+      plus both live flows verified against `deploy-preview-3`, whose artifact is byte-identical to
+      this branch's. Verifying a real preview exposed two defects in the new check — the injected
+      preview drawer and an allowlist cascade — both fixed and covered. No promotion occurred.
+
+      One item remains external: the **Verify deployment candidate** workflow cannot be dispatched
+      until it exists on the default branch, which is a GitHub constraint on `workflow_dispatch`, not
+      a defect. Its contract is unit-tested and both commands it runs were executed by hand against
+      the same preview.
 
 ### Phase 3: Harden runtime dependencies
 

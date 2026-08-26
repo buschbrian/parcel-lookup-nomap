@@ -341,8 +341,14 @@ test("deterministic CI is reproducible and preserves failure evidence",async()=>
     "superseded branch runs are cancelled");
   assert.match(workflow,/push:\s*\n\s+branches:\s*\[main\]/,
     "push CI is limited to main");
-  assert.match(workflow,/pull_request:\s*\n\s+branches:\s*\[main\]/,
-    "pull-request CI targets main");
+  /* Deliberately unfiltered. A `branches: [main]` filter here meant a pull request
+     stacked on another branch ran no checks, which is how this plan's phases are
+     reviewed — Phase 2 opened against the Phase 1 branch and got nothing. */
+  assert.doesNotMatch(workflow,/pull_request:\s*\n\s+branches:/,
+    "pull-request CI must not be limited by base branch: a stacked pull request "+
+    "would run no checks and could land unverified");
+  assert.match(workflow,/pull_request:\s*\n\s+workflow_dispatch:/,
+    "the pull_request trigger takes no configuration");
   assert.match(workflow,/runs-on:\s*ubuntu-24\.04/,
     "the runner image is fixed rather than floating on ubuntu-latest");
 
@@ -427,4 +433,231 @@ test("current documentation does not advertise removed features or stale deploym
   const changes=await readFile(new URL("../CHANGES-2026-08-06.md",import.meta.url),"utf8");
   assert.doesNotMatch(readme,/firework restrictions/i);
   assert.match(changes,/resolved/i);
+});
+
+/* Deployed-content verification — ADR-0001 / production readiness Task 4.
+
+   `check:deployment` is the only automated proof that what Netlify serves is what
+   the build produced. It has never gated anything, because Netlify's Pretty URLs
+   post-processing rewrites two links and the check asserted exact bytes and then
+   aborted on the first failure, never reaching the header and allowlist gates.
+
+   The rules below are the contract: exact bytes pass, the two rewrites recorded in
+   CHANGES-2026-08-13.md §7 pass, and everything else fails with a located
+   difference. The comparison is pure so it can be tested without a deployment. */
+import { PRETTY_URL_REWRITES, compareDeployedHtml, missingHeaderDirectives,
+  stripPreviewDrawer, unpublishedPathFailure } from "../scripts/deployment-content.mjs";
+
+const builtFixture=[
+  "<!DOCTYPE html>","<html lang=\"en-US\">","<body>",
+  "<a href=\"/business-licensing.html\">licensing</a>",
+  "<a href=\"/index.html\">back</a>","</body>","</html>"
+].join("\n");
+
+test("a deployment that matches the built bytes exactly needs no allowance",()=>{
+  const result=compareDeployedHtml(builtFixture,builtFixture,"index.html");
+  assert.equal(result.match,true);
+  assert.deepEqual(result.rewritesApplied,[]);
+});
+
+test("both documented Pretty URLs rewrites are accepted and named",()=>{
+  const deployed=builtFixture
+    .replace("href=\"/business-licensing.html\"","href='/business-licensing'")
+    .replace("href=\"/index.html\"","href='/'");
+  const result=compareDeployedHtml(deployed,builtFixture,"index.html");
+  assert.equal(result.match,true,result.message);
+  assert.equal(result.rewritesApplied.length,PRETTY_URL_REWRITES.length,
+    "both rewrite forms are reported, not just the one that happened to match");
+});
+
+/* Found by pointing the repaired check at a real deploy preview: Netlify injects
+   its preview drawer before </body>, so without this allowance no deploy preview
+   could ever pass the content gate — the gate would be useless exactly where a
+   release candidate is verified. */
+const previewFixture=builtFixture.replace("</body>",
+  "<div data-netlify-deploy-id=\"6a8c9aa\" data-netlify-site-id=\"dc0e170\" "+
+  "data-vcs=\"github\" style=\"position:fixed\">\n  \n  "+
+  "<script async src=\"/.netlify/scripts/cdp\"></script>\n</div>\n</body>");
+
+test("a deploy preview passes the content gate and says what was tolerated",()=>{
+  const result=compareDeployedHtml(previewFixture,builtFixture,"index.html");
+  assert.equal(result.match,true,result.message);
+  assert.ok(result.rewritesApplied.some(name=>/deploy-preview drawer/.test(name)),
+    "the tolerated injection is named in the output, not silently removed");
+});
+
+test("the preview allowance removes the drawer and nothing else",()=>{
+  const sabotaged=previewFixture.replace("<body>","<body><script>alert(1)</script>");
+  const result=compareDeployedHtml(sabotaged,builtFixture,"index.html");
+  assert.equal(result.match,false,"content injected outside the drawer is still drift");
+  assert.equal(stripPreviewDrawer(builtFixture).stripped,null,
+    "a page without a drawer is returned untouched");
+});
+
+test("a probe answered by a preview's catch-all is not a published file",()=>{
+  // The reference page carries the drawer too, because the same deployment served
+  // it. Comparing a stripped probe against an unstripped reference reported all
+  // twenty allowlist probes as published files on the first real preview run.
+  assert.equal(unpublishedPathFailure("/README.md",200,previewFixture,previewFixture),null);
+});
+
+test("an undocumented rewrite of the same link is drift, not an allowance",()=>{
+  // Same href, different transformation: extension kept, quotes changed. Nothing
+  // in the record says Netlify does this, so it must not be waved through.
+  const deployed=builtFixture.replace("href=\"/business-licensing.html\"",
+    "href='/business-licensing.html'");
+  assert.equal(compareDeployedHtml(deployed,builtFixture,"index.html").match,false);
+});
+
+test("unexpected drift is reported with the page and the first differing line",()=>{
+  const deployed=builtFixture.replace("<body>","<body><script>alert(1)</script>");
+  const result=compareDeployedHtml(deployed,builtFixture,"business-licensing.html");
+  assert.equal(result.match,false);
+  assert.equal(result.firstDifference.line,3,"the injected line is located, not just declared");
+  assert.match(result.message,/business-licensing\.html/,"the failing page is named");
+  assert.match(result.message,/line 3/);
+  assert.match(result.message,/alert\(1\)/,"the actual deployed line is shown");
+});
+
+test("truncated deployments are drift rather than a silent match",()=>{
+  const result=compareDeployedHtml(builtFixture.split("\n").slice(0,4).join("\n"),
+    builtFixture,"index.html");
+  assert.equal(result.match,false);
+  assert.equal(result.firstDifference.line,5);
+});
+
+test("the built pages still contain the links the rewrite allowances describe",async()=>{
+  // If a link is renamed, its allowance becomes dead permission to accept a rewrite
+  // that can no longer occur. Fail here rather than let the allowance rot.
+  for(const rewrite of PRETTY_URL_REWRITES){
+    const pages=[html,licensingHtml].filter(page=>page.includes(rewrite.from));
+    assert.ok(pages.length>0,
+      "no page contains "+rewrite.from+", so its Pretty URLs allowance is now dead");
+  }
+});
+
+test("every missing security directive is reported, not only the first",()=>{
+  const headers=new Map([["referrer-policy","strict-origin-when-cross-origin"],
+    ["strict-transport-security","max-age=600"]]);
+  const missing=missingHeaderDirectives({get:name=>headers.get(name)??null},{
+    "referrer-policy":["strict-origin-when-cross-origin"],
+    "strict-transport-security":["max-age=31536000","includeSubDomains"],
+    "x-content-type-options":["nosniff"]
+  });
+  assert.equal(missing.length,3,"a shortened HSTS window, a dropped subdomain flag "+
+    "and an absent header are three findings, not one");
+  assert.ok(missing.every(finding=>/strict-transport-security|x-content-type-options/.test(finding)));
+});
+
+test("a repository path is unpublished when it 404s or answers with the app",()=>{
+  const app=builtFixture;
+  const served=app.replace("href=\"/index.html\"","href='/'");
+  assert.equal(unpublishedPathFailure("/README.md",404,"Not Found",app),null,
+    "a 404 proves the file is not published");
+  assert.equal(unpublishedPathFailure("/README.md",200,served,app),null,
+    "the catch-all rewrite answers with the app, post-processing included");
+  assert.match(unpublishedPathFailure("/README.md",200,"# Millcreek Property Lookup",app),
+    /README\.md/,"repository content served at 200 is the failure this gate exists for");
+});
+
+/* The release-candidate smoke run touches real resident data — production readiness
+   Task 5. It looks up a published synthetic address on a deployed candidate, and the
+   parcel that comes back is real: owner name, mailing details. Everything that could
+   write that to a file has to stay off, and "stay" is the operative word. Turning
+   tracing on to debug one failed release would quietly start capturing residents'
+   records into a CI artifact. Fail here instead. */
+test("the production smoke run cannot capture resident data",async()=>{
+  const config=await readFile(new URL("../playwright.production.config.mjs",import.meta.url),"utf8");
+  for(const setting of ["trace","screenshot","video"])
+    assert.ok(config.includes(setting+': "off"'),
+      "the production config must set "+setting+' to "off"');
+
+  const spec=await readFile(new URL("./production.spec.mjs",import.meta.url),"utf8");
+  assert.match(spec,/results redacted/,
+    "the spec must blank the results body before returning, because Playwright writes "+
+    "its error-context page snapshot after the test body ends");
+  const bodyReads=spec.split("\n").filter(line=>line.includes("#results-body")&&
+    /toContainText|toHaveText|textContent\(\)|innerText/.test(line));
+  assert.deepEqual(bodyReads,[],"no assertion may read the content of a live results body");
+
+  const pkg=JSON.parse(await readFile(new URL("../package.json",import.meta.url),"utf8"));
+  assert.equal(pkg.scripts["test:production"],
+    "playwright test --config playwright.production.config.mjs",
+    "test:production must run under the production config, not the default one");
+  assert.ok(!pkg.scripts.test.includes("test:production"),
+    "`npm test` must not hit live services or a deployment");
+  const defaultConfig=await readFile(new URL("../playwright.config.mjs",import.meta.url),"utf8");
+  assert.match(defaultConfig,/testIgnore:\s*"production\.spec\.mjs"/,
+    "the deterministic browser suite globs **/*.spec.mjs, so it must exclude the "+
+    "production spec explicitly or `npm test` runs a live lookup");
+
+  const ignored=await readFile(new URL("../.gitignore",import.meta.url),"utf8");
+  for(const path of ["test-results-production/","production-evidence/"])
+    assert.ok(ignored.includes(path),path+" must not be committable");
+});
+
+/* Candidate verification is the evidence a production promotion rests on — readiness
+   Task 6. It must stay a verifier and never become a deployer: no environment, no
+   secret, no promotion step. It must also verify the candidate against the artifact
+   built from the same commit, or its content gate compares two different versions
+   and reports a version gap as deployment drift. */
+test("candidate verification produces evidence and cannot promote a release",async()=>{
+  const workflow=await readFile(new URL("../.github/workflows/verify-deployment.yml",
+    import.meta.url),"utf8");
+
+  assert.match(workflow,/on:\s*[\s\S]*workflow_dispatch:/,"it is run deliberately, by a person");
+  assert.match(workflow,/workflow_call:/,"a release workflow can reuse it");
+  assert.doesNotMatch(workflow,/^\s*(push|schedule):/m,
+    "verification must not be triggered by a push or a timer: it verifies a candidate "+
+    "someone has already deployed");
+
+  assert.match(workflow,/candidate_url:/,"the candidate URL is an explicit input");
+  assert.match(workflow,/required:\s*true/,"the candidate URL cannot be omitted");
+  assert.match(workflow,/permissions:\s*\n\s*contents:\s*read/,"least privilege");
+  assert.doesNotMatch(workflow,/environment:/,
+    "no environment: an environment is how a deployment credential would reach this");
+  assert.doesNotMatch(workflow,/secrets\./,"verification needs no secret");
+  assert.doesNotMatch(workflow,/netlify deploy|--prod|gh release create/,
+    "verification must not deploy or promote anything");
+
+  assert.match(workflow,/timeout-minutes:/,"the job is bounded");
+  assert.doesNotMatch(workflow,/uses:\s*actions\/[\w-]+@v\d/,
+    "actions are pinned to immutable reviewed commits, not to moving tags");
+
+  assert.match(workflow,/npm ci/,"the locked dependency graph, not a fresh resolve");
+  assert.match(workflow,/npm run build/,
+    "the candidate is compared against the artifact this commit builds");
+  assert.match(workflow,/npm run check:deployment/,"content, allowlist and header gates");
+  assert.match(workflow,/npm run test:production/,"both live user flows");
+  assert.match(workflow,/DEPLOY_URL:\s*\$\{\{\s*inputs\.candidate_url\s*\}\}/,
+    "both checks are pointed at the candidate rather than at the default site");
+
+  assert.match(workflow,/sha256sum/,"the built artifact hash is part of the release record");
+  assert.match(workflow,/upload-artifact/,"evidence is retained");
+  assert.match(workflow,/production-evidence\//,"the sanitized smoke evidence is uploaded");
+  assert.doesNotMatch(workflow,/test-results-production\//,
+    "the Playwright output directory is not uploaded: its failure snapshots are "+
+    "redacted but are not release evidence");
+});
+
+/* The attorney review material must not be in a public repository.
+
+   One of the two documents was committed in 278d895 while the other was ignored by
+   name, and nothing noticed for six days. `.gitignore` listed files, so a document
+   with a slightly different filename was not covered by the rule meant to cover it.
+   The directory is ignored now, and this asserts the property that actually matters
+   — that nothing under it is tracked — rather than the wording of the rule. */
+test("no attorney review document is tracked in this public repository",async()=>{
+  const { execFileSync }=await import("node:child_process");
+  const root=new URL("../",import.meta.url);
+  let tracked;
+  try{
+    tracked=execFileSync("git",["ls-files","counsel-review"],
+      {cwd:root,encoding:"utf8",stdio:["ignore","pipe","ignore"]});
+  }catch{
+    return;  // not a git checkout (a release tarball, say): nothing to assert
+  }
+  assert.equal(tracked.trim(),"",
+    "counsel-review/ is tracked, and this repository is public on GitHub. The "+
+    "documents belong on disk and in the municipal record, not in git history.");
 });

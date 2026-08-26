@@ -1,10 +1,15 @@
 name: Quality checks
 
 on:
+  # Pushes are checked on main only: a branch with an open pull request would
+  # otherwise run this twice for the same commit.
   push:
     branches: [main]
+  # Every pull request, whatever it targets. Filtering to `main` meant a pull
+  # request stacked on another branch — how this plan's phases are reviewed —
+  # ran no checks at all, and could land unverified in the branch that later
+  # merges to main as one already-approved lump.
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

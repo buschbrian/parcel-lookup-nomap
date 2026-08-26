@@ -96,18 +96,21 @@ The executable checklist and per-task acceptance criteria live in [`tasks/todo.m
 ### Phase 1: Restore trustworthy feedback
 
 - [x] Task 1: Pin the Node/npm/Vite toolchain.
-- [ ] Task 2: Make deterministic CI step-specific and diagnostic.
-- [ ] Task 3: Separate the live-service monitor from merge quality.
-- [ ] Checkpoint A: Push the branch and use the first Linux run to identify and fix the actual CI
-      regression; do not weaken or skip a failing assertion.
+- [x] Task 2: Make deterministic CI step-specific and diagnostic.
+- [x] Task 3: Separate the live-service monitor from merge quality.
+- [x] Checkpoint A: Closed. The first diagnostic Linux run named the failing step, and the failure was
+      real — `.nav a` is shrink-to-fit and overflowed a 320 px container at 400% under the Linux
+      default sans while Windows' Segoe UI happened to fit. Fixed in `81f23dc` with a reproduction
+      test; no assertion was weakened. Deterministic CI is green (PR #3).
 
 ### Phase 2: Prove a release candidate
 
-- [ ] Task 4: Repair exact deployment-content verification.
-- [ ] Task 5: Add a privacy-preserving live browser smoke test.
-- [ ] Task 6: Add candidate deployment verification with retained evidence.
+- [x] Task 4: Repair exact deployment-content verification.
+- [x] Task 5: Add a privacy-preserving live browser smoke test.
+- [x] Task 6: Add candidate deployment verification with retained evidence.
 - [ ] Checkpoint B: Run all deterministic checks and candidate verification against a Netlify deploy
-      preview derived from the same commit.
+      preview derived from the same commit. **Local half done 26 August 2026; the preview half needs
+      the branch pushed.**
 
 ### Phase 3: Harden runtime dependencies
 

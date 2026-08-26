@@ -623,6 +623,15 @@ test("the production smoke run cannot capture resident data",async()=>{
   assert.match(defaultConfig,/testIgnore:\s*"production\.spec\.mjs"/,
     "the deterministic browser suite globs **/*.spec.mjs, so it must exclude the "+
     "production spec explicitly or `npm test` runs a live lookup");
+  /* A `vite preview` from an unrelated project on this machine was listening on
+     4173 — Vite's default preview port — and Playwright reused it. All 63 tests
+     ran against a stranger's page and failed with `CFG is not defined`. The suite
+     must start its own server, always, on a port nothing else defaults to. */
+  assert.match(defaultConfig,/reuseExistingServer:\s*false/,
+    "the browser suite must never adopt a server it did not start");
+  assert.doesNotMatch(defaultConfig,/127\.0\.0\.1:4173/,
+    "4173 is Vite's default preview port and is contended on any machine with "+
+    "another Vite project");
 
   const ignored=await readFile(new URL("../.gitignore",import.meta.url),"utf8");
   for(const path of ["test-results-production/","production-evidence/"])

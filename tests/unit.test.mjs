@@ -522,3 +522,35 @@ test("a repository path is unpublished when it 404s or answers with the app",()=
   assert.match(unpublishedPathFailure("/README.md",200,"# Millcreek Property Lookup",app),
     /README\.md/,"repository content served at 200 is the failure this gate exists for");
 });
+
+/* The release-candidate smoke run touches real resident data — production readiness
+   Task 5. It looks up a published synthetic address on a deployed candidate, and the
+   parcel that comes back is real: owner name, mailing details. Everything that could
+   write that to a file has to stay off, and "stay" is the operative word. Turning
+   tracing on to debug one failed release would quietly start capturing residents'
+   records into a CI artifact. Fail here instead. */
+test("the production smoke run cannot capture resident data",async()=>{
+  const config=await readFile(new URL("../playwright.production.config.mjs",import.meta.url),"utf8");
+  for(const setting of ["trace","screenshot","video"])
+    assert.ok(config.includes(setting+': "off"'),
+      "the production config must set "+setting+' to "off"');
+
+  const spec=await readFile(new URL("./production.spec.mjs",import.meta.url),"utf8");
+  assert.match(spec,/results redacted/,
+    "the spec must blank the results body before returning, because Playwright writes "+
+    "its error-context page snapshot after the test body ends");
+  const bodyReads=spec.split("\n").filter(line=>line.includes("#results-body")&&
+    /toContainText|toHaveText|textContent\(\)|innerText/.test(line));
+  assert.deepEqual(bodyReads,[],"no assertion may read the content of a live results body");
+
+  const pkg=JSON.parse(await readFile(new URL("../package.json",import.meta.url),"utf8"));
+  assert.equal(pkg.scripts["test:production"],
+    "playwright test --config playwright.production.config.mjs",
+    "test:production must run under the production config, not the default one");
+  assert.ok(!pkg.scripts.test.includes("test:production"),
+    "`npm test` must not hit live services or a deployment");
+
+  const ignored=await readFile(new URL("../.gitignore",import.meta.url),"utf8");
+  for(const path of ["test-results-production/","production-evidence/"])
+    assert.ok(ignored.includes(path),path+" must not be committable");
+});

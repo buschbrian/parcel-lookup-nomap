@@ -201,6 +201,26 @@ npm run build                 # check:deployment compares against dist/, so buil
 npm run check:deployment     # after Netlify has deployed the commit, or against DEPLOY_URL
 ```
 
+A release candidate gets one more check that nothing else covers — a real lookup, in a real browser,
+through the deployed pages against the live public services:
+
+```bash
+DEPLOY_URL=https://deploy-preview-4--parcel-lookup-millcreek.netlify.app/ npm run test:production
+```
+
+`npm test` mocks every ArcGIS response, so it proves the code and nothing about the deployment.
+This run mocks nothing. It looks up the published synthetic address on both pages, requires a ready
+status with no unavailable source, scans each results page with axe, and fails on any page error or
+failed request. It reports load and lookup timings, request counts and peak concurrency to
+`production-evidence/`, which belongs with the release record.
+
+> **It touches real resident data, so it retains none.** The address is the synthetic fixture already
+> published in this repository, but the parcel it returns is real — owner name and mailing details.
+> Tracing, screenshots and video are off, the assertions count fields rather than read them, and the
+> results body is blanked before the test ends so Playwright's failure snapshot cannot capture it.
+> A unit test fails if any of that is undone. Debug a failure locally against `dist/` with the mocked
+> suite instead, where traces are safe.
+
 GIS staff can reproduce the FEMA full-parcel selection in ArcGIS Pro, ArcGIS Online Notebook, or
 another environment with ArcGIS API for Python installed:
 

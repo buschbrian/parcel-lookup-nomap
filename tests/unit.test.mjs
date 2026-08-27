@@ -384,8 +384,14 @@ test("deterministic CI is reproducible and preserves failure evidence",async()=>
     ["Install Chromium","npx playwright install --with-deps chromium"],
     ["Run browser tests","npx playwright test"]
   ]){
-    assert.match(workflow,new RegExp("name: "+name+"[\\s\\S]{0,100}run: "+command
-      .replace(/[.*+?^${}()|[\]\\]/g,"\\$&")),name+" is an independent CI step");
+    /* Assert the command lives inside its own named step, rather than within N
+       characters of the name. The character budget broke the moment the Chromium
+       install grew a retry loop - a change that made the step better while leaving
+       the property this test exists for completely intact. */
+    const step=workflow.split(/^      - name: /m).slice(1)
+      .find(block=>block.startsWith(name));
+    assert.ok(step,name+" is a named CI step");
+    assert.ok(step.includes(command),name+" runs `"+command+"` in its own step");
   }
   assert.doesNotMatch(workflow,/run:\s*npm test\s*$/m,
     "CI does not hide several suites inside one npm test step");
@@ -794,4 +800,33 @@ test("review, security reporting and dependency updates are owned by real people
   assert.match(template,/SHARED REQUEST LAYER/,"the template protects the shared layer");
   assert.match(template,/resident data/i,
     "the template asks whether anything can carry resident data");
+});
+
+/* The deterministic job had one non-deterministic step.
+
+   Playwright's `--with-deps` runs `apt-get update`, which consults whatever
+   third-party repositories the runner image has configured. On 27 August 2026 two
+   Microsoft apt repositories returned 403 and the step died with code 100, failing
+   a pull request whose change was documentation. A run of the same commit passed
+   minutes later.
+
+   Retrying it is consistent with what this project already decided about transient
+   failure in the service monitor: retry transport, never retry a contract. So the
+   retry must stay confined to that one step — if `npm run test:unit`, the build or
+   the browser suite were ever retried, a flaky assertion would be laundered into a
+   pass, which is the opposite of what CI is for. */
+test("only the browser install is retried, and it is bounded",async()=>{
+  const workflow=await readFile(new URL("../.github/workflows/quality.yml",import.meta.url),"utf8");
+  const steps=workflow.split(/^      - name: /m).slice(1);
+  const retrying=steps.filter(step=>/for attempt in/.test(step))
+    .map(step=>step.split("\n")[0].trim());
+  assert.deepEqual(retrying,["Install Chromium"],
+    "exactly one step may retry, and it is the one that depends on third-party "+
+    "package repositories at run time");
+
+  const install=steps.find(step=>step.startsWith("Install Chromium"));
+  assert.match(install,/for attempt in 1 2 3/,"bounded at three attempts");
+  assert.match(install,/exit 1/,"a persistent failure still fails the job");
+  assert.match(install,/no longer transient/,
+    "the final failure says why it is being reported rather than retried again");
 });

@@ -181,23 +181,87 @@ Every release candidate should retain:
 ## Open Questions Requiring Human Decisions
 
 1. Which municipal organization will own the repository, hosting site, custom domain, deployment
-   credentials, billing, and recovery access?
+   credentials, billing, and recovery access? **Still open.** Everything currently sits under one
+   individual's personal accounts; the request to correct that is drafted and unsent.
 2. Who fills the code reviewer, GIS/data owner, accessibility reviewer, privacy reviewer, records
-   officer, incident owner, and production approver roles?
+   officer, incident owner, and production approver roles? **Answered 26 August 2026, and the answer
+   is a finding in itself — see "Role assignments" below.**
 3. Should the existing Netlify site remain the staging environment, and which approved platform/site
-   becomes production? **Update, 26 August 2026: the municipality's IT provider is supplying a CDN,
+   becomes production? **Decided 26 August 2026: yes.** Netlify becomes staging once the IT
+   provider's CDN is confirmed able to meet the hosting requirements; the CDN becomes production.
+   Until then Netlify remains the only environment, and the pre-production caveat above still holds. **Update, 26 August 2026: the municipality's IT provider is supplying a CDN,
    which is the likely production host.** That makes the current Netlify site a strong candidate for
    staging rather than production, and it sets a date for removing the hosting-injection allowance in
    `scripts/deployment-content.mjs`. Task 11 should not be started until the CDN's owner, deploy
    mechanism and header support are known — `public/_headers` is Netlify-specific, and every security
    header the deployment gate asserts depends on the new host honouring an equivalent.
 4. Is the attorney-returned disclaimer approved for release, and how should the review document be
-   retained or removed from the public repository?
+   retained or removed from the public repository? **Half answered.** The wording is approved and is
+   implemented verbatim — all seven passages, on the correct pages, in the placement the attorney
+   specified, verified word-for-word on 26 August 2026. What remains is not a wording question: the
+   attorney asked whether his text may sit inside an **expandable footer** that a resident must click
+   to open. That is the only open item, and it is his to answer. The review document itself was
+   purged from the repository on 26 August.
 5. What privacy notice and records schedule apply to public owner display, ArcGIS query URLs,
    pipeline evidence, and operational monitoring?
 6. What custom domain, support hours, outage communication path, and recovery-time objective apply?
+   **Domain decided 26 August 2026: `propertylookup.millcreekut.gov`**, to be created by whoever
+   administers Millcreek DNS. Support hours, outage communication and recovery-time objective remain
+   open and belong with Task 11.
 7. Should the current date-based application version become a tagged release version, and who owns
    the changelog and release record?
+
+## Role assignments
+
+Answered by the repository owner, 26 August 2026.
+
+| Role | Holder |
+|:--|:--|
+| Code reviewer | Brian Busch |
+| GIS / data owner | Brian Busch |
+| Accessibility reviewer | Brian Busch |
+| Privacy reviewer | **Open** |
+| Records officer | The City Recorder, or the custodian of Planning records |
+| Incident owner | Brian Busch |
+| Production approver | Brian Busch |
+
+**Six of the seven roles are one person, and that person is also the only author.** This is the real
+answer for a municipality of this size and it should be recorded as such rather than dressed up. What
+it means concretely is that **separation of duties does not exist**: the person who writes a change
+reviews it, approves its release, and signs its accessibility test. The plan asks for an approver who
+is not the author (architecture decision 6, Task 9, Task 12) and that control cannot be satisfied
+today.
+
+What stands in for it, and why this is still materially better than where the project started:
+
+- **Every change passes a gate the author cannot bypass.** `main` requires a pull request and a green
+  deterministic CI run, with administrators included, so the sole maintainer is subject to the same
+  rule as anyone else. This is the one genuine control, and it is why `enforce_admins` matters more
+  here than it would in a team.
+- **The evidence is written down, so review can happen after the fact.** A release record naming the
+  artifact, the gates, the timings and the decision lets an auditor, a successor, or the City Attorney
+  reconstruct what was released and on what basis, without the reviewer having been present.
+- **The automated suite is the second opinion.** 124 tests, deployment verification against the
+  served bytes, and a weekly service-contract monitor catch the classes of mistake a self-review
+  reliably misses.
+
+**Where self-review is weakest, and should not be papered over:**
+
+- **Accessibility.** The author testing their own work is the least reliable configuration, because
+  the tester already knows the intended path through the page. Automated axe coverage runs on every
+  change and catches roughly a third of real problems. **Recommendation: treat the signed manual test
+  as provisional, and obtain one independent walkthrough** — a colleague, another municipality's
+  accessibility staff, or a paid audit — before Millcreek asserts WCAG 2.1 AA conformance anywhere
+  other than as a good-faith effort. The current page wording ("working to conform") is already
+  careful about this and should not be strengthened until an independent check exists.
+- **Release approval.** A self-approved release is a record of a decision, not a check on it. The
+  honest mitigation is the written record plus a rehearsed rollback, and adding a second approver
+  should stay on the list as the first thing to fix when any second person becomes available.
+
+**Privacy reviewer is open.** Two of the three privacy questions — public display of owner names, and
+what monitoring evidence is retained — are records questions as much as privacy ones, so they may be
+answerable by the same person who takes the records officer role. Folding them into that request is
+likely faster than finding a separate privacy owner.
 
 ## First Approved Implementation Slice
 

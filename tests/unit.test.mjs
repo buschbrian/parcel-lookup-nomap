@@ -238,6 +238,15 @@ test("only the public site is published",async()=>{
       assert.ok(served.includes(name),publishDir+"/ is missing "+name);
     const leaked=served.filter(name=>engineering.test(name)||repoFile.test(name));
     assert.deepEqual(leaked,[],publishDir+"/ would serve engineering files: "+leaked.join(", "));
+    /* A note about the logo lived in `public/assets/` and was therefore copied into
+       the build and served publicly at /assets/README.md, HTTP 200, for as long as
+       the site has existed. It was harmless prose, and it was still a repository
+       file on a public site — the one property the publish allowlist exists to
+       prevent. The named-file patterns above did not catch it because it was not at
+       the root. Nothing published is documentation; assert that directly. */
+    const documentation=served.filter(name=>/\.mdx?$/i.test(name));
+    assert.deepEqual(documentation,[],
+      publishDir+"/ would publish documentation: "+documentation.join(", "));
     return;
   }
 

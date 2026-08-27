@@ -417,10 +417,18 @@ and the unbounded baseline showed the same spread (1365-2382 ms across runs). **
 sample taken right after a deploy will look like a regression and will not be one.** Take the
 steady-state number.
 
-- [ ] GIS/data owner accepts the monitoring cadence and alert recipient. **Open — human gate.** Two
-      decisions go with it: who receives a failed weekly monitor, and whether `maxConcurrent` should
-      be lowered from 12 to trade resident wait for politeness to the public services (see Task 7 —
-      lowering it needs no code change and cannot break anything).
+- [x] GIS/data owner accepts the monitoring cadence and alert recipient. **Accepted 26 August 2026**
+      by the GIS/data owner (Brian Busch, who also holds that role): weekly cadence stands, failures
+      go to **bbusch@millcreekut.gov**, and `maxConcurrent` stays at 12.
+
+      **How that alert is actually delivered matters, because it is not configured in this
+      repository.** GitHub emails the *account owner* when a scheduled workflow fails; there is no
+      recipient list in the workflow file, and adding one would need an SMTP credential this project
+      deliberately does not hold. So the address is only correct if it is the notification address on
+      the GitHub account, with **Actions failure notifications enabled**. Confirm that in GitHub
+      notification settings; nothing in CI can assert it. When ownership moves to a Millcreek
+      organization (Task 11), this should move to a shared address rather than an individual's, or a
+      failing monitor will go unread during any absence.
 
 ## Task 9: Establish repository and release governance
 
@@ -484,16 +492,45 @@ rules, and release records under accountable institutional control.
 
 **Acceptance criteria:**
 
-- [ ] Parts A-D of the manual keyboard/NVDA script are signed against the exact candidate.
-- [ ] Counsel confirms public disclaimer wording and placement.
+- [ ] Parts A-D of the manual keyboard/NVDA script are signed against the exact candidate. **The
+      reviewer will be the author** (see plan.md, Role assignments), which is the weakest
+      configuration for this particular test. Run it anyway — it is far better than not running it —
+      but record the signature as provisional and seek one independent walkthrough before Millcreek
+      asserts conformance as anything stronger than a good-faith effort.
+- [x] Counsel confirms public disclaimer **wording**. **Already approved, and implemented verbatim.**
+      Verified word-for-word on 26 August 2026: all five passages of the attorney-returned Third-Party
+      Website Information Disclaimer appear on **both** pages, the general-lookup sentence appears on
+      `index.html`, and the licensing sentence on `business-licensing.html`. The copied and printed
+      output carries the attorney's general disclaimer too, so it travels with a result into an email.
+      **Do not ask counsel to re-approve wording he has already returned.**
+- [ ] Counsel confirms **placement**. This is the one thing he actually asked, and it is still open:
+      may his text sit inside an expandable footer that a resident has to click to open? That is a
+      legal-effect question about constructive notice, not a design preference, and it is his to
+      answer. The short per-lookup warning is *not* collapsed — it sits next to the lookup and is
+      visible without interaction.
 - [ ] Privacy and records owners document owner-display, third-party query, monitoring, release-record,
-      and counsel-document decisions.
+      and counsel-document decisions. **Records officer identified 26 August 2026** as the City
+      Recorder or the custodian of Planning records; **privacy reviewer remains open** and two of its
+      three questions are records questions anyway, so folding them into the records request is likely
+      faster than finding a separate owner.
 
 **Verification:**
 
 - [ ] Signed evidence identifies candidate commit/tag, tester/approver, date, findings, and resolution.
 - [ ] Accessibility blockers are fixed and regression-tested before sign-off.
 - [ ] Counsel/records direction is followed before removing or rewriting any public Git history.
+
+**A finding from the records answer, 26 August 2026.** The owner notes that **most GIS records carry
+permanent retention in Utah.** If the release records, deployment evidence and weekly monitor reports
+are GIS records under that schedule, then **the current arrangement is wrong**: GitHub deletes
+workflow artifacts after 90 days by configuration, and after a fixed maximum regardless. A
+permanent-retention record cannot live only in a development system that garbage-collects it.
+
+That does not need solving before launch, but it does need deciding before the first release whose
+record matters. The likely shape is an export step — the release record and its evidence written to
+wherever Millcreek keeps permanent records, with the GitHub copy treated as a convenience rather than
+the record of file. Ask the records officer which of the four kinds are records before building
+anything.
 
 **Dependencies:** Checkpoint B.
 

@@ -73,6 +73,9 @@ for(const [name,path] of [["index.html","/"],["business-licensing.html","/busine
    readiness plan. A file added to the repository does not appear here
    automatically, so the unit suite asserts the publish directory contents too. */
 const mustNotBePublished=["/CODE.md","/USAGE.md","/README.md","/DATA-SOURCES.md",
+  // Was served at HTTP 200 until 26 August 2026: a note about the logo that sat
+  // inside publicDir and so was copied into the build. Probe it by name now.
+  "/assets/README.md","/docs/brand-asset.md",
   "/MIGRATION.md","/CHANGES-2026-08-13.md","/package.json","/package-lock.json",
   "/.nvmrc","/playwright.config.mjs","/vite.config.mjs","/netlify.toml",
   "/scripts/check-services.mjs","/scripts/check-deployment.mjs","/tests/unit.test.mjs",

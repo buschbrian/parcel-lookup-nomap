@@ -5,6 +5,20 @@ on:
   schedule:
     - cron: "17 13 * * 1"
 
+# ALERT RECIPIENT: bbusch@millcreekut.gov, accepted by the GIS/data owner on
+# 26 August 2026, weekly cadence.
+#
+# There is no recipient list in this file, and that is not an omission. GitHub
+# emails the account owner when a scheduled workflow fails; sending mail from the
+# job itself would need an SMTP credential this project deliberately does not
+# hold. So the address above is only correct while it is the notification address
+# on the GitHub account, with Actions failure notifications enabled. Nothing in CI
+# can assert that — confirm it in GitHub notification settings.
+#
+# When ownership moves to a Millcreek organization, move this to a shared address.
+# An individual's inbox means a failing monitor goes unread during any absence,
+# and this job exists precisely to be read.
+
 permissions:
   contents: read
 

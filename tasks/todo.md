@@ -520,17 +520,31 @@ rules, and release records under accountable institutional control.
 - [ ] Accessibility blockers are fixed and regression-tested before sign-off.
 - [ ] Counsel/records direction is followed before removing or rewriting any public Git history.
 
-**A finding from the records answer, 26 August 2026.** The owner notes that **most GIS records carry
-permanent retention in Utah.** If the release records, deployment evidence and weekly monitor reports
-are GIS records under that schedule, then **the current arrangement is wrong**: GitHub deletes
-workflow artifacts after 90 days by configuration, and after a fixed maximum regardless. A
-permanent-retention record cannot live only in a development system that garbage-collects it.
+**Retention, scoped correctly — 27 August 2026.** The owner's clarification: in Utah it is the
+**geospatial records** that are permanent — maps, and data resulting from surveys — **not code**. That
+narrows an earlier reading of this considerably, and the earlier reading was wrong to imply the
+release evidence might be permanent.
 
-That does not need solving before launch, but it does need deciding before the first release whose
-record matters. The likely shape is an export step — the release record and its evidence written to
-wherever Millcreek keeps permanent records, with the GitHub copy treated as a convenience rather than
-the record of file. Ask the records officer which of the four kinds are records before building
-anything.
+**This application creates no geospatial record.** It is a viewer: every query is read-only and live
+against the authoritative services, and the pages store nothing — no `localStorage`, no session
+storage, no writes back to any feature service. Verified 27 August 2026. The permanent-retention
+obligation therefore attaches to the **source layers**, which belong to Salt Lake County and Millcreek
+GIS, and not to anything in this repository. Nothing here needs to be preserved to satisfy it.
+
+So the four kinds of evidence this project generates — release records, CI verification results,
+weekly monitor reports, accessibility results — are **software and administrative records**, and the
+90-day retention on workflow artifacts is very likely adequate. The question for the records officer
+is no longer "are these permanent" but the much smaller **"do any of these need retaining at all, and
+for how long"**. A release record is the one with an argument for keeping: it is the evidence that a
+public service was verified before it was published.
+
+**One item does sit near the geospatial line and is worth asking about specifically:**
+`DATA-SOURCES.md`, the Data Source Register. It records which layers back the public service, the
+owning organisation for each, and the date each was last reviewed — provenance for geospatial data
+presented to the public, currently held in git rather than in a records system. All 18 layers carry
+`sourceOwner` and `reviewedOn`, and `dataReviewedOn` is displayed to every resident. Whether that
+register is a geospatial record or an administrative one is a genuine question, and the only one in
+this area where the answer might require doing something.
 
 **Dependencies:** Checkpoint B.
 

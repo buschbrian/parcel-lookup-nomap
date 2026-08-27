@@ -187,9 +187,16 @@ Every release candidate should retain:
    officer, incident owner, and production approver roles? **Answered 26 August 2026, and the answer
    is a finding in itself — see "Role assignments" below.**
 3. Should the existing Netlify site remain the staging environment, and which approved platform/site
-   becomes production? **Decided 26 August 2026: yes.** Netlify becomes staging once the IT
-   provider's CDN is confirmed able to meet the hosting requirements; the CDN becomes production.
-   Until then Netlify remains the only environment, and the pre-production caveat above still holds. **Update, 26 August 2026: the municipality's IT provider is supplying a CDN,
+   becomes production? **Reframed 27 August 2026, and the answer got much simpler.**
+
+   The IT provider's "CDN" is **Netlify**. `maps.millcreekut.gov` was set up by them off an identical
+   Netlify deployment, and it answers with `Server: Netlify` and `Cache-Status: "Netlify Edge"`. So
+   this is not a migration to a different platform at all — it is the same platform, a custom domain,
+   and a different **account**.
+
+   That collapses most of the hosting requirements into "already proven in production on
+   `maps.millcreekut.gov`", and it makes the real ask an ownership transfer rather than a port. It
+   also produces a finding worth more than the question it answers — see below. **Update, 26 August 2026: the municipality's IT provider is supplying a CDN,
    which is the likely production host.** That makes the current Netlify site a strong candidate for
    staging rather than production, and it sets a date for removing the hosting-injection allowance in
    `scripts/deployment-content.mjs`. Task 11 should not be started until the CDN's owner, deploy

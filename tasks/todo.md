@@ -245,6 +245,17 @@ time it has detected anything.
    ignore it — the exact failure this check was repaired to escape. Widening the allowance fails the
    unit suite. **Remove the allowance when hosting moves or the plan changes.**
 
+   **A removal path exists, found 27 August 2026.** `maps.millcreekut.gov`, set up by the IT provider
+   off an identical Netlify deployment, serves **zero** injected marketing while this site serves it
+   on every page. Same platform, same product, different account — so the injection is an
+   account or plan property, not a Netlify-wide one, and it was never truly "not removable": it was
+   not removable *from this account*.
+
+   Moving the site into the IT provider's Netlify account therefore removes the injection, transfers
+   the service off an individual's personal account, and supplies the custom domain, in one action.
+   That single move closes the largest operational risk in Task 11 and this allowance together. It is
+   now the first ask in the hosting request.
+
    Net effect on the production pages: the Pretty URLs rewrite is gone, so the only tolerated
    difference is this injection. Everything else is byte-exact.
 

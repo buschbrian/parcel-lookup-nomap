@@ -55,8 +55,28 @@ jobs:
       - name: Build production artifact
         run: npm run build
 
+      # The one step in this "deterministic" job that is not deterministic. Playwright's
+      # --with-deps runs apt-get update, which consults the third-party repositories the
+      # runner image happens to have configured. On 27 August 2026 two Microsoft apt
+      # repositories returned 403 and the step died with code 100, failing a pull request
+      # whose change was documentation. A workflow_dispatch run on the same commit passed
+      # minutes later, and a re-run passed too.
+      #
+      # So: retry it, on the same reasoning the service monitor uses — transport failure
+      # is worth another attempt, and nothing else here is. Every other step in this job
+      # depends only on the lockfile and this repository, and none of them is retried.
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if npx playwright install --with-deps chromium; then
+              exit 0
+            fi
+            echo "::warning::Chromium install attempt $attempt failed (usually an apt mirror or third-party repo); retrying"
+            sleep $((attempt * 15))
+          done
+          echo "::error::Chromium install failed three times - this is no longer transient"
+          exit 1
 
       - name: Run browser tests
         run: npx playwright test

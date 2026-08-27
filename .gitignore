@@ -23,3 +23,11 @@ counsel-review/
 test-results-production/
 production-evidence/
 service-contract-report.json
+
+# Draft emails to counsel, records, IT and DNS. Kept beside the project so they
+# are easy to find, deliberately not committed: they are correspondence rather
+# than code, they name individuals, and their contents change as conversations
+# move. The requests they are drawn from live in tasks/todo.md, which is the
+# record. Ignore the directory rather than the files inside it - naming files
+# individually is exactly how the attorney review document ended up committed.
+emails/

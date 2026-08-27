@@ -830,3 +830,29 @@ test("only the browser install is retried, and it is bounded",async()=>{
   assert.match(install,/no longer transient/,
     "the final failure says why it is being reported rather than retried again");
 });
+
+/* Correspondence is not code, and this repository is public.
+
+   Draft emails to counsel, the records officer, IT and DNS sit in `emails/` so
+   they are easy to find while they are being worked on. They name individuals and
+   they change as conversations move; none of that belongs in a public repository,
+   and the requests they are drawn from are already recorded in tasks/todo.md.
+
+   The rule ignores the directory rather than the files in it, which is the lesson
+   from the attorney review document: a per-file list let a document with a
+   slightly different name straight through. This asserts the property that
+   matters — nothing under emails/ is tracked — rather than the wording of the
+   rule, exactly as the counsel-review test does. */
+test("no draft correspondence is tracked in this public repository",async()=>{
+  const { execFileSync }=await import("node:child_process");
+  let tracked;
+  try{
+    tracked=execFileSync("git",["ls-files","emails"],
+      {cwd:new URL("../",import.meta.url),encoding:"utf8",stdio:["ignore","pipe","ignore"]});
+  }catch{
+    return;  // not a git checkout: nothing to assert
+  }
+  assert.equal(tracked.trim(),"",
+    "emails/ is tracked, and this repository is public on GitHub. Draft "+
+    "correspondence names individuals and belongs on disk, not in git history.");
+});

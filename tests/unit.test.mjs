@@ -324,7 +324,15 @@ test("the release toolchain is pinned consistently",async()=>{
   assert.match(npmVersion,/^\d+\.\d+\.\d+$/,"packageManager pins one exact npm release");
   assert.equal(packageJson.engines?.npm,npmVersion,
     "packageManager and engines pin the same npm release");
-  assert.equal(packageJson.devDependencies?.vite,"7.3.6","Vite is pinned exactly");
+  /* The literal is deliberate. Dependabot opens dependency bumps on its own, and
+     Vite is the one dependency whose output is what residents actually receive, so a
+     version change here must fail a test and force somebody to look. Bumping it is
+     one line — the point is that the line exists. Whoever changes it should have
+     compared the built bytes before and after; a Vite major that alters the output
+     is a change to the served pages, not a housekeeping update. */
+  assert.equal(packageJson.devDependencies?.vite,"8.2.2","Vite is pinned exactly");
+  assert.doesNotMatch(packageJson.devDependencies.vite,/[\^~><*]|\s-\s/,
+    "the Vite pin is an exact version, not a range");
   assert.equal(lock.packages?.[""]?.devDependencies?.vite,packageJson.devDependencies.vite,
     "the lockfile root carries the same Vite pin");
   assert.equal(lock.packages?.["node_modules/vite"]?.version,packageJson.devDependencies.vite,

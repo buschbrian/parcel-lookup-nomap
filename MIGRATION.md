@@ -3,7 +3,7 @@
 **Status: step 1 executed and building. 13 August 2026.** Nothing has been extracted yet — that is
 step 2.
 
-### Step 1 result
+## Step 1 result
 
 `npm install` resolved **vite 7.3.6**, the entry pages moved to the repository root, and
 `npm run build` succeeded. The important outcome:
@@ -145,6 +145,8 @@ Then confirm by hand, because these are the things a green suite will not tell y
       that last one **is** a `.md`, so the check as originally written does not pass literally; it was
       equally published before the migration, so it is not a regression, but `public/assets/README.md`
       is worth removing or moving if the intent is a strictly Markdown-free artifact.
+      **Done 26 August 2026** — it moved to `docs/brand-asset.md`, outside `publicDir`, and
+      `check-deployment.mjs` now probes both the old and the new path.
 - [x] Both pages perform a real lookup through the built artifact. **Closed 26 August 2026**, and in a
       stronger form than this checkbox asked for: `npm run test:production` runs both lookups in a real
       browser against a deployed URL and the live services, with an axe scan on each results page. It

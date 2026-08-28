@@ -430,7 +430,7 @@ steady-state number.
 
 - [x] GIS/data owner accepts the monitoring cadence and alert recipient. **Accepted 26 August 2026**
       by the GIS/data owner (Brian Busch, who also holds that role): weekly cadence stands, failures
-      go to **bbusch@millcreekut.gov**, and `maxConcurrent` stays at 12.
+      go to **<bbusch@millcreekut.gov>**, and `maxConcurrent` stays at 12.
 
       **How that alert is actually delivered matters, because it is not configured in this
       repository.** GitHub emails the *account owner* when a scheduled workflow fails; there is no

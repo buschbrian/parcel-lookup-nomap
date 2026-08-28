@@ -130,8 +130,11 @@ Settings > Branches, merge, and turn it back on. Prefer the first.
 
 1. Confirm `dataReviewedOn` is current, or review the layers and update it.
 2. Bump the version in all three places; add or extend the dated changelog.
-3. Open a pull request. Deterministic CI must be green; a reviewer other than the author approves.
-4. Verify the deploy preview: `check:deployment` and `test:production` against its URL.
+3. Open a pull request. Deterministic CI must be green. Required approvals is **0** today — there is
+   one code owner and he is also the only author, so GitHub cannot route an approving review; see
+   Repository controls. When a second reviewer exists, they approve here.
+4. Verify the deploy preview: `npm run build && npm run check:deployment`, then `test:production`,
+   against its URL. The check refuses to run without `dist/`.
 5. Complete the human gates. None of them is a formality, and none is skippable because the code did
    not change — counsel wording and accessibility apply to what is served, not to the diff.
 6. Merge, tag, and watch the production deploy. Re-run both checks against production.

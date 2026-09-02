@@ -4,7 +4,7 @@
    repository built. It runs against a URL, so it is also the check used on a
    deploy preview before a release candidate is promoted:
 
-     DEPLOY_URL=https://<preview>.netlify.app/ npm run check:deployment
+     DEPLOY_URL=https://<the staging host>/ npm run check:deployment
 
    Two properties it had to gain for production (readiness Task 4):
 
@@ -23,7 +23,7 @@ import { compareDeployedHtml, missingHeaderDirectives,
   unpublishedPathFailure } from "./deployment-content.mjs";
 
 const TIMEOUT=20_000;
-const url=process.env.DEPLOY_URL||"https://parcel-lookup-millcreek.netlify.app/";
+const url=process.env.DEPLOY_URL||"https://lookup.gis.millcreekut.gov/";
 const failures=[];
 const note=message=>console.log(message);
 const fail=message=>{failures.push(message);console.log("FAIL  "+message);};

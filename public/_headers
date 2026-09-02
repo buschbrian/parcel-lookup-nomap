@@ -11,11 +11,12 @@
   # against something this repository controls, not against a hosting default that
   # can differ on another platform or account.
   #
-  # `includeSubDomains` binds subdomains of the host that sends it: from
-  # parcel-lookup-millcreek.netlify.app it reaches nothing else, and from a
-  # subdomain such as parcel.millcreekut.gov it would reach only that subdomain's
-  # own children. Serving this file from the millcreekut.gov apex would force HTTPS
-  # on every City subdomain, so confirm that with whoever owns the domain before
+  # `includeSubDomains` binds subdomains of the host that sends it, and nothing
+  # above it. From lookup.gis.millcreekut.gov — the production host since
+  # 2 September 2026 — it reaches only that name's own children, of which there
+  # are none. It does NOT reach gis.millcreekut.gov, and it does not reach the
+  # millcreekut.gov apex. Serving this file from the apex would force HTTPS on
+  # every City subdomain, so confirm that with whoever owns the domain before
   # doing it. `preload` only takes effect if the domain is submitted to
   # hstspreload.org; sending the token does not enrol anything by itself.
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload

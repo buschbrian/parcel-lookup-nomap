@@ -5,7 +5,10 @@ future land use, subdivision, hazard, district and utility information. A separa
 licensing page screens published short-term-rental parcels and 400-foot buffers. Neither requires a
 map, mouse, or vision.
 
-Live: <https://parcel-lookup-millcreek.netlify.app/>
+Live: <https://lookup.gis.millcreekut.gov/>
+
+Also still serving during the parallel run, and the rollback until it is retired:
+<https://parcel-lookup-millcreek.netlify.app/>
 
 Millcreek homepage: <https://millcreekut.gov/>
 
@@ -205,7 +208,7 @@ A release candidate gets one more check that nothing else covers — a real look
 through the deployed pages against the live public services:
 
 ```bash
-DEPLOY_URL=https://deploy-preview-4--parcel-lookup-millcreek.netlify.app/ npm run test:production
+DEPLOY_URL=https://kind-grass-013e9611e.5.azurestaticapps.net/ npm run test:production
 ```
 
 `npm test` mocks every ArcGIS response, so it proves the code and nothing about the deployment.
@@ -269,7 +272,7 @@ rather than stopping at the first, and it names the page, line and column of any
 Point it at a deploy preview to verify a release candidate before promoting it:
 
 ```bash
-DEPLOY_URL=https://deploy-preview-3--parcel-lookup-millcreek.netlify.app/ npm run check:deployment
+DEPLOY_URL=https://kind-grass-013e9611e.5.azurestaticapps.net/ npm run check:deployment
 ```
 
 The check refuses to run without `dist/`. Netlify publishes the build output, so comparing against

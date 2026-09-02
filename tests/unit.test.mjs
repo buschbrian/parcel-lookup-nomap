@@ -218,7 +218,8 @@ test("only the public site is published",async()=>{
   assert.ok(publishDir,"netlify.toml declares a publish directory");
   assert.notEqual(publishDir,".","the repository root must not be the publish directory");
 
-  const required=["index.html","business-licensing.html","_headers","assets/millcreek-logo.png"];
+  const required=["index.html","business-licensing.html","_headers",
+    "staticwebapp.config.json","assets/millcreek-logo.png"];
   const engineering=/^(docs|scripts|tests|node_modules|\.github|src)\//;
   const repoFile=/^(package(-lock)?\.json|playwright\.config\.mjs|vite\.config\.mjs|netlify\.toml|LICENSE|CODE\.md|USAGE\.md|README\.md|MIGRATION\.md|DATA-SOURCES\.md|WEB-MAP-REVIEW\.md|CHANGES-.+\.md)$/;
 
@@ -232,8 +233,10 @@ test("only the public site is published",async()=>{
   if(entries){
     // The publish directory exists: assert exactly what would be served.
     const served=entries.map(entry=>entry.split(/[\\/]/).join("/"));
-    // `_headers` is only honoured from inside the publish directory: if it is left
-    // behind, every security header silently disappears from the deployed site.
+    // Neither host config is honoured from anywhere but the publish directory: if
+    // `_headers` is left behind every security header silently disappears from
+    // Netlify, and if `staticwebapp.config.json` is left behind Azure serves the
+    // site with no headers, no cache rules and no `/business-licensing` at all.
     for(const name of required)
       assert.ok(served.includes(name),publishDir+"/ is missing "+name);
     const leaked=served.filter(name=>engineering.test(name)||repoFile.test(name));
@@ -274,6 +277,7 @@ test("only the public site is published",async()=>{
     ["index.html",["../index.html","../public/index.html"]],
     ["business-licensing.html",["../business-licensing.html","../public/business-licensing.html"]],
     ["_headers",["../public/_headers"]],
+    ["staticwebapp.config.json",["../public/staticwebapp.config.json"]],
     ["assets/millcreek-logo.png",["../public/assets/millcreek-logo.png"]]
   ]) assert.ok(await exists(candidates),"no source found that would publish "+name);
 });
@@ -287,6 +291,108 @@ test("transport security is declared in the repository, not left to the platform
   assert.ok(hsts,"_headers declares Strict-Transport-Security");
   const maxAge=Number(hsts.match(/max-age=(\d+)/)?.[1]);
   assert.ok(maxAge>=31536000,"max-age is at least one year, got "+maxAge);
+});
+
+/* Two hosts, two config files, one set of response headers.
+   -----------------------------------------------------------------------
+   The Azure port (2026-09-02) added `public/staticwebapp.config.json` beside
+   `public/_headers`. Each host reads only its own file and silently ignores the
+   other's, so nothing at runtime would ever notice the two drifting apart: an
+   edit to the CSP in `_headers` would ship to Netlify and not to Azure, and the
+   deployment gate would keep passing against whichever host it was pointed at.
+
+   That is the same failure the test above exists to prevent, one level up — a
+   header with no single source. So the two files are compared here, and the
+   comparison is what makes either of them safe to edit.
+
+   Mapping notes, both of which are host behaviour rather than choices:
+
+   - Azure resolves `/` through the default document, so the SWA rule on
+     `/index.html` is what answers a request for `/`. The `/` block in
+     `_headers` therefore has no separate Azure rule and is compared against
+     the `/index.html` one. Verified live on the planning map, which uses the
+     same pattern.
+   - Azure has no equivalent of Netlify consuming `_headers`: the file is
+     ordinary build output there and would be served at `/_headers`. The route
+     rule that 404s it is asserted below, because losing it publishes a
+     repository file — the one property the publish allowlist exists for. */
+
+function parseNetlifyHeaders(text){
+  const blocks=new Map();
+  let current=null;
+  for(const raw of text.split("\n")){
+    const line=raw.replace(/\s+$/,"");
+    if(!line||line.trimStart().startsWith("#")) continue;
+    if(!/^\s/.test(line)){ current=new Map(); blocks.set(line.trim(),current); continue; }
+    const match=line.match(/^\s+([A-Za-z0-9-]+):\s*(.+)$/);
+    if(match&&current) current.set(match[1].toLowerCase(),match[2].trim());
+  }
+  return blocks;
+}
+
+test("the Netlify and Azure host configs declare the same response headers",async()=>{
+  const netlify=parseNetlifyHeaders(
+    await readFile(new URL("../public/_headers",import.meta.url),"utf8"));
+  const swa=JSON.parse(
+    await readFile(new URL("../public/staticwebapp.config.json",import.meta.url),"utf8"));
+
+  const globals=netlify.get("/*");
+  assert.ok(globals,"_headers declares a /* block");
+  const swaGlobals=new Map(Object.entries(swa.globalHeaders||{})
+    .map(([name,value])=>[name.toLowerCase(),value]));
+
+  assert.deepEqual([...swaGlobals.keys()].sort(),[...globals.keys()].sort(),
+    "the two host configs declare different global header sets");
+  for(const [name,value] of globals)
+    assert.equal(swaGlobals.get(name),value,
+      name+" differs between _headers and staticwebapp.config.json");
+
+  /* Cache-Control is declared per page, not globally, so it is compared per page.
+     `/` maps to the Azure `/index.html` rule for the default-document reason above. */
+  const routeFor=path=>(swa.routes||[]).find(route=>route.route===path);
+  for(const [netlifyPath,azurePath] of [
+    ["/","/index.html"],
+    ["/index.html","/index.html"],
+    ["/business-licensing.html","/business-licensing.html"],
+    ["/business-licensing","/business-licensing"]
+  ]){
+    const expected=netlify.get(netlifyPath)?.get("cache-control");
+    assert.ok(expected,"_headers declares Cache-Control for "+netlifyPath);
+    const route=routeFor(azurePath);
+    assert.ok(route,"staticwebapp.config.json has no route for "+azurePath);
+    assert.equal(route.headers?.["Cache-Control"],expected,
+      "Cache-Control for "+netlifyPath+" differs between hosts");
+  }
+
+  /* The readable licensing URL is a rewrite on both hosts: same path, same target,
+     same 200 — a redirect instead would change the address bar and the gate's
+     comparison target. netlify.toml owns the Netlify half. */
+  assert.equal(routeFor("/business-licensing")?.rewrite,"/business-licensing.html",
+    "Azure must rewrite /business-licensing rather than redirect it");
+  const toml=await readFile(new URL("../netlify.toml",import.meta.url),"utf8");
+  assert.match(toml,/from\s*=\s*"\/business-licensing"[\s\S]{0,120}?status\s*=\s*200/,
+    "netlify.toml must still rewrite /business-licensing with status 200");
+});
+
+/* Each host publishes the OTHER host's config file as ordinary static content:
+   Netlify consumes `_headers` and would serve `staticwebapp.config.json`, and
+   Azure does the reverse. Neither file holds a secret, and both are still
+   repository files on a public site, which is exactly what the publish allowlist
+   refuses. Each config denies the other's file; assert both halves. */
+test("each host denies the other host's config file",async()=>{
+  const swa=JSON.parse(
+    await readFile(new URL("../public/staticwebapp.config.json",import.meta.url),"utf8"));
+  const denied=(swa.routes||[]).find(route=>route.route==="/_headers");
+  assert.equal(denied?.statusCode,404,"Azure must refuse to serve /_headers");
+  /* A route 404 falls through to navigationFallback and comes back as the app at
+     HTTP 200 unless the path is excluded from it — documented Azure behaviour, and
+     the reason the exclusion is asserted rather than assumed. */
+  assert.ok((swa.navigationFallback?.exclude||[]).includes("/_headers"),
+    "/_headers must be excluded from navigationFallback or the 404 becomes a 200");
+
+  const toml=await readFile(new URL("../netlify.toml",import.meta.url),"utf8");
+  assert.match(toml,/from\s*=\s*"\/staticwebapp\.config\.json"[\s\S]{0,120}?status\s*=\s*404/,
+    "netlify.toml must refuse to serve /staticwebapp.config.json");
 });
 
 // A LIKE operand is not an equality operand. Escaping wildcards in an equality
@@ -863,4 +969,73 @@ test("no draft correspondence is tracked in this public repository",async()=>{
   assert.equal(tracked.trim(),"",
     "emails/ is tracked, and this repository is public on GitHub. Draft "+
     "correspondence names individuals and belongs on disk, not in git history.");
+});
+
+/* The Azure port split deployment in two: an unattended staging deploy on every
+   push to `main`, and a manual production promotion behind the `production`
+   environment's required reviewers. That split is the only thing standing between
+   a merge and the public site, and it is three lines of YAML wide — a `push:`
+   trigger added to the promotion workflow, or the production token referenced
+   from the staging one, would remove it silently and nothing would look wrong.
+
+   The approval itself lives in repository settings and cannot be asserted from
+   here. What can be asserted is that this repository never builds a path around
+   it, so that is what these two tests do. */
+test("production promotion is manual, reviewed, and rebuilds nothing",async()=>{
+  const workflow=await readFile(
+    new URL("../.github/workflows/promote-production.yml",import.meta.url),"utf8");
+
+  assert.match(workflow,/on:\s*\n\s*workflow_dispatch:/,"a person starts it, deliberately");
+  assert.doesNotMatch(workflow,/^\s*(push|schedule|workflow_run):/m,
+    "promotion must not be triggered by a push, a timer, or another workflow "+
+    "finishing: those are all ways for a merge to reach production unattended");
+  assert.match(workflow,/environment:\s*production/,
+    "the production environment is where the required reviewer and the production "+
+    "token both live; without it the approval gate does not exist");
+
+  assert.match(workflow,/run_id:/,"the candidate is named explicitly");
+  assert.match(workflow,/required:\s*true/,"the candidate cannot be omitted");
+  assert.match(workflow,/run-id:\s*\$\{\{\s*inputs\.run_id\s*\}\}/,
+    "the artifact comes from the named staging run");
+
+  /* Rebuilding would make the approval meaningless: the approver signed off on
+     bytes that were verified, not on a commit that can build differently. */
+  assert.doesNotMatch(workflow,/npm run build|npm ci/,
+    "promotion republishes a built artifact and must not build a new one");
+  assert.match(workflow,/deploy-staging\.yml/,
+    "the run being promoted is checked to be a staging deploy");
+  assert.match(workflow,/conclusion/,"a failed run cannot be promoted");
+  assert.match(workflow,/head_branch|branch/,"a run from an unreviewed branch cannot be promoted");
+
+  assert.match(workflow,/sha256sum/,"the promoted hashes are part of the release record");
+  assert.match(workflow,/timeout-minutes:/,"the job is bounded");
+  assert.doesNotMatch(workflow,/uses:\s*[\w./-]+@v\d/,
+    "actions are pinned to immutable reviewed commits, not to moving tags");
+});
+
+test("the unattended staging deploy cannot reach production",async()=>{
+  const workflow=await readFile(
+    new URL("../.github/workflows/deploy-staging.yml",import.meta.url),"utf8");
+
+  assert.match(workflow,/environment:\s*staging/,"the staging token is environment-scoped");
+  /* The staging secret's name contains the production secret's name, so this has
+     to exclude a trailing name character or it matches its own allowed value. */
+  assert.doesNotMatch(workflow,/AZURE_STATIC_WEB_APPS_API_TOKEN(?![_A-Z])/,
+    "an unattended job must not reference the production deployment token");
+  assert.match(workflow,/AZURE_STATIC_WEB_APPS_API_TOKEN_STAGING/,
+    "it deploys with the staging token");
+  assert.doesNotMatch(workflow,/environment:\s*production/,
+    "nothing in the automatic path may enter the production environment");
+
+  /* The uploaded artifact must be the one the gates ran against, not a rebuild:
+     the promotion workflow republishes it verbatim, so any gap here is a gap
+     between what was tested and what residents load. */
+  const gateIndex=workflow.indexOf("Run browser tests");
+  const uploadIndex=workflow.indexOf("Upload the built site");
+  assert.ok(gateIndex>0&&uploadIndex>gateIndex,
+    "the artifact is uploaded after the gates, not before them");
+  assert.match(workflow,/if-no-files-found:\s*error/,
+    "an empty artifact must fail rather than promote nothing to production later");
+  assert.doesNotMatch(workflow,/uses:\s*[\w./-]+@v\d/,
+    "actions are pinned to immutable reviewed commits, not to moving tags");
 });

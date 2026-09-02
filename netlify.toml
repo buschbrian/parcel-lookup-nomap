@@ -51,6 +51,21 @@
   status = 200
 
 [[redirects]]
+  # Azure's host config, added by the 2026-09-02 port, is ordinary build output to
+  # Netlify: it would be copied into `dist/` and served at this path like any other
+  # file. It holds no secret, and it is still a repository file on a public site,
+  # which is the one thing the publish allowlist exists to prevent — so deny it here
+  # rather than let it through on a technicality. Azure denies `_headers` for the
+  # same reason, in `public/staticwebapp.config.json`; the unit suite asserts both
+  # halves, because losing either one publishes a file silently.
+  #
+  # This must stay ABOVE the catch-all: redirects are evaluated in order, and the
+  # catch-all would otherwise answer first with the app at HTTP 200.
+  from = "/staticwebapp.config.json"
+  to = "/index.html"
+  status = 404
+
+[[redirects]]
   # Send unknown paths to the app rather than a Netlify 404, so a mistyped
   # deep link still reaches a working lookup form.
   from = "/*"

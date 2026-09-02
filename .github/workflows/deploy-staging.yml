@@ -1,0 +1,176 @@
+# Build a release candidate, gate it, and publish it to STAGING.
+#
+# This workflow is half of the Azure port (2026-09-02). The other half is
+# `promote-production.yml`, and the split between them is the whole point.
+#
+#   this file                every push to `main`: run the gates, then deploy to
+#                            the staging Static Web App. Automatic, no approval,
+#                            no production credential anywhere in the job.
+#   promote-production.yml   manual only: take the artifact THIS workflow built
+#                            and gated, and publish those exact bytes to
+#                            production, behind a required reviewer.
+#
+# Why not one workflow that deploys straight to production on merge, the way the
+# planning map does? Because this repository has committed, repeatedly and in
+# writing, to the opposite: "promotion is a human act performed by the designated
+# municipal approver" (verify-deployment.yml), and readiness Task 11 requires that
+# "staging deploys automatically from reviewed candidates; production requires the
+# designated approver" and that "production cannot be promoted without the
+# configured approver". A push-to-deploy pipeline would quietly delete that
+# control. The GitHub `production` environment is what enforces it.
+#
+# The gates run here even though `quality.yml` already ran them on the same
+# commit. That duplication is deliberate, on the same reasoning the planning map
+# records: the artifact that gets uploaded is the artifact the gates ran against,
+# so what ships is what passed. A workflow_run trigger off a green quality run
+# would prove a commit was green, not that these bytes were.
+#
+# Required repository secret:
+#   AZURE_STATIC_WEB_APPS_API_TOKEN_STAGING
+#       deployment token of the STAGING Static Web App. It must not be the
+#       production token: this job is unattended, so anything it can reach is
+#       effectively unapproved.
+#
+# Every `uses:` is pinned to a full commit SHA with the tag in a comment. A tag is
+# a moving pointer, and this workflow holds a deployment token.
+
+name: Deploy to staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Deliberately NOT cancel-in-progress. Cancelling a half-finished upload to a
+  # static host leaves the site in a state no commit describes.
+  group: deploy-staging-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Audit production toolchain
+        run: npm audit --audit-level=high
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Run Python tests
+        run: npm run test:python
+
+      - name: Build production artifact
+        run: npm run build
+
+      # Same transient-failure retry, and the same bound, as quality.yml. See the
+      # comment there for why this one step is retried and nothing else is.
+      - name: Install Chromium
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if npx playwright install --with-deps chromium; then
+              exit 0
+            fi
+            echo "::warning::Chromium install attempt $attempt failed (usually an apt mirror or third-party repo); retrying"
+            sleep $((attempt * 15))
+          done
+          echo "::error::Chromium install failed three times - this is no longer transient"
+          exit 1
+
+      - name: Run browser tests
+        run: npx playwright test
+
+      # The hash is the link between this run and the promotion that follows it.
+      # `promote-production.yml` prints the same two hashes for the bytes it is
+      # about to publish, so the approver can see that staging and production are
+      # the same artifact rather than take it on trust. Readiness Task 11:
+      # "staging and production artifact hashes match the approved candidate."
+      - name: Record the artifact hashes
+        shell: bash
+        run: |
+          {
+            echo "## Candidate ${{ github.sha }}"
+            echo
+            echo '```text'
+            sha256sum dist/index.html dist/business-licensing.html
+            echo '```'
+            echo
+            echo "Promote with **promote-production.yml**, run id \`${{ github.run_id }}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Retention has to outlive the approval conversation this artifact is the
+      # subject of. Ninety days matches the release-record retention that
+      # verify-deployment.yml already uses.
+      - name: Upload the built site
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: site-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-failure-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  deploy-staging:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # The staging token lives on this environment. Configure NO required
+    # reviewers here - staging is meant to be unattended. The `production`
+    # environment in promote-production.yml is where the approver sits.
+    environment: staging
+    steps:
+      - name: Download the gated artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: site-${{ github.sha }}
+          path: dist
+
+      # `skip_app_build` and `skip_api_build` matter: without them Oryx detects
+      # the repository and builds it again inside the deploy container, which
+      # would publish a bundle no gate in this workflow ever saw.
+      - name: Deploy to Azure Static Web Apps (staging)
+        uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_STAGING }}
+          action: upload
+          app_location: dist
+          skip_app_build: true
+          skip_api_build: true
+
+      - name: Say what was deployed and what happens next
+        run: |
+          echo "::notice::Deployed ${{ github.sha }} to the staging Static Web App."
+          echo "::notice::Verify it: run verify-deployment.yml against the staging URL."
+          echo "::notice::Promote it: run promote-production.yml with run id ${{ github.run_id }}."

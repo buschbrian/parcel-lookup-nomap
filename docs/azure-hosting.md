@@ -220,10 +220,13 @@ Two consequences worth knowing before you need them:
 
 ## Open
 
-- Nothing in Azure has been created yet. Every step in "What has to exist" is outstanding.
-- The designated municipal approver is not yet named — readiness Task 12. Until a person is
-  listed as a required reviewer on the `production` environment, the gate exists but is
-  unconfigured, and `promote-production.yml` should not be run.
+- The `production` environment lists one required reviewer. The municipality has no second
+  person who reviews code, so the gate is currently an audit record of who promoted what and
+  when rather than an independent review. Add a second reviewer if and when one exists; until
+  then the record is the control.
 - Repository, host, DNS, billing and recovery access still need at least two people
-  (readiness Task 11). Creating these resources under one individual's Azure account would
-  reproduce, on a new platform, the exact risk this move exists to close.
+  (readiness Task 11). The resources were created under one individual's Azure account, which
+  reproduces, on a new platform, the exact risk this move exists to close. This is an
+  organisational fix, not a repository one.
+- Netlify is still serving and still connected. Its retirement is a separate decision, taken
+  after the parallel run settles (see "After the parallel run settles").

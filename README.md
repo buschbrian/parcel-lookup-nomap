@@ -7,10 +7,11 @@ map, mouse, or vision.
 
 Live: <https://lookup.gis.millcreekut.gov/>
 
-Also still serving during the parallel run, and the rollback until it is retired:
-<https://parcel-lookup-millcreek.netlify.app/>
-
 Millcreek homepage: <https://millcreekut.gov/>
+
+This README is in two halves. Everything above "Working on this" is for anyone who uses the service,
+reviews it, or wants to understand what it reports and how far it can be trusted. Everything below
+is for people changing the code.
 
 ---
 
@@ -42,7 +43,8 @@ The practical design question was:
 > **What service is this map delivering, and how else can we deliver that service?**
 
 This application provides a direct text lookup for the key property determinations people commonly
-seek from the map. The visual map remains available for people who prefer it.
+seek from the map. The visual map remains available for people who prefer it, and links here as its
+own accessible equivalent.
 
 The legal treatment of a separate version is fact-specific. Section 35.202 limits conforming
 alternate versions to technical or legal limitations; §35.203 addresses equivalent facilitation;
@@ -121,212 +123,15 @@ to a broken page.
 
 ---
 
-## Repository layout
+## Accessibility problems and feedback
 
-```text
-index.html      The general property lookup, self-contained by design. A Vite entry point.
-business-licensing.html The focused short-term-rental and 400-foot buffer lookup. Also an entry.
-public/         Static passthrough. Copied verbatim into `dist/`, never processed.
-  assets/         Municipal brand assets stored locally for reliable rendering.
-  _headers        Netlify security headers, including the CSP.
-dist/           Build output and the deployed artifact. Generated, git-ignored, never edited.
-vite.config.mjs MPA build configuration; both HTML files are entry points.
-netlify.toml    Netlify build/redirect configuration; runs `npm run build`, publishes `dist/`.
-MIGRATION.md    ADR-0001 migration state, step by step, with what is verified and what is not.
-README.md       This file.
-USAGE.md        For residents, front-counter staff, and GIS staff maintaining the config.
-CODE.md         Full code walkthrough — every function explained.
-DATA-SOURCES.md Data ownership, freshness and replacement-candidate register.
-WEB-MAP-REVIEW.md Full inventory and disposition review of the 96 public-map layers.
-tests/          Developer-only unit, Python, browser and axe suites, plus the live smoke run.
-scripts/        Live service-contract and deployment checks, and the FEMA parcel script.
-docs/           Migration proposal, ADRs, brand asset note, manual screen-reader script.
-```
+Report anything that prevents you getting the information you need:
 
-> **The entry pages must not live in `public/`.** Vite copies `publicDir` verbatim without processing,
-> so an entry left there would silently bypass the build — everything would appear to work while
-> nothing was actually built. `public/` now holds only `assets/` and `_headers`.
+- Phone **801-214-2754**
+- Email **<gis@millcreekut.gov>**
+- Commitment: an accessible format **within 5 business days**
 
-### Why each page is self-contained
-
-Deliberate. The people who maintain production configuration are GIS staff, not JavaScript
-developers. Each page keeps its own clearly marked configuration block and has no runtime build
-step, bundler, or dependency tree. The licensing page is separate so its purpose, contacts, data
-snapshot and maintenance cycle do not become entangled with the general property report.
-
-The deployed app still has no runtime dependencies or build step. Developer-only packages run the
-test suite and are not shipped. The self-contained-page choice means the CSP needs `'unsafe-inline'`
-for inline `<style>` and `<script>`; that accepted tradeoff is documented in `public/_headers`.
-
----
-
-## Quick start
-
-There is a build step now (Vite, ADR-0001), but still **no runtime dependencies** — the built pages
-ship as self-contained HTML with an inline script, exactly as before.
-
-```bash
-git clone <this repo>
-cd parcel-lookup-nomap
-npm install
-npm run dev        # dev server on http://127.0.0.1:5173
-```
-
-To look at what actually deploys rather than the dev server:
-
-```bash
-npm run build      # writes dist/
-npm run preview    # serves dist/ on http://127.0.0.1:4173
-```
-
-Serve through one of those, not the repository root, so local browsing matches what the deployed site
-serves. Opening the file directly with `file://` will not work: the browser blocks the
-cross-origin requests to ArcGIS, and both pages say so rather than blaming the service.
-
-At the current migration step the build is a verified pass-through — `dist/index.html` and
-`dist/business-licensing.html` are byte-identical to their sources — so `python3 -m http.server 8080
---directory dist` remains a valid way to serve the artifact if you would rather not use Vite's
-preview.
-
-The required release toolchain is **Node 22.15.0 with npm 10.9.2**. `.nvmrc` is the single source
-for the Node version consumed by developers, GitHub Actions, and Netlify; load that version before
-installing dependencies. The same contract is mirrored in `package.json` (`engines` and
-`packageManager`) and in this paragraph; a drift test covers all three, so update them together.
-
-To run developer checks, install the dev-only dependencies and tests:
-
-```bash
-npm ci
-npx playwright install chromium
-npm test
-npm run check:services       # live public ArcGIS contract check
-npm run build                 # check:deployment compares against dist/, so build first
-npm run check:deployment     # after Netlify has deployed the commit, or against DEPLOY_URL
-```
-
-A release candidate gets one more check that nothing else covers — a real lookup, in a real browser,
-through the deployed pages against the live public services:
-
-```bash
-DEPLOY_URL=https://<the staging host>/ npm run test:production
-```
-
-`npm test` mocks every ArcGIS response, so it proves the code and nothing about the deployment.
-This run mocks nothing. It looks up the published synthetic address on both pages, requires a ready
-status with no unavailable source, scans each results page with axe, and fails on any page error or
-failed request. It reports load and lookup timings, request counts and peak concurrency to
-`production-evidence/`, which belongs with the release record.
-
-> **It touches real resident data, so it retains none.** The address is the synthetic fixture already
-> published in this repository, but the parcel it returns is real — owner name and mailing details.
-> Tracing, screenshots and video are off, the assertions count fields rather than read them, and the
-> results body is blanked before the test ends so Playwright's failure snapshot cannot capture it.
-> A unit test fails if any of that is undone. Debug a failure locally against `dist/` with the mocked
-> suite instead, where traces are safe.
-
-Both checks also run as one GitHub workflow, **Verify deployment candidate**, started by hand from
-the Actions tab with the candidate URL. It builds the artifact from the checked-out commit, records
-its SHA-256, runs the deployment gates and both live flows, and retains the output for 90 days as the
-release record. It holds no deployment credential and has no environment: it verifies a candidate,
-and promotion stays a human act. Verify a candidate from the commit it was built from — otherwise the
-content gate compares two versions and reports the gap as drift.
-
-GIS staff can reproduce the FEMA full-parcel selection in ArcGIS Pro, ArcGIS Online Notebook, or
-another environment with ArcGIS API for Python installed:
-
-```bash
-python scripts/fema_highest_hazard.py 16264570030000
-```
-
-The JSON output includes the selected highest classification, every FEMA classification touching
-the parcel, the corresponding Millcreek classifications and their congruence result. The selection
-is a documented display precedence, not a FEMA risk score.
-
-> **Do not test by double-clicking `index.html`.** Over `file://` the browser blocks the
-> cross-origin request to ArcGIS, so every lookup fails even though the service is fine. The app
-> now detects this and says so on load, but you still need a local server to test lookups. Layout
-> and print styles are fine to check over `file://`.
-
-### Deploying
-
-Static hosting. Currently Netlify, auto-deploying from `main`. `netlify.toml` is read from the
-repository root and runs `npm run build`; Netlify publishes **`dist/`**. `_headers` still lives in
-`public/` because Netlify only honours it from the publish directory, and Vite copies `public/` into
-`dist/` verbatim, so it lands at `dist/_headers` — moving it out silently drops every security header.
-
-What ships is still an allowlist, now enforced by the build rather than by directory discipline: only
-the entry pages, their assets, and everything in `public/` reach `dist/`. Committing a document
-elsewhere in the repository does not put it on the public site.
-
-**A failed build is now a failed deploy.** That is the intended trade, but it is a new failure mode on
-a live public service — watch the first build-based deploy rather than assuming it.
-
-Deploy this as its **own** site. Do not place it inside the Experience Builder site's publish
-directory — an ExB Developer Edition publish replaces that whole directory and would silently
-delete this app.
-
-After Netlify reports a successful deploy, run `npm run build && npm run check:deployment`. It
-compares both live pages against the **built artifact** in `dist/`, proves that no repository file is
-published, and verifies every security and cache header. It runs every gate and reports all findings
-rather than stopping at the first, and it names the page, line and column of any content difference.
-Point it at a deploy preview to verify a release candidate before promoting it:
-
-```bash
-DEPLOY_URL=https://<the staging host>/ npm run check:deployment
-```
-
-The check refuses to run without `dist/`. Netlify publishes the build output, so comparing against
-source HTML would prove nothing — a silent fallback would let a broken build pass.
-
-**Host transformations are tolerated only where they are declared**, in
-`scripts/deployment-content.mjs`, and every tolerated one is named in the output of a passing run.
-Any other byte difference fails.
-
-- **Netlify's marketing injection** — a comment and two meta tags carrying UTM campaign tracking,
-  added to production pages on 26 August 2026. Netlify documents no opt-out and it is not removable
-  from this account. A removal path was found on 27 August 2026: `maps.millcreekut.gov`, an identical
-  Netlify deployment in the IT provider's account, carries none of it — so the injection is an
-  account-or-plan property, not a platform one. Tolerated under protest and narrowly in the meantime: all three parts,
-  in order. **Remove the allowance when hosting moves or the plan changes** — see the internal readiness plan.
-- **The deploy-preview drawer** — preview builds only. Without it, no deploy preview could pass the
-  gate, which is where a release candidate is verified.
-- **Pretty URLs** — `href="/business-licensing.html"` to `href='/business-licensing'` and
-  `href="/index.html"` to `href='/'`. **Turned off in `netlify.toml` on 26 August 2026**, as
-  CHANGES-2026-08-13.md §7 recommended; the explicit redirect already routes `/business-licensing`.
-  The allowances remain for older deploys and go inert on their own. The unit suite fails if the
-  links they describe are renamed, so an allowance cannot outlive the rewrite it permits.
-
-Use Netlify's prior-deploy rollback if a gate fails. A content difference on a page means the
-deployment is not the artifact this repository built — most often a deploy that is behind the branch
-you are checking from, which the reported line will usually make obvious.
-
----
-
-## Configuration
-
-Everything editable lives in the `CFG` object at the top of the `<script>`, above the line reading
-`No further edits needed below this line.` See **USAGE.md** for a field-by-field guide.
-
-Common edits:
-
-| To change | Edit |
-|:--|:--|
-| Phone, email, response-time promise | `CFG.contact` |
-| Show/hide owner of record | `CFG.parcel.showOwner` |
-| Add or remove a data layer | `CFG.LAYERS` |
-| Hazard and designation source layers | `CFG.LAYERS` |
-| Which parcel fields display | `CFG.PARCEL_FACTS` |
-| Standing data-quality disclaimers | `CFG.GROUP_NOTES` |
-| Address abbreviations and local street variants | `CFG.address.synonyms`, `.streetAliases` |
-
-### Two traps
-
-**Layer indices are rarely 0.** Council districts are layer **2**, water service **3**, and
-subdivisions **7**. Always read `<service>/FeatureServer?f=json` before configuring.
-
-**Check the layer actually has attributes.** `Sensitive_Land_Areas__Feb24` carries only `OBJECTID`
-and geometry. For a layer like that set `boolean: true`, or no useful regulatory value can be
-displayed.
+Bugs and enhancements: open an issue in this repository.
 
 ---
 
@@ -335,8 +140,9 @@ displayed.
 Most local queries go to Millcreek's ArcGIS Online feature services at
 `services9.arcgis.com/XRrSFvEwSsReIxuA`. Flood classifications are queried directly from FEMA's
 National Flood Hazard Layer and compared with the flood layer in the public Planning map. Surface
-fault rupture uses that map's special-study-area polygon. The CSP permits the Millcreek and FEMA
-origins; adding another host requires adding its origin to `public/_headers`.
+fault rupture uses that map's special-study-area polygon. The Content Security Policy permits the
+Millcreek and FEMA origins; adding another host requires adding its origin to **both** host
+configuration files — see "Deploying and releasing" below.
 
 | Data | Origin |
 |:--|:--|
@@ -384,18 +190,6 @@ comparison are required first.
 
 ---
 
-## Accessibility problems and feedback
-
-Report anything that prevents you getting the information you need:
-
-- Phone **801-214-2754**
-- Email **<gis@millcreekut.gov>**
-- Commitment: an accessible format **within 5 business days**
-
-Bugs and enhancements: open an issue in this repository.
-
----
-
 ## Disclaimer
 
 This tool reports the data of record. It is **not** a zoning verification letter, **not** a flood
@@ -406,3 +200,184 @@ developed. For a binding determination contact
 
 Full disclaimer of warranty and liability is published in the application footer and follows
 Millcreek's adopted data disclaimer.
+
+---
+
+## Working on this
+
+Everything below is for people changing the code.
+
+### Quick start
+
+The required release toolchain is **Node 22.15.0 with npm 10.9.2**. `.nvmrc` is the single source
+for the Node version consumed by developers and GitHub Actions; load that version before installing
+dependencies. The same contract is mirrored in `package.json` (`engines` and `packageManager`) and
+in this paragraph; a drift test covers all three, so update them together.
+
+```bash
+git clone https://github.com/buschbrian/parcel-lookup-nomap.git
+cd parcel-lookup-nomap
+npm ci
+npm run dev        # dev server on http://127.0.0.1:5173
+```
+
+To look at what actually deploys rather than the dev server:
+
+```bash
+npm run build      # writes dist/
+npm run preview    # serves dist/ on http://127.0.0.1:4173
+```
+
+> **Do not test by double-clicking `index.html`.** Over `file://` the browser blocks the
+> cross-origin request to ArcGIS, so every lookup fails even though the service is fine. The app
+> detects this and says so on load, but you still need a local server to test lookups. Layout
+> and print styles are fine to check over `file://`.
+
+The build is a verified pass-through — `dist/index.html` and `dist/business-licensing.html` are
+byte-identical to their sources — so `python3 -m http.server 8080 --directory dist` also serves the
+artifact if you would rather not use Vite's preview.
+
+### Checks
+
+```bash
+npx playwright install chromium
+npm test                  # unit, Python and browser suites; every ArcGIS response mocked
+npm run check:services    # live public ArcGIS contract check
+npm run build             # check:deployment compares against dist/, so build first
+npm run check:deployment  # against production, or any DEPLOY_URL
+```
+
+`npm test` mocks every ArcGIS response, so it proves the code and nothing about a deployment.
+`npm run test:production` is the one check that does not mock: it looks up the published synthetic
+address on a deployed URL against the live services, scans each results page with axe, and reports
+timings and request counts to `production-evidence/`.
+
+> **It touches real resident data, so it retains none.** The address is a synthetic fixture, but the
+> parcel it returns is real — owner name and mailing details. Tracing, screenshots and video are
+> off, the assertions count fields rather than read them, and the results body is blanked before the
+> test ends so Playwright's failure snapshot cannot capture it. A unit test fails if any of that is
+> undone. Debug failures locally against `dist/` with the mocked suite, where traces are safe.
+
+GIS staff can reproduce the FEMA full-parcel selection in ArcGIS Pro, an ArcGIS Online Notebook, or
+anywhere with ArcGIS API for Python installed:
+
+```bash
+python scripts/fema_highest_hazard.py 16264570030000
+```
+
+The JSON output includes the selected highest classification, every FEMA classification touching
+the parcel, the corresponding Millcreek classifications and their congruence result. The selection
+is a documented display precedence, not a FEMA risk score.
+
+### Why each page is self-contained
+
+Deliberate. The people who maintain production configuration are GIS staff, not JavaScript
+developers. Each page keeps its own clearly marked configuration block and has no runtime
+dependency tree. The licensing page is separate so its purpose, contacts, data snapshot and
+maintenance cycle do not become entangled with the general property report.
+
+There is a build step (Vite, [ADR-0001](docs/decisions/0001-use-vite-with-build-time-configuration.md)),
+but still **no runtime dependencies** — the built pages ship as self-contained HTML with an inline
+script. Developer-only packages run the test suite and are not shipped. The self-contained choice
+means the Content Security Policy needs `'unsafe-inline'` for inline `<style>` and `<script>`; that
+accepted tradeoff is documented in `public/_headers`.
+
+### Configuration
+
+Everything editable lives in the `CFG` object at the top of the `<script>`, above the line reading
+`No further edits needed below this line.` See [USAGE.md](USAGE.md) for a field-by-field guide.
+
+| To change | Edit |
+|:--|:--|
+| Phone, email, response-time promise | `CFG.contact` |
+| Show/hide owner of record | `CFG.parcel.showOwner` |
+| Add or remove a data layer | `CFG.LAYERS` |
+| Hazard and designation source layers | `CFG.LAYERS` |
+| Which parcel fields display | `CFG.PARCEL_FACTS` |
+| Standing data-quality disclaimers | `CFG.GROUP_NOTES` |
+| Address abbreviations and local street variants | `CFG.address.synonyms`, `.streetAliases` |
+
+Two traps:
+
+**Layer indices are rarely 0.** Council districts are layer **2**, water service **3**, and
+subdivisions **7**. Always read `<service>/FeatureServer?f=json` before configuring.
+
+**Check the layer actually has attributes.** `Sensitive_Land_Areas__Feb24` carries only `OBJECTID`
+and geometry. For a layer like that set `boolean: true`, or no useful regulatory value can be
+displayed.
+
+### Repository layout
+
+```text
+index.html                 The general property lookup, self-contained. A Vite entry point.
+business-licensing.html    The short-term-rental and 400-foot buffer lookup. Also an entry.
+public/                    Static passthrough. Copied verbatim into dist/, never processed.
+  assets/                    Municipal brand assets stored locally for reliable rendering.
+  _headers                   Netlify response headers, including the CSP.
+  staticwebapp.config.json   Azure response headers, routes and cache rules. Must agree
+                             with _headers; a unit test compares them.
+dist/                      Build output and the deployed artifact. Generated, git-ignored.
+vite.config.mjs            MPA build configuration; both HTML files are entry points.
+netlify.toml               Netlify build and redirect configuration.
+scripts/                   Service-contract and deployment checks, and the FEMA parcel script.
+tests/                     Unit, Python, browser and axe suites, plus the live smoke run.
+docs/                      ADRs, hosting runbook, brand note, manual screen-reader script.
+.github/workflows/         Quality checks, staging deploy, production promotion, verification.
+```
+
+> **The entry pages must not live in `public/`.** Vite copies `publicDir` verbatim without
+> processing, so an entry left there would silently bypass the build — everything would appear to
+> work while nothing was actually built.
+
+### Deploying and releasing
+
+**GitHub Actions is the publisher, and the two halves are deliberately separate.**
+
+| Workflow | Trigger | Reaches production? |
+|:--|:--|:--|
+| `deploy-staging.yml` | every push to `main` | no — it cannot reach the production credential |
+| `promote-production.yml` | by hand, with a staging run id | only after a required reviewer approves |
+
+`promote-production.yml` builds and tests nothing. It republishes the exact artifact a named
+staging run produced and gated, so the bytes a reviewer approves are the bytes residents load.
+Promotion is a human act performed by a designated municipal approver — see
+[ADR-0002](docs/decisions/0002-host-on-azure-static-web-apps.md) for why, and
+[docs/azure-hosting.md](docs/azure-hosting.md) for the resources, cutover and rollback.
+
+`verify-deployment.yml` produces the evidence an approval rests on: it compares the served bytes
+against the artifact the commit builds, proves no repository file is published, asserts every
+declared security header, and runs a real lookup on both pages against the live services. It holds
+no deployment credential, by design.
+
+What ships is an allowlist enforced by the build: only the entry pages, their assets, and
+everything in `public/` reach `dist/`. Committing a document elsewhere does not put it on the
+public site, and `npm run check:deployment` proves that against a running deployment.
+
+**Response headers are declared twice, on purpose.** `public/_headers` is read by Netlify and
+`public/staticwebapp.config.json` by Azure, and each host silently ignores the other's file. A unit
+test compares them header by header and route by route, because otherwise a CSP edit would ship to
+one host and not the other with nothing failing.
+
+> **Hosting note, 2 September 2026.** Production moved to Azure Static Web Apps at
+> `lookup.gis.millcreekut.gov`. The previous Netlify deployment is still serving in parallel as the
+> rollback until the changeover settles, which is why both host configurations are still present and
+> still tested. Netlify's production pages carried an injected marketing comment and two tracking
+> meta tags that no setting could remove on that account; `scripts/deployment-content.mjs` tolerates
+> that difference narrowly and reports it on every passing run. Azure serves the built bytes exactly,
+> so on production the allowance is inert. It comes out with the rest of the Netlify configuration
+> when that deployment is retired.
+
+### Documentation
+
+| File | What it covers |
+|:--|:--|
+| [USAGE.md](USAGE.md) | For residents, front-counter staff, and GIS staff maintaining the config |
+| [CODE.md](CODE.md) | Full code walkthrough — every function explained |
+| [DATA-SOURCES.md](DATA-SOURCES.md) | Data ownership, freshness and replacement-candidate register |
+| [WEB-MAP-REVIEW.md](WEB-MAP-REVIEW.md) | Inventory and disposition review of the 96 public-map layers |
+| [MIGRATION.md](MIGRATION.md) | ADR-0001 migration state, with what is verified and what is not |
+| [RELEASE.md](RELEASE.md) | Release convention and checklist |
+| [SECURITY.md](SECURITY.md) | How to report a vulnerability |
+| [docs/azure-hosting.md](docs/azure-hosting.md) | Hosting resources, cutover and rollback |
+| [docs/decisions/](docs/decisions/) | Architecture decision records |
+| [docs/manual-screen-reader-test.md](docs/manual-screen-reader-test.md) | The runnable NVDA script |

@@ -3,7 +3,7 @@
 ## Status
 
 Accepted. Supersedes the hosting paragraph of [ADR-0001](0001-use-vite-with-build-time-configuration.md)
-and the 2026-08-27 conclusion recorded in `tasks/todo.md`.
+and the 2026-08-27 conclusion recorded in the internal readiness plan.
 
 ## Date
 
@@ -111,7 +111,7 @@ Service is a server runtime for an application that has no server.
 ### Positive
 
 - The marketing injection disappears, and with it the allowance in
-  `scripts/deployment-content.mjs` and the open question in `tasks/todo.md` that owns it.
+  `scripts/deployment-content.mjs` and the open question in the internal readiness plan that owns it.
 - A public municipal service stops depending on an individual employee's personal account.
 - The artifact residents load is the artifact the gates ran against and the approver approved,
   proven by hash at both ends rather than asserted.
@@ -143,4 +143,5 @@ Service is a server runtime for an application that has no server.
   alternatives it deferred
 - `docs/azure-hosting.md` — resources, secrets, cutover and rollback
 - [Azure Static Web Apps configuration](https://learn.microsoft.com/en-us/azure/static-web-apps/configuration)
-- `tasks/todo.md`, readiness Tasks 11 and 12
+- The internal readiness plan, Tasks 11 and 12 (kept local; not published with this
+  repository — see the reasoning in `.gitignore`)

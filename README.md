@@ -208,7 +208,7 @@ A release candidate gets one more check that nothing else covers — a real look
 through the deployed pages against the live public services:
 
 ```bash
-DEPLOY_URL=https://kind-grass-013e9611e.5.azurestaticapps.net/ npm run test:production
+DEPLOY_URL=https://<the staging host>/ npm run test:production
 ```
 
 `npm test` mocks every ArcGIS response, so it proves the code and nothing about the deployment.
@@ -272,7 +272,7 @@ rather than stopping at the first, and it names the page, line and column of any
 Point it at a deploy preview to verify a release candidate before promoting it:
 
 ```bash
-DEPLOY_URL=https://kind-grass-013e9611e.5.azurestaticapps.net/ npm run check:deployment
+DEPLOY_URL=https://<the staging host>/ npm run check:deployment
 ```
 
 The check refuses to run without `dist/`. Netlify publishes the build output, so comparing against
@@ -287,7 +287,7 @@ Any other byte difference fails.
   from this account. A removal path was found on 27 August 2026: `maps.millcreekut.gov`, an identical
   Netlify deployment in the IT provider's account, carries none of it — so the injection is an
   account-or-plan property, not a platform one. Tolerated under protest and narrowly in the meantime: all three parts,
-  in order. **Remove the allowance when hosting moves or the plan changes** — see `tasks/todo.md`.
+  in order. **Remove the allowance when hosting moves or the plan changes** — see the internal readiness plan.
 - **The deploy-preview drawer** — preview builds only. Without it, no deploy preview could pass the
   gate, which is where a release candidate is verified.
 - **Pretty URLs** — `href="/business-licensing.html"` to `href='/business-licensing'` and

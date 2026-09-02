@@ -18,7 +18,7 @@ that appears.
 **You do not need to type the address exactly as the County records it.** All of these find the same
 property:
 
-```
+```text
 3300 E Santa Rosa Ave
 3300 East Santa Rosa Avenue
 3300 EAST SANTA ROSA
@@ -55,8 +55,8 @@ information rather than having to hunt for it.
 
 Results are organised under headings — Property record, Zoning, Historic designation, Hazard and
 special designations, Subdivision and plat, Natural hazards, Informational hazard screening,
-Representation, Services — so you can jump between them by heading. Each item is a description
-list, so labels and values are correctly associated.
+Representation, Services, Location — so you can jump between them by heading. Each item is a
+description list, so labels and values are correctly associated.
 
 Determinations are spoken as "Yes", "No", or "Unknown", never conveyed by colour alone. Unknown
 means the authoritative source did not contain a definite value and staff should verify it.
@@ -112,11 +112,11 @@ Utility boundaries come from state agencies and providers. They are approximate,
 gaps and overlaps, and are checked at a stored point inside the parcel. Flood, the fault special-study area,
 WUI, Sensitive Land and historic designations use the full parcel boundary. **Your utility bill or
 meter is the real record of who serves you.** For anything binding, contact Planning & Zoning at
-**801-214-2700** or **planner@millcreekut.gov**.
+**801-214-2700** or **<planner@millcreekut.gov>**.
 
 ### If something does not work
 
-Phone **801-214-2754** or email **gis@millcreekut.gov**. Staff will provide the information in an
+Phone **801-214-2754** or email **<gis@millcreekut.gov>**. Staff will provide the information in an
 accessible format, normally **within 5 business days**, or sooner for a permit or hearing deadline.
 Please also report the problem so it can be fixed.
 
@@ -147,7 +147,7 @@ accessibility request and it must be logged — date received, what was asked, w
 date resolved. The log is the record that demonstrates the City responds, and it matters if the
 City is ever asked to show it.
 
-Route to GIS at **gis@millcreekut.gov**. The published commitment is **5 business days**.
+Route to GIS at **<gis@millcreekut.gov>**. The published commitment is **5 business days**.
 
 ### Questions to hand off, not answer
 
@@ -171,7 +171,7 @@ Route to GIS at **gis@millcreekut.gov**. The published commitment is **5 busines
 
 ## 3. For GIS staff maintaining the configuration
 
-Everything you need to edit is in the `CFG` object at the top of the `<script>` in `public/index.html`,
+Everything you need to edit is in the `CFG` object at the top of the `<script>` in `index.html`,
 above the line:
 
 ```js
@@ -229,7 +229,7 @@ codes to the `TENANCY` map if you meet an unfamiliar one.
 
 **1. The layer index.** It is usually not 0.
 
-```
+```text
 https://services9.arcgis.com/XRrSFvEwSsReIxuA/arcgis/rest/services/<SERVICE>/FeatureServer?f=json
 ```
 
@@ -237,7 +237,7 @@ Known: Council districts **2**, water service **3**, subdivisions **7**.
 
 **2. Whether the layer has usable attributes.**
 
-```
+```text
 .../FeatureServer/<index>?f=json
 ```
 
@@ -326,8 +326,8 @@ python scripts/fema_highest_hazard.py 16264570030000
 
 ```js
 GROUP_NOTES: {
-  "Services": "Utility service area boundaries are compiled from state agency…",
-  "Natural hazards": "Hazard boundaries are regulatory mapping products…"
+  "Services": "Service boundaries are approximate map data and may be incomplete or out of date.…",
+  "Natural hazards": "Hazard maps are for general screening and may not show site-specific…"
 }
 ```
 
@@ -353,7 +353,7 @@ real addresses.
 
 To find the real street names:
 
-```
+```text
 .../Address_Points/FeatureServer/0/query?where=UPPER(StreetName) LIKE '%YOURTEXT%'
    &outFields=StreetName&returnDistinctValues=true&returnGeometry=false&f=json
 ```
@@ -386,19 +386,21 @@ npm test
 - [ ] Copied text includes warnings, data notes, links and the public disclaimer.
 
 Then run `npm run check:services` against the public ArcGIS schemas. After Netlify deploys the
-commit, run `npm run check:deployment` to compare the live HTML and security headers with the repo.
+commit, run `npm run build && npm run check:deployment` to compare the live HTML and security headers
+with the built artifact. The check refuses to run without `dist/`.
 
-> `check:deployment` currently fails on its HTML comparison for a hosting reason, not a deployment
-> fault — Netlify rewrites one link in the deployed page. It aborts before reaching the header checks,
-> which were verified by hand and pass. Check headers manually until it is repaired, and do not treat
-> it as a rollback signal. See CHANGES-2026-08-13.md §7.
+> `check:deployment` was red from 13 to 26 August 2026 for a hosting reason, not a deployment fault —
+> Netlify's Pretty URLs post-processing rewrote two links in the deployed pages, and the check aborted
+> before reaching the header checks, which were verified by hand and passed. **Repaired 26–27 August
+> 2026**: Pretty URLs is off, every gate now runs, and all findings are reported together. See
+> CHANGES-2026-08-13.md §7.
 
 ### Adding a layer from a different host
 
 The CSP currently allows Millcreek ArcGIS Online and FEMA hazards services. Add any new origin to
 `connect-src` in `public/_headers` or every query to it fails:
 
-```
+```text
 Content-Security-Policy: … connect-src https://services9.arcgis.com https://hazards.fema.gov https://newhost.example.gov; …
 ```
 

@@ -1,0 +1,35 @@
+{
+  // Markdown lint for the documentation in this repository.
+  //
+  //   npx markdownlint-cli2 "**/*.md"
+  //
+  // Four default rules are style preferences this repository does not hold.
+  // Turning them off is deliberate: a linter that reports roughly 1,700
+  // findings on a clean tree teaches everyone to ignore it, which costs more
+  // than the rules are worth. Everything else stays on, so a real structural
+  // defect — an unlabelled code fence, a skipped heading level, a bare URL —
+  // still shows up. (Counts vary by markdownlint version; the order of
+  // magnitude is the point.)
+  "config": {
+    // MD013 line-length. Prose here wraps at ~100 columns, consistently, in
+    // every document. Rewrapping 4,400 lines to 80 would bury the content
+    // history in whitespace churn for no reader benefit.
+    "MD013": false,
+
+    // MD033 inline HTML. <kbd> in the manual screen-reader script and <br> in
+    // tables are the right markup for what they express.
+    "MD033": false,
+
+    // MD060 table pipe padding. Cosmetic, and the compact form is used
+    // consistently in the tables that use it.
+    "MD060": false,
+
+    // MD029 ordered-list prefix. The changelogs number their findings once and
+    // then continue the sequence across intervening headings — and those
+    // numbers are cross-referenced elsewhere as "note 1", "§6", "§7".
+    // Renumbering to satisfy the rule would break the references.
+    "MD029": false
+  },
+  "globs": ["**/*.md"],
+  "ignores": ["node_modules", "dist", "test-results", "playwright-report"]
+}

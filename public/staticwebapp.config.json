@@ -6,7 +6,7 @@
   "routes": [
     {
       "route": "/_headers",
-      "statusCode": 404,
+      "allowedRoles": ["denied"],
       "headers": {
         "Cache-Control": "no-store"
       }
@@ -31,6 +31,11 @@
       }
     }
   ],
+  "responseOverrides": {
+    "401": {
+      "statusCode": 404
+    }
+  },
   "globalHeaders": {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",

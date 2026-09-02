@@ -1,0 +1,132 @@
+# Promote an already-built, already-gated, already-verified candidate to PRODUCTION.
+#
+# This workflow builds nothing and tests nothing. It takes the artifact that
+# `deploy-staging.yml` produced for one specific run, and publishes those exact
+# bytes. That is the point: the thing a resident loads is byte-for-byte the thing
+# staging was verified against, and no rebuild sits between the approval and the
+# release to reintroduce a difference.
+#
+# The approval is not in this file, and cannot be. It is the `production`
+# environment's **required reviewers** setting, configured once in the repository
+# settings by whoever owns the repository. GitHub holds the job at the environment
+# gate until a listed reviewer approves it, and records who approved what and
+# when. That record is the release-record entry readiness Task 12 asks for:
+# "designated municipal approver - not automation - records production approval."
+#
+# Consequently:
+#   - Nothing here can promote itself. There is no push trigger and no schedule.
+#   - The production deployment token lives on the `production` environment, so no
+#     unattended job in this repository can reach it, including deploy-staging.yml.
+#   - Removing the required reviewer is a repository-settings change, which is
+#     visible and auditable, rather than a quiet edit to a workflow file.
+#
+# Required repository secret, scoped to the `production` environment:
+#   AZURE_STATIC_WEB_APPS_API_TOKEN
+#       deployment token of the PRODUCTION Static Web App.
+#
+# Before running this, the candidate should have been verified on staging with
+# `verify-deployment.yml`, which produces the content, allowlist, header and live
+# lookup evidence that the approval rests on.
+
+name: Promote to production
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Run id of the 'Deploy to staging' run that built the approved candidate"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  # Reading another workflow run and downloading its artifact both need this.
+  actions: read
+
+concurrency:
+  # One promotion at a time, and never cancelled mid-upload.
+  group: promote-production
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    steps:
+      # Refuse to promote something that is not a green staging build of `main`.
+      # A run id is a number typed by a human into a form: it can name a failed
+      # run, a run of a different workflow, or a run from a branch that was never
+      # reviewed. None of those should reach production because someone mistyped.
+      - name: Validate the candidate run
+        id: candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ inputs.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$RUN_ID" in
+            ''|*[!0-9]*) echo "::error::run_id must be a number, got '$RUN_ID'"; exit 1 ;;
+          esac
+
+          run=$(gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID")
+          workflow=$(jq -r '.path' <<<"$run")
+          status=$(jq -r '.conclusion' <<<"$run")
+          branch=$(jq -r '.head_branch' <<<"$run")
+          sha=$(jq -r '.head_sha' <<<"$run")
+
+          fail=0
+          [ "$workflow" = ".github/workflows/deploy-staging.yml" ] || {
+            echo "::error::run $RUN_ID is '$workflow', not the staging deploy"; fail=1; }
+          [ "$status" = "success" ] || {
+            echo "::error::run $RUN_ID concluded '$status', not success"; fail=1; }
+          [ "$branch" = "main" ] || {
+            echo "::error::run $RUN_ID is from branch '$branch', not main"; fail=1; }
+          [ "$fail" = "0" ] || exit 1
+
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Candidate $sha, from staging run $RUN_ID."
+
+      # `digest-mismatch` defaults to `error`, so a corrupted or tampered artifact
+      # fails here rather than reaching the public site.
+      - name: Download the approved artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: site-${{ steps.candidate.outputs.sha }}
+          path: dist
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The same two hashes the staging run printed. An approver comparing this
+      # block against that run's summary is checking the property by hand that the
+      # artifact reuse already guarantees by construction - which is the right
+      # amount of paranoia for the one irreversible step in this repository.
+      - name: Record what is about to be published
+        shell: bash
+        run: |
+          {
+            echo "## Promoting ${{ steps.candidate.outputs.sha }}"
+            echo
+            echo "- Staging run: \`${{ inputs.run_id }}\`"
+            echo "- Approved by: \`${{ github.actor }}\` via the production environment"
+            echo
+            echo '```text'
+            sha256sum dist/index.html dist/business-licensing.html
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Deploy to Azure Static Web Apps (production)
+        uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: dist
+          skip_app_build: true
+          skip_api_build: true
+
+      - name: Say what went live and how to undo it
+        run: |
+          echo "::notice::Promoted ${{ steps.candidate.outputs.sha }} to production."
+          echo "::notice::Verify it: run verify-deployment.yml against the production URL."
+          echo "::notice::Rollback: run this workflow again with the run id of the last good candidate."

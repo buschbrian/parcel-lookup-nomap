@@ -78,6 +78,14 @@ const mustNotBePublished=["/CODE.md","/USAGE.md","/README.md","/DATA-SOURCES.md"
   "/assets/README.md","/docs/brand-asset.md",
   "/MIGRATION.md","/CHANGES-2026-08-13.md","/package.json","/package-lock.json",
   "/.nvmrc","/playwright.config.mjs","/vite.config.mjs","/netlify.toml",
+  /* Both host configs ship inside the publish directory, and each host consumes
+     only its own: Netlify reads `_headers` and would serve `staticwebapp.config.json`
+     as a static file, Azure does the exact reverse. Each config denies the other's
+     file — netlify.toml with a 404 redirect, staticwebapp.config.json with a 404
+     route and a navigationFallback exclusion — and these two probes are what prove
+     it against a running deployment rather than in the abstract. Neither file holds
+     a secret; both are repository files, which is the whole point of the allowlist. */
+  "/_headers","/staticwebapp.config.json",
   "/scripts/check-services.mjs","/scripts/check-deployment.mjs","/tests/unit.test.mjs",
   "/tasks/plan.md","/tasks/todo.md","/.github/workflows/quality.yml",
   "/counsel-review/Public-Facing-GIS-Disclaimer-One-Page-Review.docx",

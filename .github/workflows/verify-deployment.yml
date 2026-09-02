@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       candidate_url:
-        description: "URL of the deployed candidate, e.g. https://deploy-preview-4--parcel-lookup-millcreek.netlify.app/"
+        description: "URL of the deployed candidate, e.g. https://kind-grass-013e9611e.5.azurestaticapps.net/ (staging)"
         required: true
         type: string
   workflow_call:

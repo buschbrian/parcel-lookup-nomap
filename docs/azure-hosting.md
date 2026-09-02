@@ -4,11 +4,21 @@ Operational companion to [ADR-0002](decisions/0002-host-on-azure-static-web-apps
 records *why* the site is moving to Azure Static Web Apps and why promotion stays a human act.
 This file is *how*.
 
-**Status, 2026-09-02: the repository half is done; nothing has been created in Azure yet.**
-`public/staticwebapp.config.json`, `deploy-staging.yml` and `promote-production.yml` are in the
-repository and the suite is green. Every step below is still open, and none of it has run.
-Netlify is untouched and remains the live production host until the cutover section says
-otherwise.
+**Status, 2026-09-02: live on Azure, in parallel with Netlify.** Both Static Web Apps exist,
+both GitHub environments are configured with their tokens, `lookup.gis.millcreekut.gov` is
+bound with a Ready certificate, and candidate `524a5a2` was promoted to production and
+verified against the real hostname — byte-exact, 24/24 paths unpublished, every declared
+header present, and no injected marketing at all.
+
+Netlify is **still serving** at `parcel-lookup-millcreek.netlify.app` and remains the
+rollback until the settled week ends. Both addresses answer; only Netlify has been
+advertised. The steps below are kept as the record of what was done and the script for
+doing it again.
+
+One finding from the first staging deploy is worth carrying forward to any similar port:
+a route rule's `statusCode: 404` does **not** block a file that actually exists. The rule
+matches and its headers apply — only the status is ignored. Denying by role does work. See
+the test beside `each host denies the other host's config file`.
 
 ## What has to exist
 
@@ -161,17 +171,27 @@ are reachable at once under different names, which is what makes the switch low 
    real hostname, not a preview, and sign it.
 8. Announce the new address. Netlify is still live and still correct at this point.
 
+### Done as soon as production was live
+
+Neither of these waits for the settled week: both point people at the better address while
+the old one still works, so nothing breaks if the parallel run is extended.
+
+- **The planning map's outbound link — done 2026-09-02.** `planning.gis.millcreekut.gov`
+  offers the lookup as the map's documented non-visual equivalent, and it pointed at the
+  Netlify host: a `.gov` map sending screen-reader users to a personal account carrying
+  third-party marketing. Repointed in `millcreek-planning-map`, `src/links.ts`.
+- **`scripts/check-deployment.mjs`'s default `DEPLOY_URL` — done 2026-09-02.** It now
+  defaults to production on Azure, so a bare `npm run check:deployment` checks the site
+  residents actually reach.
+
 ### After the parallel run settles
 
 Not before, and each of these is a separate reviewed change:
 
-- Update the planning map's outbound link. `planning.gis.millcreekut.gov` currently offers
-  `https://parcel-lookup-millcreek.netlify.app/` as the map's documented non-visual
-  equivalent — a `.gov` map sending screen-reader users to a personal Netlify account.
-  Repointing it at `lookup.gis.millcreekut.gov` is the single highest-value follow-up.
-- Update `scripts/check-deployment.mjs`'s default `DEPLOY_URL`.
 - Delete the marketing-injection allowance in `scripts/deployment-content.mjs` and the unit
-  tests that pin it, and close the open question in `tasks/todo.md` that owns it.
+  tests that pin it, and close the open question in `tasks/todo.md` that owns it. It is
+  already inert on Azure — production reports no tolerated transformation — but it must
+  stay while Netlify is still the rollback.
 - Delete `netlify.toml`, `public/_headers`, the cross-host drift test, and the redirect in
   `netlify.toml` that denies `staticwebapp.config.json`. Then delete the Netlify site.
 - Record the retirement as its own decision entry.

@@ -383,10 +383,38 @@ test("each host denies the other host's config file",async()=>{
   const swa=JSON.parse(
     await readFile(new URL("../public/staticwebapp.config.json",import.meta.url),"utf8"));
   const denied=(swa.routes||[]).find(route=>route.route==="/_headers");
-  assert.equal(denied?.statusCode,404,"Azure must refuse to serve /_headers");
-  /* A route 404 falls through to navigationFallback and comes back as the app at
-     HTTP 200 unless the path is excluded from it — documented Azure behaviour, and
-     the reason the exclusion is asserted rather than assumed. */
+
+  /* `statusCode: 404` on the route does NOT work here, and the first staging deploy
+     is what proved it. Measured 2026-09-02 against the staging Static Web App:
+     `/_headers` answered HTTP 200 with all 2339 bytes of the file, while carrying
+     the `Cache-Control: no-store` from the very same rule. So the rule matched and
+     its headers applied; only the status code was ignored.
+
+     The documented example of a route 404 (`/.auth/login/x`) is a virtual path with
+     no file behind it. A real file appears to win, and Azure does not document the
+     interaction. Blocking by role is the mechanism that does work on an existing
+     file: no visitor holds a role called "denied", anonymous visitors hold only
+     `anonymous`, so authorization fails and the file is never reached.
+
+     Authorization failure for a signed-out visitor is a 401, which would be a
+     strange answer for a path that should simply not exist — and `check:deployment`
+     reads a 401 with an error body as a published file. The responseOverride turns
+     it into the 404 it should have been. Nothing else in this application can
+     produce a 401: there is no authentication anywhere in it. */
+  assert.ok(Array.isArray(denied?.allowedRoles)&&denied.allowedRoles.length>0,
+    "Azure must deny /_headers by role; statusCode alone does not block a real file");
+  assert.ok(!denied.allowedRoles.some(role=>["anonymous","authenticated"].includes(role)),
+    "the role must be one no visitor holds - anonymous and authenticated are built in "+
+    "and would grant access to everyone and every signed-in user respectively");
+  assert.equal(swa.responseOverrides?.["401"]?.statusCode,404,
+    "the role denial surfaces as 401; it has to be reported as 404 or the deployment "+
+    "gate reads the error body as a published file");
+  assert.equal(denied.statusCode,undefined,
+    "no statusCode on this route: it was measured not to work and its presence would "+
+    "suggest the block still rests on it");
+
+  /* Independently of the above, a 404 falls through navigationFallback and comes
+     back as the app at HTTP 200 unless the path is excluded from it. */
   assert.ok((swa.navigationFallback?.exclude||[]).includes("/_headers"),
     "/_headers must be excluded from navigationFallback or the 404 becomes a 200");
 

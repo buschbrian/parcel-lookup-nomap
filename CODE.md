@@ -344,7 +344,7 @@ a downgrade worth failing on.
 > path, so that probe accepts a 404.
 >
 > **Repaired 26–27 August 2026.** Of the two repairs on the table, the second was taken: Pretty URLs
-> is turned off in `netlify.toml`, as CHANGES-2026-08-13.md §7 recommended, and the explicit redirect
+> is turned off in `netlify.toml`, as docs/changes/CHANGES-2026-08-13.md §7 recommended, and the explicit redirect
 > already routes `/business-licensing`. The check no longer aborts on the first failure — every gate
 > runs and all findings are reported together — and it compares against the built `dist/` artifact.
 

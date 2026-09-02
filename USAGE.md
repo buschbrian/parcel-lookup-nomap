@@ -393,7 +393,7 @@ with the built artifact. The check refuses to run without `dist/`.
 > Netlify's Pretty URLs post-processing rewrote two links in the deployed pages, and the check aborted
 > before reaching the header checks, which were verified by hand and passed. **Repaired 26–27 August
 > 2026**: Pretty URLs is off, every gate now runs, and all findings are reported together. See
-> CHANGES-2026-08-13.md §7.
+> docs/changes/CHANGES-2026-08-13.md §7.
 
 ### Adding a layer from a different host
 

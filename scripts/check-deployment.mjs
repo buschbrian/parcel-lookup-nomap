@@ -76,7 +76,7 @@ const mustNotBePublished=["/CODE.md","/USAGE.md","/README.md","/DATA-SOURCES.md"
   // Was served at HTTP 200 until 26 August 2026: a note about the logo that sat
   // inside publicDir and so was copied into the build. Probe it by name now.
   "/assets/README.md","/docs/brand-asset.md",
-  "/MIGRATION.md","/CHANGES-2026-08-13.md","/package.json","/package-lock.json",
+  "/MIGRATION.md","/docs/changes/CHANGES-2026-08-13.md","/package.json","/package-lock.json",
   "/.nvmrc","/playwright.config.mjs","/vite.config.mjs","/netlify.toml",
   /* Both host configs ship inside the publish directory, and each host consumes
      only its own: Netlify reads `_headers` and would serve `staticwebapp.config.json`

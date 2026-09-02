@@ -51,7 +51,7 @@ CSP; the inline `<script>` is still present, so nothing has been bundled out of 
 The two e2e failures were **not** caused by this migration. They were the 400% reflow assertion
 re-enabled on `main` earlier the same day, which had never been run in a real browser: the header logo
 is sized in `rem` and reached 288 px inside a 320 px viewport. Fixed on `main` and merged forward; git
-followed the `public/` → root renames without conflict. See CHANGES-2026-08-13.md §7.
+followed the `public/` → root renames without conflict. See docs/changes/CHANGES-2026-08-13.md §7.
 
 That is the migration's first real dividend, incidentally — the branch is what caused the suite to be
 run at all.

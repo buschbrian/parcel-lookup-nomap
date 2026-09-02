@@ -17,6 +17,13 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:4318",
     browserName: "chromium",
+    /* This machine never downloads Playwright browsers (a global Claude Code
+       hook blocks the install subcommand). Point the suite at system Chrome
+       instead: PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=".../Google Chrome". CI
+       leaves the variable unset and uses its own installed Chromium. */
+    ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+      ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } }
+      : {}),
     permissions: ["clipboard-read", "clipboard-write"],
     trace: "retain-on-failure"
   },

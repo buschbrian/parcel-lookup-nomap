@@ -123,7 +123,7 @@ to a broken page.
 
 ## Repository layout
 
-```
+```text
 index.html      The general property lookup, self-contained by design. A Vite entry point.
 business-licensing.html The focused short-term-rental and 400-foot buffer lookup. Also an entry.
 public/         Static passthrough. Copied verbatim into `dist/`, never processed.
@@ -138,9 +138,9 @@ USAGE.md        For residents, front-counter staff, and GIS staff maintaining th
 CODE.md         Full code walkthrough — every function explained.
 DATA-SOURCES.md Data ownership, freshness and replacement-candidate register.
 WEB-MAP-REVIEW.md Full inventory and disposition review of the 96 public-map layers.
-tests/          Developer-only deterministic unit, browser and accessibility tests.
-scripts/        Live service-contract and deployment checks.
-docs/           Migration proposal and architecture decision records.
+tests/          Developer-only unit, Python, browser and axe suites, plus the live smoke run.
+scripts/        Live service-contract and deployment checks, and the FEMA parcel script.
+docs/           Migration proposal, ADRs, brand asset note, manual screen-reader script.
 ```
 
 > **The entry pages must not live in `public/`.** Vite copies `publicDir` verbatim without processing,
@@ -283,9 +283,11 @@ source HTML would prove nothing — a silent fallback would let a broken build p
 Any other byte difference fails.
 
 - **Netlify's marketing injection** — a comment and two meta tags carrying UTM campaign tracking,
-  added to production pages on 26 August 2026. Netlify documents no way off it and it is not
-  removable on this plan. Tolerated under protest and narrowly: all three parts, in order. **Remove
-  the allowance when hosting moves or the plan changes** — see `tasks/todo.md`.
+  added to production pages on 26 August 2026. Netlify documents no opt-out and it is not removable
+  from this account. A removal path was found on 27 August 2026: `maps.millcreekut.gov`, an identical
+  Netlify deployment in the IT provider's account, carries none of it — so the injection is an
+  account-or-plan property, not a platform one. Tolerated under protest and narrowly in the meantime: all three parts,
+  in order. **Remove the allowance when hosting moves or the plan changes** — see `tasks/todo.md`.
 - **The deploy-preview drawer** — preview builds only. Without it, no deploy preview could pass the
   gate, which is where a release candidate is verified.
 - **Pretty URLs** — `href="/business-licensing.html"` to `href='/business-licensing'` and
@@ -297,7 +299,6 @@ Any other byte difference fails.
 Use Netlify's prior-deploy rollback if a gate fails. A content difference on a page means the
 deployment is not the artifact this repository built — most often a deploy that is behind the branch
 you are checking from, which the reported line will usually make obvious.
-
 
 ---
 
@@ -388,7 +389,7 @@ comparison are required first.
 Report anything that prevents you getting the information you need:
 
 - Phone **801-214-2754**
-- Email **gis@millcreekut.gov**
+- Email **<gis@millcreekut.gov>**
 - Commitment: an accessible format **within 5 business days**
 
 Bugs and enhancements: open an issue in this repository.
@@ -401,7 +402,7 @@ This tool reports the data of record. It is **not** a zoning verification letter
 determination for lending or insurance purposes, and **not** a determination that a property can be
 developed. For a binding determination contact
 [Planning & Zoning](https://millcreekut.gov/151/Planning-Zoning) at **801-214-2700** or
-**planner@millcreekut.gov**. The GIS accessibility/help contact remains 801-214-2754.
+**<planner@millcreekut.gov>**. The GIS accessibility/help contact remains 801-214-2754.
 
 Full disclaimer of warranty and liability is published in the application footer and follows
 Millcreek's adopted data disclaimer.

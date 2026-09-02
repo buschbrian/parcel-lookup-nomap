@@ -1,7 +1,7 @@
 # Manual screen-reader and keyboard test script
 
 **Purpose.** This is the final accessibility gate. Everything automatable is already covered by
-`npm test` (23 unit, 4 Python, ~56 browser/axe). What remains are the checks no tool can perform:
+`npm test` (55 unit, 4 Python, 67 browser/axe). What remains are the checks no tool can perform:
 whether a person using a screen reader actually receives the information, in a usable order, with
 enough context to act on it.
 
@@ -28,7 +28,7 @@ enough context to act on it.
 | Test parcel | `16264570030000` |
 | A "Yes" case for CCOZ | `3398 S HIGHLAND DR` |
 
-**Essential NVDA keys**
+### Essential NVDA keys
 
 | Key | Action |
 |:--|:--|
@@ -64,7 +64,7 @@ Close NVDA for this part. Use <kbd>Tab</kbd> only — **do not touch the mouse.*
 | A7 | Retype, <kbd>Down</kbd>, <kbd>Enter</kbd>. | Results load. **An outline is visible around the "Results for…" heading.** ← the 13 Aug fix |
 | A8 | Keep pressing <kbd>Tab</kbd> through the whole page. | Focus is **always visible**, never jumps backwards, never disappears, never gets stuck. |
 | A9 | <kbd>Tab</kbd> to "Copy results as text", press <kbd>Enter</kbd>. | Confirmation appears. Nothing is lost. |
-| A10 | <kbd>Tab</kbd> to "Full disclaimer…", press <kbd>Enter</kbd>. | It expands. <kbd>Enter</kbd> again collapses it. |
+| A10 | <kbd>Tab</kbd> to "Third-Party Website Information Disclaimer", press <kbd>Enter</kbd>. | It expands. <kbd>Enter</kbd> again collapses it. |
 | A11 | Zoom to **200%** (<kbd>Ctrl</kbd>+<kbd>+</kbd> ×4) and narrow the window to roughly a phone width. | **No horizontal scrollbar.** No text cut off. ← the 13 Aug fix |
 | A12 | Repeat A1–A8 on `/business-licensing.html`. | Same behaviour. |
 
@@ -100,7 +100,7 @@ Look up `3300 East Santa Rosa Avenue` and let it load.
 | # | Step | Expected |
 |:--|:--|:--|
 | C1 | Listen immediately after it loads. | "Results ready" (or similar) is spoken, and you land on the **"Results for 3300 E SANTA ROSA AVE"** heading. You are not left at the top of the page hunting. |
-| C2 | Press <kbd>H</kbd> repeatedly. | You move through Property record → Hazard and special designations → Zoning → Subdivision and plat → Natural hazards → Representation → Services → Location. |
+| C2 | Press <kbd>H</kbd> repeatedly. | You move through Property record → Zoning → Historic designation → Hazard and special designations → Subdivision and plat → Natural hazards → Informational hazard screening → Representation → Services → Location. |
 | C3 | In Property record, read down with <kbd>Insert</kbd>+<kbd>Down</kbd>. | Each label is followed by its value: "Property address, 3300 E SANTA ROSA AVE", "Parcel number, 1 6 2 6 4…". **Labels and values must not run together into one stream you cannot separate.** |
 | C4 | **Listen to how the parcel number is spoken.** | 14 digits. Digit-by-digit or in groups is fine; a single enormous number is acceptable but note what you hear. This is a known readability question, not a known defect. |
 | C5 | Reach "Owners of record". | Announced as a **list of 2 items**, each ending "joint tenants" — not "jay tee". |
@@ -123,7 +123,7 @@ Repeat **B3–B9** and **C1–C2, C6, C8, C9** on `/business-licensing.html`.
 | # | Step | Expected |
 |:--|:--|:--|
 | D1 | Trigger an unavailable data source if you can. | The row says **"Unknown"** in words, and the status message says a data source was unavailable. Never a silent blank. |
-| D2 | Check the contact number offered on failure. | It is the **Planning** number for this page, not the GIS number. |
+| D2 | Check the contact number offered on failure. | It is the **Business Licensing** number, 801-214-2759, for this page — not the GIS number. |
 
 ---
 
@@ -163,5 +163,5 @@ any undue burden determination citing this app as alternative access.
 2. Open an issue in this repository with both.
 3. Anything in **B5–B8** or **C6** blocks sign-off. Everything else is triaged normally.
 
-A finding is a good outcome. Three defects that this repository's 56 automated checks could not see
+A finding is a good outcome. Three defects that this repository's automated checks could not see
 were found by exactly this kind of manual pass on 13 August 2026.

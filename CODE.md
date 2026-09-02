@@ -53,7 +53,7 @@ making actual warnings easy to ignore.
 
 ```css
 body{overflow-wrap:break-word}
-dt,dd,li,h1,h2,h3{overflow-wrap:anywhere}
+dt,dd,li{overflow-wrap:anywhere}
 ```
 
 Without these, enlarged text forced horizontal scrolling — at a 320 px container, 200% text produced
@@ -89,7 +89,7 @@ Everything above the `No further edits needed below this line` marker is the mai
 |:--|:--|
 | `release` | Static version, publication date and data-review date |
 | `referenceWebMap` | Public Planning web-map item used for source-parity checks |
-| `request` | Fetch timeout, one-retry delay and suggestion debounce delay |
+| `request` | Fetch timeout, one-retry delay, suggestion debounce delay and the concurrent-request cap |
 | `address` | Address service, field names, synonyms and safe local aliases |
 | `parcel` | Parcel service, identifier, centroid fields, owner/care-of/Assessor-link field names and owner visibility |
 | `contact` | Phone, email and staffed response commitment |
@@ -129,11 +129,11 @@ specialized: no returned classification renders Unknown rather than No.
 ## 4. DOM and request helpers
 
 Both pages carry the request layer — `svcError`, `RUNNING_FROM_FILE`, `fetchJson`, `withRetry`,
-`layerUrl`, `rawQuery`, `query` and `explain` — between `==== SHARED REQUEST LAYER ====` markers, and
-a unit test compares the two copies **byte for byte**. Do not reformat that block or specialise it
-for one page. It reads `org`, `request.timeoutMs`, `request.retryDelayMs` and `contact.phone` from
-whichever `CFG` it is embedded in, so the licensing page offers Business Licensing's number and the
-general page offers GIS's.
+`acquireSlot`, `releaseSlot`, `pump`, `layerUrl`, `rawQuery`, `query` and `explain` — between
+`==== SHARED REQUEST LAYER ====` markers, and a unit test compares the two copies **byte for byte**.
+Do not reformat that block or specialise it for one page. It reads `org`, `request.timeoutMs`,
+`request.retryDelayMs`, `request.maxConcurrent` and `contact.phone` from whichever `CFG` it is embedded in, so the licensing
+page offers Business Licensing's number and the general page offers GIS's.
 
 Holding two copies identical looks like the opposite of removing duplication, and it is deliberate.
 Divergence is what produced the defects: one page retried rejected queries and permanent HTTP errors,
@@ -310,19 +310,23 @@ verifies configured endpoints and fields, a known address, FEMA/local flood cong
 historic designation types, and parity between adopted local sources and the public Planning web
 map. CI runs it on a schedule or manual dispatch, not as a pull-request dependency.
 
-`npm run check:deployment` is a post-deploy gate. It requires the live HTML to equal the committed
-`public/index.html`, checks CSP, permissions, referrer, HSTS, MIME-sniffing and cache headers, and
-probes repository paths to confirm the publish directory is not exposing them. Every header it
-asserts is declared in `public/_headers`, so a failure points at something in this repository rather
-than at a hosting default. It asserts HSTS directives, not merely the presence of `max-age`, because
-a shortened window or a dropped `includeSubDomains` is a downgrade worth failing on.
+`npm run check:deployment` is a post-deploy gate. It requires the live HTML of both pages to match
+the built `dist/` artifact — tolerating only the host transformations declared in
+`scripts/deployment-content.mjs` — checks CSP, permissions, referrer, HSTS, MIME-sniffing and cache
+headers, and probes repository paths to confirm the publish directory is not exposing them. It
+refuses to run without `dist/`, because comparing against source would prove nothing about what
+Netlify actually publishes. Every header it asserts is declared in `public/_headers`, so a failure
+points at something in this repository rather than at a hosting default. It asserts HSTS directives,
+not merely the presence of `max-age`, because a shortened window or a dropped `includeSubDomains` is
+a downgrade worth failing on.
 
-> **This check currently cannot pass, and the byte comparison has never gated anything.** Netlify's
-> Pretty URLs post-processing rewrites links in the deployed HTML, so the live bytes match no commit in
-> the repository and `assert.equal(deployed, html)` fails first, before any header or allowlist
-> assertion runs. It was first run with network access on 13 August 2026 and failed immediately.
+> **This check was red from 13 to 26 August 2026, and until then the byte comparison had never gated
+> anything.** Netlify's Pretty URLs post-processing rewrote links in the deployed HTML, so the live
+> bytes matched no commit in the repository; the check asserted exact bytes and aborted on the first
+> failure, never reaching the header or allowlist gates. It was first run with network access on
+> 13 August 2026 and failed immediately.
 >
-> **There are two rewrite forms, and both must be handled by any normalising repair:**
+> **There were two rewrite forms, and both had to be handled by any normalising repair:**
 >
 > | Page | Repository | Live |
 > |:--|:--|:--|
@@ -330,18 +334,19 @@ a shortened window or a dropped `includeSubDomains` is a downgrade worth failing
 > | `business-licensing.html` | `href="/index.html"` | `href='/'` |
 >
 > The second is not extension-stripping but `/index.html` collapsing to the directory root, so a repair
-> that only strips `.html` will make the property page pass while the licensing page keeps failing.
-> Apart from these, the live property page is byte-equal to its source — there is no other drift.
+> that only stripped `.html` would have made the property page pass while the licensing page kept
+> failing. Apart from these, the live property page was byte-equal to its source — there was no other
+> drift.
 >
-> Everything after that first assertion was verified by hand instead and passes — all six headers on
-> both pages, and 17 repository paths confirmed unpublished. Note that `/netlify.toml` returns
-> Netlify's own 404 page rather than the app, because Netlify reserves that path, so that probe needs
-> to accept a 404 whichever repair is chosen.
+> While it was red, everything after that first assertion was verified by hand instead and passed —
+> all six headers on both pages, and every repository-path probe confirmed unpublished. Note that
+> `/netlify.toml` returns Netlify's own 404 page rather than the app, because Netlify reserves that
+> path, so that probe accepts a 404.
 >
-> Two repairs are on the table — normalise the expected HTML, or turn Pretty URLs off and keep the
-> assertion strict. `netlify.toml` already routes `/business-licensing` explicitly, and turning it off
-> avoids encoding both rewrite forms into the test, so the second is preferable. See
-> CHANGES-2026-08-13.md §7. **Until it is fixed, treat the post-deploy gate as manual.**
+> **Repaired 26–27 August 2026.** Of the two repairs on the table, the second was taken: Pretty URLs
+> is turned off in `netlify.toml`, as CHANGES-2026-08-13.md §7 recommended, and the explicit redirect
+> already routes `/business-licensing`. The check no longer aborts on the first failure — every gate
+> runs and all findings are reported together — and it compares against the built `dist/` artifact.
 
 Automated checks do not replace the manual keyboard, reflow, zoom, forced-colors, print and NVDA
 matrix documented in `USAGE.md`.

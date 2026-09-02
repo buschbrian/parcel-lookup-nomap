@@ -113,10 +113,10 @@ The executable checklist and per-task acceptance criteria live in [`tasks/todo.m
       this branch's. Verifying a real preview exposed two defects in the new check — the injected
       preview drawer and an allowlist cascade — both fixed and covered. No promotion occurred.
 
-      One item remains external: the **Verify deployment candidate** workflow cannot be dispatched
-      until it exists on the default branch, which is a GitHub constraint on `workflow_dispatch`, not
-      a defect. Its contract is unit-tested and both commands it runs were executed by hand against
-      the same preview.
+  One item remains external: the **Verify deployment candidate** workflow cannot be dispatched
+  until it exists on the default branch, which is a GitHub constraint on `workflow_dispatch`, not
+  a defect. Its contract is unit-tested and both commands it runs were executed by hand against
+  the same preview.
 
 ### Phase 3: Harden runtime dependencies
 

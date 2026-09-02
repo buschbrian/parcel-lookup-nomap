@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       candidate_url:
-        description: "URL of the deployed candidate, e.g. https://kind-grass-013e9611e.5.azurestaticapps.net/ (staging)"
+        description: "URL of the deployed candidate: the staging host, or production after a promotion"
         required: true
         type: string
   workflow_call:

@@ -8,7 +8,7 @@ import { defineConfig } from "@playwright/test";
 
    Run it against a candidate before promoting it:
 
-     DEPLOY_URL=https://kind-grass-013e9611e.5.azurestaticapps.net/ \
+     DEPLOY_URL=https://<the staging host>/ \
        npm run test:production
 
    NO ARTEFACT CAPTURE. A trace, screenshot or video of a real lookup contains the

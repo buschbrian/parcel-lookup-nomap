@@ -31,3 +31,27 @@ service-contract-report.json
 # record. Ignore the directory rather than the files inside it - naming files
 # individually is exactly how the attorney review document ended up committed.
 emails/
+
+# Readiness planning, kept local rather than published.
+#
+# `tasks/plan.md` and `tasks/todo.md` are the internal readiness plan. They were
+# tracked in this public repository until 2 September 2026, which meant the
+# municipality published a candid inventory of where its own controls are weak on
+# a resident-facing, legal-adjacent service: the role table showing six of seven
+# roles held by one person, the sentence "separation of duties does not exist",
+# the open privacy reviewer, counsel's unanswered placement question, the unsigned
+# accessibility pass, and the NO-GO criteria.
+#
+# That is good internal writing and it should stay honest, which is exactly why it
+# should not be a public document - the alternative to hiding it is watering it
+# down, and a readiness plan nobody can write plainly in is worthless.
+#
+# Removing them here stops future publication. It does NOT remove them from this
+# repository's history, where every earlier commit still holds them; a history
+# rewrite is a separate decision and, per the plan itself, one that follows
+# counsel and records direction rather than preceding it.
+#
+# `scripts/check-deployment.mjs` still probes /tasks/plan.md and /tasks/todo.md
+# against the deployment. Keep those probes: they are now a regression test for
+# this decision, not just for the publish directory.
+tasks/

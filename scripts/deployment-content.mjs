@@ -79,7 +79,7 @@ export function stripPreviewDrawer(html){
    can forget it is there.
 
    REMOVE THIS when the site moves to municipally controlled hosting, or when the
-   plan tier changes. tasks/todo.md and open question 3 own that. */
+   plan tier changes. The internal readiness plan, open question 3, owns that. */
 const HOSTING_INJECTION=/\n<!-- This site is hosted on Netlify\.[\s\S]*?-->\n<meta name="hosting-provider" content="Netlify">\n<meta name="netlify-deploy" content="[^"]*">/;
 
 export function stripHostingInjection(html){

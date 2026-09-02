@@ -20,11 +20,19 @@ a route rule's `statusCode: 404` does **not** block a file that actually exists.
 matches and its headers apply — only the status is ignored. Denying by role does work. See
 the test beside `each host denies the other host's config file`.
 
+**Names in angle brackets are placeholders, deliberately.** This repository is public, and
+the concrete resource-group, Static Web App and staging-host names are operational detail
+rather than anything a reader needs — publishing them only widens what an outsider can
+enumerate. They are discoverable in the Azure portal by anyone with the access to act on
+them, which is the correct place for that gate. Substitute your own throughout; only the
+public production hostname and the two secret names are written out, because the workflows
+reference the secrets by name and residents reach the hostname.
+
 ## What has to exist
 
 | | Staging | Production |
 |---|---|---|
-| Static Web App | `swa-millcreek-lookup-staging` | `swa-millcreek-lookup` |
+| Static Web App | `<staging-app>` | `<production-app>` |
 | Plan | Free is sufficient | Free is sufficient |
 | Hostname | the Azure default `*.azurestaticapps.net` | `lookup.gis.millcreekut.gov` |
 | Deployed by | `deploy-staging.yml`, on every push to `main` | `promote-production.yml`, by hand |
@@ -43,14 +51,14 @@ container, which would publish a bundle no gate in this repository ever saw — 
 property `deploy-staging.yml` exists to guarantee. This repository deploys with `action:
 upload` and `skip_app_build`, and it supplies its own workflows.
 
-Resource group, region and SKU match `swa-millcreek-planning`, so both municipal GIS
-applications sit together and nothing new has to be provisioned or budgeted.
+Resource group, region and SKU match the planning map's Static Web App, so both municipal
+GIS applications sit together and nothing new has to be provisioned or budgeted.
 
 ```bash
-az staticwebapp create --name swa-millcreek-lookup-staging \
-  --resource-group rg-millcreek-devpipeline --location westus2 --sku Free
-az staticwebapp create --name swa-millcreek-lookup \
-  --resource-group rg-millcreek-devpipeline --location westus2 --sku Free
+az staticwebapp create --name <staging-app> \
+  --resource-group <resource-group> --location westus2 --sku Free
+az staticwebapp create --name <production-app> \
+  --resource-group <resource-group> --location westus2 --sku Free
 ```
 
 Pass no `--source`, `--branch` or `--token`. Those link the app to the repository and generate
@@ -62,10 +70,10 @@ Read each deployment token — this is the value that goes into the matching Git
 the only credential either workflow holds:
 
 ```bash
-az staticwebapp secrets list --name swa-millcreek-lookup-staging \
-  --resource-group rg-millcreek-devpipeline --query "properties.apiKey" -o tsv
-az staticwebapp secrets list --name swa-millcreek-lookup \
-  --resource-group rg-millcreek-devpipeline --query "properties.apiKey" -o tsv
+az staticwebapp secrets list --name <staging-app> \
+  --resource-group <resource-group> --query "properties.apiKey" -o tsv
+az staticwebapp secrets list --name <production-app> \
+  --resource-group <resource-group> --query "properties.apiKey" -o tsv
 ```
 
 ### 2. Configure GitHub
@@ -95,28 +103,28 @@ statement about one file rather than about the credential.
 2026-09-01 for `planning.gis.millcreekut.gov`. So this is a record in an existing zone, not a
 delegation request.
 
-The zone lives in `rg-millcreek-dns` and already holds `planning`, `cases` and `server`. This
+The zone lives in `<dns-resource-group>` and already holds `planning`, `cases` and `server`. This
 adds `lookup` beside them. Create the CNAME **first** — Azure validates the custom domain by
 resolving it, so binding before the record exists just fails and has to be retried.
 
 ```bash
 # The value to point at is the new app's own default hostname.
-az staticwebapp show --name swa-millcreek-lookup \
-  --resource-group rg-millcreek-devpipeline --query defaultHostname -o tsv
+az staticwebapp show --name <production-app> \
+  --resource-group <resource-group> --query defaultHostname -o tsv
 
-az network dns record-set cname set-record -g rg-millcreek-dns -z gis.millcreekut.gov \
+az network dns record-set cname set-record -g <dns-resource-group> -z gis.millcreekut.gov \
   -n lookup -c <that default hostname>
 
-az staticwebapp hostname set --name swa-millcreek-lookup \
-  --resource-group rg-millcreek-devpipeline --hostname lookup.gis.millcreekut.gov
+az staticwebapp hostname set --name <production-app> \
+  --resource-group <resource-group> --hostname lookup.gis.millcreekut.gov
 ```
 
 Then wait for the certificate to reach status **Ready**. Do not proceed while it is pending;
 a half-bound domain serves certificate errors to anyone who finds the name early.
 
 ```bash
-az staticwebapp hostname list --name swa-millcreek-lookup \
-  --resource-group rg-millcreek-devpipeline -o table
+az staticwebapp hostname list --name <production-app> \
+  --resource-group <resource-group> -o table
 ```
 
 No repository change is needed for the hostname. Nothing in the config or the workflows
@@ -189,7 +197,7 @@ the old one still works, so nothing breaks if the parallel run is extended.
 Not before, and each of these is a separate reviewed change:
 
 - Delete the marketing-injection allowance in `scripts/deployment-content.mjs` and the unit
-  tests that pin it, and close the open question in `tasks/todo.md` that owns it. It is
+  tests that pin it, and close the open question in the internal readiness plan that owns it. It is
   already inert on Azure — production reports no tolerated transformation — but it must
   stay while Netlify is still the rollback.
 - Delete `netlify.toml`, `public/_headers`, the cross-host drift test, and the redirect in

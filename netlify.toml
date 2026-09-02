@@ -40,7 +40,7 @@
 # tags that appeared in the production pages on 26 August 2026. That injection is
 # applied to PRODUCTION DEPLOYS ONLY — a deploy preview of this very commit does not
 # carry it — so whether this setting removes it can only be observed after a
-# production deploy. See tasks/todo.md.
+# production deploy. See the internal readiness plan.
 [build.processing.html]
   pretty_urls = false
 

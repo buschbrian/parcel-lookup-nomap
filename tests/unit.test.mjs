@@ -978,7 +978,7 @@ test("only the browser install is retried, and it is bounded",async()=>{
    Draft emails to counsel, the records officer, IT and DNS sit in `emails/` so
    they are easy to find while they are being worked on. They name individuals and
    they change as conversations move; none of that belongs in a public repository,
-   and the requests they are drawn from are already recorded in tasks/todo.md.
+   and the requests they are drawn from are already recorded in the internal readiness plan.
 
    The rule ignores the directory rather than the files in it, which is the lesson
    from the attorney review document: a per-file list let a document with a

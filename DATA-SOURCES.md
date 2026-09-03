@@ -99,7 +99,7 @@ For an approved source change, record in the pull request and this file:
 Pretty URLs post-processing rewrote two links in the deployed pages, and the check aborted on that
 before its header and allowlist assertions ran, so it could not satisfy item 7 on its own.
 **Repaired 26–27 August 2026**: Pretty URLs is off, the comparison is against the built `dist/`
-artifact, and every gate now runs and reports together. See CHANGES-2026-08-13.md §7.
+artifact, and every gate now runs and reports together. See docs/changes/CHANGES-2026-08-13.md §7.
 
 **Review record, 13 August 2026.** `npm run check:services` passed 51/51 against live services: all 22
 configured endpoints, both known-parcel lookups, 18 spatial queries, FEMA/Millcreek flood congruence

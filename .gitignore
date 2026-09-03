@@ -55,3 +55,4 @@ emails/
 # against the deployment. Keep those probes: they are now a regression test for
 # this decision, not just for the publish directory.
 tasks/
+.DS_Store

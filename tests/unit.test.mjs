@@ -587,7 +587,7 @@ test("security policy permits authoritative sources and Planning uses its own co
 
 test("current documentation does not advertise removed features or stale deployment state",async()=>{
   const readme=await readFile(new URL("../README.md",import.meta.url),"utf8");
-  const changes=await readFile(new URL("../CHANGES-2026-08-06.md",import.meta.url),"utf8");
+  const changes=await readFile(new URL("../docs/changes/CHANGES-2026-08-06.md",import.meta.url),"utf8");
   assert.doesNotMatch(readme,/firework restrictions/i);
   assert.match(changes,/resolved/i);
 });

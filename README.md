@@ -109,7 +109,7 @@ zero.
 **Keyboard pass: done** (13 August 2026). It found three defects the automated suite structurally
 could not — horizontal scrolling once text was enlarged, no visible focus indicator on the
 programmatic focus targets, and a status region that could be announced partially. All three are
-fixed in both pages and covered by regression tests. See `CHANGES-2026-08-13.md`.
+fixed in both pages and covered by regression tests. See `docs/changes/CHANGES-2026-08-13.md`.
 
 **Not yet verified: the screen-reader pass.** Automated testing catches roughly 25–40% of WCAG
 issues, so **no public conformance claim should be made until it is complete.** The remaining checks

@@ -2,7 +2,7 @@
 
 Review date: **9 August 2026**
 
-Reference application: <https://maps.millcreekut.gov/>
+Reference application: <https://planning.gis.millcreekut.gov/>
 
 Reference web map: `Planning Experience Web Map`, ArcGIS item
 `f780892acd744d0da60001644cada75c` in `millcrk.maps.arcgis.com`.

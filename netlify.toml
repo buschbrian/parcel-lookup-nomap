@@ -1,7 +1,7 @@
 # Netlify configuration for the Millcreek Property Lookup.
 #
 # This app is deployed as its OWN Netlify site, deliberately separate from the
-# Experience Builder site at maps.millcreekut.gov. Reason: an ExB Developer
+# Experience Builder site at planning.gis.millcreekut.gov. Reason: an ExB Developer
 # Edition deploy replaces the whole publish directory, which would silently
 # delete this app if it lived inside that site.
 #

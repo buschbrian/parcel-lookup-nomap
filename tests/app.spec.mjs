@@ -1143,6 +1143,38 @@ test("coverage sentences reach the copied text",async({page})=>{
   expect(copied).toContain("The zoning map also touches this property with C-2.");
 });
 
+/* ===========================================================================
+   Zoning first, and one plain-language sentence for zoning and future land use
+   (A7, 10 September 2026).
+   =========================================================================== */
+
+/* Read the actual heading text off the page rather than assuming it, so this
+   test fails honestly if a card's own h3 wording ever drifts. */
+test("Zoning leads the report, then Property record, in the full fixed section order",
+  async({page})=>{
+  await loadKnownProperty(page);
+  const headings=await page.locator("#results-body .card h3").allTextContents();
+  expect(headings).toEqual([
+    "Zoning","Property record","Historic designation","Hazard and special designations",
+    "Subdivision and plat","Natural hazards","Informational hazard screening",
+    "Representation","Services","Location"
+  ]);
+});
+
+test("zoning and future land use each explain what they are, beside their own rows and in the copy",
+  async({page})=>{
+  await loadKnownProperty(page);
+  await expect(zoningCard(page)).toContainText(
+    "Zoning is the law now. It sets what you may build on this property and how you may use it today.");
+  await expect(zoningCard(page)).toContainText(
+    "Future land use is the city's plan for later. It is policy in the General Plan. "+
+    "It does not change what you may build today.");
+  await page.locator("#copy").click();
+  const copied=await page.evaluate(()=>navigator.clipboard.readText());
+  expect(copied).toContain("Zoning is the law now.");
+  expect(copied).toContain("Future land use is the city's plan for later.");
+});
+
 /* ---------------------------------------------------------------------------
    Reflow and focus-visibility regressions.
 

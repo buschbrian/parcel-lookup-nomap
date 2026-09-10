@@ -472,6 +472,29 @@ const CFG = {
   request: { timeoutMs:12000, retryDelayMs:700, suggestDebounceMs:250, maxConcurrent:12,
              maxUrlBytes:1900 },
 
+  // How a coverage layer (base zoning, future land use, City Center Overlay) is
+  // checked against the whole property rather than one point inside it.
+  //
+  // probeGrid 5 -> the centres of a 5x5 grid over the parcel's bounding box are
+  // offered as probe points, together with the parcel's stored point. Only the
+  // ones that fall strictly inside the boundary are sent. They are evidence that
+  // a district covers real area inside the property; a district the probes miss
+  // is reported as unconfirmed, never as absent and never as "a small part".
+  //
+  // maxProbes 25 caps the multipoint geometry at about 1,100 encoded bytes, so a
+  // probe query is never the request that needs POSTing.
+  //
+  // coordDecimals 6 matches the precision the public planning map uses. Probe
+  // points are rounded to it BEFORE they are tested for being inside the
+  // boundary, so the point that is sent is the point that was proven inside.
+  // This rounding applies to probe points only: the parcel boundary itself is
+  // never rounded, simplified or generalised anywhere in this page.
+  //
+  // maxPages 3 bounds paging past ArcGIS's transfer limit. Beyond it the answer
+  // is reported as incomplete — with whatever was received — rather than looping
+  // on a resident's lookup.
+  coverage: { probeGrid:5, maxProbes:25, coordDecimals:6, maxPages:3 },
+
   // Address suggestions come from the City's authoritative address points.
   //
   // The stored format is:  AddNum + PrefixDir + StreetName + StreetType + SuffixDir
@@ -563,9 +586,27 @@ const CFG = {
   // other layers use the stored parcel point.
   // group: which heading the result appears under.
   LAYERS: [
+    // COVERAGE LAYER (10 September 2026). The stored point is one point inside a
+    // property; a zoning district is an area. Reading zoning from that point
+    // answered "Not in this area" for parcels whose point fell in a gap in the
+    // zoning map, and named one district for parcels the map splits between two.
+    // Coverage layers are queried against the whole boundary and report every
+    // designation the map actually places on the property. See CODE.md section 6
+    // and docs/decisions/0003-report-every-zoning-district-that-covers-a-parcel.md.
+    //
+    // designationKey -> two adjacent polygons that both say R-1-8 are one answer,
+    // not two, so features are grouped by this field's value rather than by
+    // feature identity.
+    // expectedCoverage -> every Millcreek property should be in exactly one of
+    // these, so nothing found is a gap in the map, never a property without
+    // zoning.
     { key:"zone",  group:"Zoning", label:"Base zoning district",
       url:"/Zone_Update_2025___Related_Master/FeatureServer/2",
-      sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"one",
+      sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"many",
+      geometryMode:"parcel", coverage:true, expectedCoverage:true, designationKey:"ZONE_",
+      coverageNoun:"zoning district", coverageNounPlural:"zoning districts",
+      coverageWholeNoun:"district", coverageMapName:"zoning map",
+      coveragePolygonNoun:"zoning polygon", coverageGapTail:"this property has no zoning",
       // Field labels stay short: the layer label is prepended to every row.
       fields:{ZONE_:"Code", ZONE_DESC:"Category",
               Zone_Desc1:"Ordinance"} },
@@ -574,17 +615,34 @@ const CFG = {
     // both are superseded by the Sensitive Land Areas regulation. Do not
     // re-add them without confirming with Planning.
 
+    // COVERAGE LAYER. Same reasoning as base zoning above; the General Plan draws
+    // designation boundaries through properties just as the zoning map does.
     { key:"futureland", group:"Zoning", label:"Future land use",
       url:"/FutureLandUse_2024_Millcreek/FeatureServer/0",
-      sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"one",
+      sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"many",
+      geometryMode:"parcel", coverage:true, expectedCoverage:true, designationKey:"LandUse",
+      coverageNoun:"future land use designation",
+      coverageNounPlural:"future land use designations",
+      coverageWholeNoun:"designation", coverageMapName:"future land use map",
+      coveragePolygonNoun:"future land use polygon",
+      coverageGapTail:"this property has no future land use designation",
       fields:{LandUse:"Designation", GENPLAN_WEBSITE:"General Plan",
               GENPLAN_DOCUMENT:"Plan document"} },
 
     // oidField -> verified 10 September 2026 against the live service metadata
     // (?f=json): this layer's object id field is not the ArcGIS default.
+    //
+    // COVERAGE LAYER, and the one that is NOT expectedCoverage: the City Center
+    // Overlay is optional, so a complete query that finds nothing is a real "No"
+    // rather than a gap. It has no designation field — membership is the whole
+    // answer — so every feature it returns maps to one constant local key
+    // (designationConstant), and no designation field is requested.
     { key:"ccoz", group:"Zoning", label:"In the City Center Overlay (CCOZ)",
       url:"/Zone_TCOZ/FeatureServer/0", boolean:true, oidField:"OBJECTID_1",
-      sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"one",
+      sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"many",
+      geometryMode:"parcel", coverage:true, designationConstant:true,
+      coverageNoun:"overlay", coverageNounPlural:"overlays",
+      coverageWholeNoun:"overlay", coverageMapName:"City Center Overlay map",
       note:"City Center Overlay standards apply, which affect permitted uses, "+
            "building height, setbacks and site design." },
 
@@ -733,6 +791,11 @@ const CFG = {
   // not only when something looks unusual. Keyed by the group name used in
   // LAYERS above.
   GROUP_NOTES: {
+    "Zoning":
+      "Zoning answers are read from the whole property boundary, not from one point "+
+      "inside it. Every designation the map places on this property is listed, "+
+      "including any the check could not confirm. Mapped boundaries are not a survey. "+
+      "Confirm with Planning & Zoning before relying on this for a project.",
     "Services":
       "Service boundaries are approximate map data and may be incomplete or out of date. "+
       "This result uses one point inside the parcel and may not represent the whole property. "+
@@ -1025,6 +1088,7 @@ function outFieldsFor(L){
   return [...new Set([...Object.keys(L.fields||{}),
     ...(L.nameField?[L.nameField]:[]),
     ...(L.rankField?[L.rankField]:[]),
+    ...(L.designationKey?[L.designationKey]:[]),
     L.oidField||"OBJECTID",
     ...(L.extraFields||[])])].join(",");
 }
@@ -1083,6 +1147,336 @@ function describeFloodFeatures(features){
 }
 function sameSet(a,b){
   return a.size===b.size && [...a].every(value=>b.has(value));
+}
+
+/* ==== POLYGON COVERAGE ============================================
+   Added 10 September 2026. What changed, and why it is the riskiest thing on
+   this page: base zoning, future land use and the City Center Overlay used to
+   be read from the parcel's stored point. A point is not a property. Parcel
+   15353000130000 got "Not in this area" because its stored point falls in a
+   gap in the zoning map while the parcel itself plainly intersects a district,
+   and parcel 16263780070000 sits on a district boundary, where one point can
+   only ever name one of the two designations the map draws on it.
+
+   The replacement asks three questions of each coverage layer, all with
+   standard ArcGIS parameters and no new host:
+
+     Q1  what does the parcel boundary touch at all      (Intersects, polygon)
+     Q2  which of those cover real area inside it        (Intersects, multipoint)
+     Q3  does one of them contain the whole parcel       (Within, polygon)
+
+   Q3's direction is the one that is not documented, so a live contract pins it:
+   esriSpatialRelWithin means "the geometry I sent is within the feature you
+   return". Verified 10 September 2026 — a 4 m square inside parcel
+   16261060200000 returns that parcel under Within and nothing under Contains.
+
+   Two rules govern every sentence this produces. Q1 is never filtered: anything
+   the map touches this property with is shown, marked unconfirmed if the probes
+   could not confirm it. And probe points are evidence of presence only — a
+   district the probes missed is reported as "we could not confirm", never as an
+   absence and never as a claim about how much of the property it covers. No
+   percentage and no size is published, because none is measured.
+   ------------------------------------------------------------------ */
+
+/* Even-odd ray cast against every ring of an ArcGIS polygon at once.
+
+   ArcGIS returns outer rings and holes in one `rings` array with nothing saying
+   which is which, and the even-odd rule does not need to be told: a point
+   inside an outer ring crosses an odd number of edges, and a point that is also
+   inside a hole crosses one more and comes out even. Even parity is therefore
+   exactly "inside an outer ring and outside every hole".
+
+   A point lying ON a ring is rejected rather than counted. A probe on the
+   boundary is evidence of nothing — it is equally consistent with the district
+   covering the property and with it merely touching the edge, and the edge
+   touch is the case this whole feature exists to stop overstating. */
+function pointInRings(rings,x,y){
+  let inside=false;
+  for(const ring of rings||[]){
+    if(!Array.isArray(ring)) continue;
+    for(let i=0,n=ring.length;i<n;i++){
+      const from=ring[i], to=ring[(i+1)%n];
+      if(!from||!to) continue;
+      const x1=Number(from[0]),y1=Number(from[1]),x2=Number(to[0]),y2=Number(to[1]);
+      if(!(Number.isFinite(x1)&&Number.isFinite(y1)&&Number.isFinite(x2)&&Number.isFinite(y2))) continue;
+      const cross=(x2-x1)*(y-y1)-(y2-y1)*(x-x1);
+      if(Math.abs(cross)<=1e-12 &&
+         x>=Math.min(x1,x2)-1e-12 && x<=Math.max(x1,x2)+1e-12 &&
+         y>=Math.min(y1,y2)-1e-12 && y<=Math.max(y1,y2)+1e-12) return false;
+      if((y1>y)!==(y2>y) && x < x1+(y-y1)*(x2-x1)/(y2-y1)) inside=!inside;
+    }
+  }
+  return inside;
+}
+
+/* The probe points sent as Q2's multipoint geometry.
+
+   The centres of a probeGrid x probeGrid grid over the parcel's bounding box,
+   offered together with the parcel's stored point, each rounded to
+   coordDecimals FIRST and kept only if the rounded point is strictly inside the
+   boundary. Rounding after the test would let a point that was proven inside be
+   sent from just outside, which would turn evidence into a claim about the
+   neighbouring district.
+
+   The stored point gets no privilege: an exterior, in-hole or on-boundary
+   stored point is dropped like any other failing probe. It is offered first
+   only so that at the cap the grid loses a point rather than the one point the
+   County chose as representative.
+
+   Zero survivors is a real outcome - a sliver parcel, a degenerate ring - and
+   the caller falls back to the point-only path rather than publishing silence
+   as an answer. */
+function probePoints(geometry,cfg,storedPoint){
+  const rings=(geometry&&geometry.rings)||[];
+  const grid=Math.max(1,Math.floor(Number(cfg&&cfg.probeGrid))||5);
+  const cap=Math.max(1,Math.floor(Number(cfg&&cfg.maxProbes))||25);
+  const decimals=Number(cfg&&cfg.coordDecimals);
+  const places=Number.isFinite(decimals)?decimals:6;
+  const round=value=>Number(Number(value).toFixed(places));
+  let xmin=Infinity,ymin=Infinity,xmax=-Infinity,ymax=-Infinity;
+  for(const ring of rings) for(const vertex of ring||[]){
+    const x=Number(vertex&&vertex[0]), y=Number(vertex&&vertex[1]);
+    if(!(Number.isFinite(x)&&Number.isFinite(y))) continue;
+    if(x<xmin) xmin=x; if(x>xmax) xmax=x;
+    if(y<ymin) ymin=y; if(y>ymax) ymax=y;
+  }
+  if(!(Number.isFinite(xmin)&&Number.isFinite(ymin)&&
+       Number.isFinite(xmax)&&Number.isFinite(ymax))) return [];
+  const points=[], seen=new Set();
+  const offer=(x,y)=>{
+    if(points.length>=cap) return;
+    const px=round(x), py=round(y);
+    if(!(Number.isFinite(px)&&Number.isFinite(py))) return;
+    const id=px+","+py;
+    if(seen.has(id)) return;
+    seen.add(id);
+    if(pointInRings(rings,px,py)) points.push([px,py]);
+  };
+  if(storedPoint) offer(storedPoint[0],storedPoint[1]);
+  for(let row=0;row<grid;row++)
+    for(let column=0;column<grid;column++)
+      offer(xmin+(xmax-xmin)*(column+0.5)/grid, ymin+(ymax-ymin)*(row+0.5)/grid);
+  return points;
+}
+
+/* How a layer names the thing it reports. Zoning and future land use answer
+   with the value of a field; the City Center Overlay has no such field, because
+   membership is the whole answer, so every feature it returns maps to one
+   constant local key. The object id travels in both cases: Q2 and Q3 ask for
+   the object id and nothing else, and join back to Q1 by it. */
+function coverageIdentity(L){
+  return L.designationConstant
+    ? {oid:L.oidField||"OBJECTID", constant:L.key}
+    : {oid:L.oidField||"OBJECTID", field:L.designationKey};
+}
+
+/* Designation identity, not feature identity.
+
+   Two adjacent polygons that both say R-1-8 are one answer to a resident, and a
+   district the source splits across three features must not read as three
+   districts. Grouping happens after the object-id join, so a feature is counted
+   once however many queries returned it.
+
+   A feature with no usable designation or no object id is counted in `missing`
+   rather than dropped silently: the caller reports that as a check it could not
+   complete, never as a confirmation. */
+function groupByDesignation(features,identity){
+  const oidField=(identity&&identity.oid)||"OBJECTID";
+  const groups=new Map();
+  const keyByOid=new Map();
+  let missing=0;
+  for(const attributes of features||[]){
+    if(!attributes){ missing++; continue; }
+    const raw=(identity&&identity.constant!=null)
+      ? identity.constant : attributes[identity&&identity.field];
+    const key=raw==null?"":String(raw).trim();
+    const oid=attributes[oidField];
+    if(!key||oid==null){ missing++; continue; }
+    if(!groups.has(key)) groups.set(key,[]);
+    groups.get(key).push(attributes);
+    keyByOid.set(String(oid),key);
+  }
+  return {groups,keyByOid,missing};
+}
+
+/* What the evidence supports, kept separate from how well the requests went.
+
+   Two questions get conflated whenever this is written as one value, and they
+   have different answers for a resident: "what does the map show here" and "how
+   much of the map did we manage to read". A probe query that failed does not
+   make a district that Q3 says contains the whole parcel any less contained, so
+   `state` describes the evidence received and `health` reports every check that
+   did not complete, alongside it and never instead of it.
+
+   Input:
+     candidates  Set of designation keys Q1 returned
+     confirmed   Set of keys the probes (Q2) placed inside the property
+     whole       Set of keys Q3 returned as containing the whole parcel
+     q1,q2,q3    "ok" | "incomplete" | "failed" per query
+     identity    "ok" | "missing"
+     polygon     "usable" | "unusable"
+     probes      how many probe points survived
+     storedPoint "valid" | "invalid"
+     pointHits   Set of keys from the point-only query, or null
+
+   Geometry precedence: the polygon path is used whenever the boundary is usable
+   and at least one probe survived; an invalid stored point is simply left out of
+   the probes. The point-only path runs only when there is no usable polygon
+   evidence at all.
+
+   A key Q3 returned counts as covering the property even when Q3 was cut short,
+   which is why `covered` unions confirmed with whole: an incomplete Q3 cannot
+   conclude `whole` or `conflict`, but what it did return is still evidence. */
+function coverageState(input){
+  const q1=input.q1||"ok", q2=input.q2||"ok", q3=input.q3||"ok";
+  const candidates=input.candidates||new Set();
+  const confirmed=input.confirmed||new Set();
+  const whole=input.whole||new Set();
+  const health={
+    probesFailed: q2==="failed",
+    wholeCheckFailed: q3==="failed",
+    incomplete: q1==="incomplete"||q2==="incomplete"||q3==="incomplete",
+    identityMissing: input.identity==="missing"
+  };
+  const covered=new Set([...confirmed,...whole]);
+  const state=(()=>{
+    if(q1==="failed") return "failed";
+    if(!(input.polygon==="usable" && Number(input.probes)>0)){
+      if(input.storedPoint!=="valid") return "pointOnly-unusable";
+      const hits=input.pointHits;
+      if(!hits) return "failed";
+      if(hits.size===0) return "pointOnly-none";
+      return hits.size===1 ? "pointOnly-one" : "pointOnly-many";
+    }
+    if(q1==="ok" && candidates.size===0) return "none";
+    if(q3==="ok" && whole.size===1 && [...confirmed].some(key=>!whole.has(key))) return "conflict";
+    if(q3==="ok" && whole.size===1) return "whole";
+    if(whole.size>1) return "overlap";
+    if(covered.size>1) return "split";
+    if(covered.size===1) return "present";
+    if(q1==="incomplete" && candidates.size===0) return "unknown";
+    return "unconfirmedOnly";
+  })();
+  return {state,health};
+}
+
+/* The sentences a resident reads, built here rather than in draw() so every one
+   of them is unit-testable exactly as published.
+
+   Simplified English, and three words are banned from all of it. "Most" and
+   "small" and "too small" all describe a proportion, and this page measures no
+   proportion: probes prove that a district covers area inside the property, and
+   nothing here can say how much. A sentence that implied it would be the most
+   damaging kind of wrong — confident, plausible and unfounded.
+
+   Every unconfirmed candidate gets a sentence in every state. Nothing Q1 found
+   is ever suppressed. */
+function coverageSentences(input){
+  const phone=input.phone||"";
+  const call=" Call Planning and Zoning at "+phone+".";
+  const noun=input.noun||"designation";
+  const nounPlural=input.nounPlural||(noun+"s");
+  const wholeNoun=input.wholeNoun||noun;
+  const map=input.mapName||"map";
+  const named=input.named!==false;
+  const whole=[...(input.whole||[])];
+  const covered=[...(input.covered||[])];
+  const unconfirmed=[...(input.unconfirmed||[])];
+  const centreOnly="We could only check the centre of this property. "+
+    "We do not know whether the edges of the property are covered.";
+  const lines=[];
+  switch(input.state){
+    case "whole":
+      if(named&&whole.length)
+        lines.push("All of this property is in the "+whole[0]+" "+noun+".");
+      break;
+    case "present":
+      if(named&&covered.length)
+        lines.push("This property is in the "+covered[0]+" "+noun+".");
+      break;
+    case "split":
+      if(named)
+        lines.push("This property has more than one "+noun+". "+
+          covered.map(key=>"Part of it is "+key+". ").join("")+
+          "Call Planning and Zoning at "+phone+
+          " to find out which rules apply to your project.");
+      break;
+    case "overlap":
+      lines.push((whole.length===2
+        ? "The map shows two "+nounPlural+" covering this property."
+        : "The map shows more than one "+noun+" covering this property.")+
+        " Only one can apply."+call);
+      break;
+    case "conflict":
+      lines.push("The map shows all of this property in "+whole[0]+
+        ", and it also shows "+covered.filter(key=>key!==whole[0]).join(" and ")+
+        " covering part of it. Only one can apply."+call);
+      break;
+    case "unconfirmedOnly":
+      for(const key of unconfirmed)
+        lines.push(named
+          ? "The "+map+" touches this property with "+key+
+            ", but we could not confirm which part of the property it covers."+call
+          : "The "+map+" touches this property, but we could not confirm which part "+
+            "of the property it covers."+call);
+      break;
+    case "none":
+      if(input.expectedCoverage)
+        lines.push("No "+(input.polygonNoun||"polygon")+" was found at this property. "+
+          "That is a gap in the map, not a statement that "+
+          (input.gapTail||"this property has no designation")+"."+call);
+      break;
+    case "pointOnly-none":
+      lines.push("We could only check the centre of this property. Nothing was found "+
+        "there. We do not know whether the edges of the property are covered.");
+      break;
+    case "pointOnly-one":
+      lines.push(centreOnly);
+      break;
+    case "pointOnly-many":
+      lines.push(centreOnly);
+      lines.push("The map shows more than one designation at the centre of this "+
+        "property. Only one can apply.");
+      break;
+    case "pointOnly-unusable":
+      lines.push("We could not check this property's location."+call);
+      break;
+    case "unknown":
+      lines.push("We could not read the "+map+" for this property."+call);
+      break;
+    default: break;
+  }
+  if(input.state!=="unconfirmedOnly")
+    for(const key of unconfirmed)
+      lines.push(named
+        ? "The "+map+" also touches this property with "+key+
+          ". We could not confirm how much of the property it covers."
+        : "The "+map+" also touches this property. We could not confirm how much "+
+          "of the property it covers.");
+  const health=input.health||{};
+  if(health.probesFailed||health.identityMissing)
+    lines.push("We could not confirm which of these covers this property.");
+  if(health.wholeCheckFailed)
+    lines.push("We could not check whether one "+wholeNoun+
+      " covers all of this property.");
+  if(health.incomplete)
+    lines.push("We could not read all of the map for this property. Some information "+
+      "may be missing."+call);
+  return lines;
+}
+
+/* Yes / No / Unknown for a boolean coverage layer (the City Center Overlay).
+
+   An edge-only intersection is NOT membership: a boundary that clips the corner
+   of a property is not the property being in the overlay, and a resident told
+   "Yes" on that evidence would be told to apply standards that may not apply to
+   them. So an unconfirmed touch is Unknown, and only a complete query that found
+   nothing is No. */
+function coverageFlag(state){
+  if(state==="whole"||state==="present"||state==="split"||state==="conflict"||
+     state==="overlap"||state==="pointOnly-one"||state==="pointOnly-many") return "yes";
+  if(state==="none") return "no";
+  return "unknown";
 }
 
 /* ---------------------------------------------------------------
@@ -1406,12 +1800,188 @@ async function load(parcelId, label){
   }
 }
 
+/* One coverage query: validated, and bounded when the service truncates it.
+
+   A response is only an answer if it is a JSON body carrying a `features`
+   array. A body without one is `failed`, never "no features" — rendering a
+   missing answer as an absence is precisely the false negative this page must
+   not produce. (An ArcGIS `error` body is already raised as an error by the
+   shared request layer.)
+
+   ArcGIS caps a result set at its own transfer limit and says so with
+   `exceededTransferLimit`. Paging past that is bounded three ways, because an
+   unbounded loop on a resident's lookup is a worse failure than a partial
+   answer: at most CFG.coverage.maxPages requests, a page whose object ids
+   repeat an earlier page stops it immediately, and every page carries the
+   lookup's abort signal so Clear or a new search ends it. Whatever arrived is
+   kept and the query is reported `incomplete`, which renders as a warning
+   beside a real answer rather than in place of one. */
+async function coverageQuery(url,params,oidField,signal){
+  const features=[];
+  const pages=[];
+  const maxPages=Math.max(1,Math.floor(Number(CFG.coverage&&CFG.coverage.maxPages))||1);
+  for(let page=0;page<maxPages;page++){
+    let body;
+    try{
+      body=await query(url,page?{...params,resultOffset:String(features.length)}:params,signal);
+    }catch(e){
+      if(e.kind==="aborted") throw e;
+      console.error("[lookup] coverage query unavailable:",url,e.kind||"unknown",e.message||"");
+      return {status:page?"incomplete":"failed",features};
+    }
+    if(!body||!Array.isArray(body.features)){
+      console.error("[lookup] coverage query returned no feature array:",url);
+      return {status:page?"incomplete":"failed",features};
+    }
+    const oids=new Set(body.features.map(f=>String(f&&f.attributes&&f.attributes[oidField])));
+    if(pages.some(earlier=>earlier.size===oids.size&&[...oids].every(id=>earlier.has(id))))
+      return {status:"incomplete",features};
+    pages.push(oids);
+    for(const feature of body.features)
+      if(feature&&feature.attributes) features.push(feature.attributes);
+    if(!body.exceededTransferLimit) return {status:"ok",features};
+  }
+  return {status:"incomplete",features};
+}
+
+/* A coverage layer's three queries, joined into one answer.
+
+   Q2 and Q3 join to Q1 by object id only; designations are grouped after the
+   join. An object id in Q2 or Q3 that Q1 never returned, or a Q1 feature with
+   no readable designation, is an identity failure — reported as a check that
+   did not complete, never treated as a confirmation (a missing identity must
+   not be allowed to confirm anything, or the least reliable response would
+   produce the most confident sentence).
+
+   Cancellation propagates: an aborted lookup throws rather than rendering a
+   degraded state for a search the resident has already replaced. */
+async function coverageHits(L,lon,lat,parcelGeometry,signal){
+  const identity=coverageIdentity(L);
+  const oidField=identity.oid;
+  const rings=(parcelGeometry&&parcelGeometry.rings)||null;
+  const polygonUsable=Array.isArray(rings)&&
+    rings.some(ring=>Array.isArray(ring)&&ring.length>=3);
+  const storedPointValid=Number.isFinite(Number(lon))&&Number.isFinite(Number(lat));
+  const probes=polygonUsable
+    ? probePoints(parcelGeometry,CFG.coverage,storedPointValid?[Number(lon),Number(lat)]:null)
+    : [];
+  const usePolygon=polygonUsable&&probes.length>0;
+  const dead={status:"ok",features:[]};
+
+  const settle=(result,fallback)=>{
+    if(result.status==="fulfilled") return result.value;
+    if(result.reason&&result.reason.kind==="aborted") throw result.reason;
+    return fallback;
+  };
+
+  let q1=dead,q2=dead,q3=dead,schemaResult;
+  if(usePolygon){
+    const polygon={geometry:JSON.stringify(parcelGeometry),
+      geometryType:"esriGeometryPolygon",inSR:"4326"};
+    const settled=await Promise.allSettled([
+      coverageQuery(L.url,{...polygon,spatialRel:"esriSpatialRelIntersects",
+        outFields:outFieldsFor(L)},oidField,signal),
+      coverageQuery(L.url,{geometry:JSON.stringify({points:probes,
+        spatialReference:{wkid:4326}}),geometryType:"esriGeometryMultipoint",inSR:"4326",
+        spatialRel:"esriSpatialRelIntersects",outFields:oidField},oidField,signal),
+      coverageQuery(L.url,{...polygon,spatialRel:"esriSpatialRelWithin",
+        outFields:oidField},oidField,signal),
+      schema(L.url,signal)
+    ]);
+    q1=settle(settled[0],{status:"failed",features:[]});
+    q2=settle(settled[1],{status:"failed",features:[]});
+    q3=settle(settled[2],{status:"failed",features:[]});
+    schemaResult=settled[3];
+  }else if(storedPointValid){
+    const settled=await Promise.allSettled([
+      coverageQuery(L.url,{geometry:String(lon)+","+String(lat),
+        geometryType:"esriGeometryPoint",inSR:"4326",
+        spatialRel:"esriSpatialRelIntersects",outFields:outFieldsFor(L)},oidField,signal),
+      schema(L.url,signal)
+    ]);
+    q1=settle(settled[0],{status:"failed",features:[]});
+    schemaResult=settled[1];
+  }else{
+    // No usable boundary evidence and no usable stored point: nothing can be
+    // queried, and the state says exactly that rather than implying an answer.
+    schemaResult=(await Promise.allSettled([schema(L.url,signal)]))[0];
+  }
+
+  if(schemaResult&&schemaResult.status==="rejected"&&schemaResult.reason?.kind==="aborted")
+    throw schemaResult.reason;
+  const sch=schemaResult&&schemaResult.status==="fulfilled" ? schemaResult.value : {};
+  const schemaFailed=!!(schemaResult&&schemaResult.status==="rejected");
+  if(schemaFailed)
+    console.warn("[lookup] schema unavailable:",L.key,schemaResult.reason?.kind||"unknown");
+
+  const grouped=groupByDesignation(q1.features,identity);
+  const candidates=new Set(grouped.groups.keys());
+  let identityMissing=grouped.missing>0;
+  const joined=features=>{
+    const keys=new Set();
+    for(const attributes of features){
+      const key=grouped.keyByOid.get(String(attributes&&attributes[oidField]));
+      if(key) keys.add(key); else identityMissing=true;
+    }
+    return keys;
+  };
+  const confirmed=usePolygon?joined(q2.features):new Set();
+  const wholeKeys=usePolygon?joined(q3.features):new Set();
+  const pointHits=usePolygon?null:(q1.status==="failed"?null:new Set(candidates));
+
+  const {state,health}=coverageState({
+    candidates,confirmed,whole:wholeKeys,
+    q1:q1.status, q2:usePolygon?q2.status:"ok", q3:usePolygon?q3.status:"ok",
+    identity:identityMissing?"missing":"ok",
+    polygon:polygonUsable?"usable":"unusable",
+    probes:probes.length,
+    storedPoint:storedPointValid?"valid":"invalid",
+    pointHits
+  });
+
+  /* An unconfirmed candidate is one the probes and the whole-parcel check both
+     failed to place inside the property. On the point-only path neither of those
+     ran, so nothing there is "unconfirmed" in that sense — what was found is
+     what the stored point matched, and the centre-only sentence already carries
+     the caveat. Labelling those as touches as well would say the same doubt
+     twice and in the wrong words. */
+  const covered=usePolygon
+    ? [...candidates].filter(key=>confirmed.has(key)||wholeKeys.has(key)) : [];
+  const unconfirmed=usePolygon
+    ? [...candidates].filter(key=>!confirmed.has(key)&&!wholeKeys.has(key)) : [];
+  // Contained first, then the rest of what covers the property, then what only
+  // touches it. Order is the service's own order within each of those.
+  const shownKeys=usePolygon
+    ? [...[...candidates].filter(key=>wholeKeys.has(key)),
+       ...covered.filter(key=>!wholeKeys.has(key)), ...unconfirmed]
+    : [...candidates];
+  const first=key=>(grouped.groups.get(key)||[])[0]||null;
+  const attrs=shownKeys.length?first(shownKeys[0]):null;
+
+  return {...L, coverage:true, attrs,
+    attrsUnconfirmed:!!shownKeys.length&&unconfirmed.includes(shownKeys[0]),
+    all:q1.features, sch, failed:state==="failed",
+    failedReason:state==="failed"?(q1.status==="failed"?"query":"unknown"):undefined,
+    schemaFailed, files:[], attachmentsFailed:false,
+    byKey:grouped.groups, candidateKeys:[...candidates], confirmedKeys:confirmed,
+    wholeKeys, coveredKeys:covered, unconfirmedKeys:unconfirmed, shownKeys,
+    probeCount:probes.length, state, health,
+    ambiguous: state==="overlap"||state==="conflict",
+    coverageDegraded: health.probesFailed||health.wholeCheckFailed||health.incomplete||
+      health.identityMissing||state==="unconfirmedOnly"||state==="conflict"||
+      state==="overlap"||state.indexOf("pointOnly")===0};
+}
+
 // Spatially intersect the parcel boundary (or its stored point, as configured)
 // against every configured layer, in parallel.
 async function hits(lon,lat,parcelGeometry,task){
   const {signal}=task;
   const results=await Promise.all(CFG.LAYERS.map(async L=>{
     try{
+      // Coverage layers answer from the whole boundary and own their own missing-
+      // geometry fallback (a real point query), so they are handled before the
+      // guard below turns a missing boundary into a failed layer.
+      if(L.coverage) return await coverageHits(L,lon,lat,parcelGeometry,signal);
       const useParcel=L.geometryMode==="parcel";
       if(useParcel&&!parcelGeometry)
         throw svcError("data","Parcel boundary geometry is unavailable");
@@ -1604,7 +2174,13 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
     if(!rows.length) return;
     const card=el("div",{class:"card"});
     card.append(el("h3",{text:g}));
-    const dl=el("dl",{});
+    /* A coverage layer explains itself in sentences that sit directly after its
+       own rows, and a <p> is not valid inside a <dl>. So rows accumulate in a
+       list that is flushed to the card before any sentence is appended, and a
+       fresh list starts for whatever layer comes next. Copy and print pick the
+       sentences up through the existing `p.meta` rule in plainText(). */
+    let dl=el("dl",{});
+    const flush=()=>{ if(dl.childNodes.length){ card.append(dl); dl=el("dl",{}); } };
     const gnotes=[];
     rows.forEach(o=>{
       if(!o.failed && o.kind==="femaFlood"){
@@ -1645,6 +2221,50 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
         return;
       }
       if(o.failed){ dl.append(pair(o.label,"Temporarily unavailable — call "+CFG.contact.phone,"none")); return; }
+
+      /* ---- Coverage layers: zoning, future land use, City Center Overlay ----
+         Every designation the map places on this property gets its own row set,
+         then the sentence for the state, then any check that did not complete.
+         "Not in this area" is never reachable here: a coverage layer with no
+         polygon says the map has a gap, and the optional overlay says No. */
+      if(o.coverage){
+        if(o.schemaFailed) gnotes.push(o.label+": field descriptions were temporarily unavailable, so coded values may not be expanded.");
+        if(o.boolean){
+          // The overlay's own Yes/No/Unknown; the boolean renderer below never
+          // sees a coverage layer, so an edge-only touch cannot become a "Yes".
+          const flag=coverageFlag(o.state);
+          dl.append(flagPair(o.label,flag,o.state==="whole"?"all of this property":null));
+          if(flag==="yes"&&o.note) gnotes.push(o.label.replace(/^In /,"")+": "+o.note);
+        }else{
+          o.shownKeys.forEach(key=>{
+            const feature=(o.byKey.get(key)||[])[0]||{};
+            let printed=0;
+            for(const [f,lab] of Object.entries(o.fields||{})){
+              const v=decode(o.sch[f],feature[f]);
+              if(v==null||v==="") continue;
+              dl.append(pair(o.label+" — "+lab, v));
+              printed++;
+            }
+            // Never a bare `o.label` dt here: one layer contributes at most one
+            // row whose label is exactly the layer label, however many
+            // designations it reports.
+            if(!printed) dl.append(pair(o.label+" — Designation", key));
+          });
+        }
+        flush();
+        coverageSentences({
+          state:o.state, health:o.health,
+          named:!o.designationConstant,
+          noun:o.coverageNoun, nounPlural:o.coverageNounPlural,
+          wholeNoun:o.coverageWholeNoun, mapName:o.coverageMapName,
+          polygonNoun:o.coveragePolygonNoun, gapTail:o.coverageGapTail,
+          expectedCoverage:!!o.expectedCoverage,
+          whole:[...o.wholeKeys], covered:o.coveredKeys, unconfirmed:o.unconfirmedKeys,
+          phone:CFG.planning.phone
+        }).forEach(sentence=>card.append(el("p",{class:"meta",text:sentence})));
+        return;
+      }
+
       // Pure in/out layers: render as an explicit Yes/No, never a blank.
       if(o.boolean){
         const yes=!!o.attrs;
@@ -1732,7 +2352,7 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
           "property and what you need to know.");
       }
     });
-    card.append(dl);
+    flush();
     gnotes.forEach(n=>{
       const cal=el("div",{class:"callout"});
       cal.append(el("p",{},[el("strong",{text:"What this means. "}),document.createTextNode(n)]));
@@ -1764,7 +2384,7 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
   ]));
   body$.append(c4);
 
-  const degraded = overlays.filter(o=>o.failed||o.schemaFailed||o.attachmentsFailed||o.ambiguous||o.verificationMismatch).length+
+  const degraded = overlays.filter(o=>o.failed||o.schemaFailed||o.attachmentsFailed||o.ambiguous||o.verificationMismatch||o.coverageDegraded).length+
     (parcelSchemaFailed?1:0);
   results$.hidden=false;
   say(degraded

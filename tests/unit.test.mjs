@@ -258,6 +258,38 @@ test("the live service contract derives parcel fields from configuration",async(
       "check-services.mjs verifies CFG.parcel."+key);
 });
 
+/* A1-R01 / A1-R02 (2026-09-10): the long-geometry checks' own reasoning turned
+   out to blur transport failure and contract drift back together in two ways -
+   see scripts/service-contract-core.mjs's settleLayerChecks and the tests
+   there for the behavioral coverage. check-services.mjs itself can't be
+   imported in a unit test (it makes live network calls at module load), so
+   this locks down the two control-flow shapes those fixes depend on. */
+test("A1-R02: the long-geometry-parcel check settles every polygon layer instead of racing them",
+  async()=>{
+    const source=await readFile(new URL("../scripts/check-services.mjs",import.meta.url),"utf8");
+    assert.match(source,/settleLayerChecks\(\s*\n?\s*polygonLayers/,
+      "polygon layers are settled individually so one layer's transport failure cannot "+
+      "hide another layer's contract failure, or vice versa");
+    assert.doesNotMatch(source,/Promise\.all\(polygonLayers\.map/,
+      "the old fail-fast race over polygon layers is gone");
+  });
+
+test("A1-R01: the long-geometry-transport check is skipped, not faked as contract drift, "+
+  "when its prerequisite never retrieved a geometry",async()=>{
+  const source=await readFile(new URL("../scripts/check-services.mjs",import.meta.url),"utf8");
+  const start=source.indexOf('await contract("long-geometry-parcel"');
+  const end=source.indexOf("const informationalHazardParcels");
+  assert.ok(start>=0&&end>start,"the long-geometry checks are still where this test expects them");
+  const region=source.slice(start,end);
+  assert.match(region,
+    /if\s*\(\s*longGeometry\s*\)\s*await contract\(\s*"long-geometry-transport"/,
+    "the dependent check runs only once the prerequisite geometry was actually retrieved");
+  assert.match(region,/else\s+skip\(\s*"long-geometry-transport"/,
+    "a missing prerequisite skips the dependent check instead of failing it");
+  assert.doesNotMatch(region,/the long-geometry parcel geometry is unavailable/,
+    "the dependent check no longer fabricates its own contract failure over a missing prerequisite");
+});
+
 test("zoning follows the public map and does not display density",()=>{
   const {CFG}=pureApp();
   const zone=CFG.LAYERS.find(layer=>layer.key==="zone");

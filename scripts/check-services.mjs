@@ -1,8 +1,7 @@
-import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { readApp, readBusinessApp } from "./app-config.mjs";
-import { buildReport, classifyHttp, contractFailure, renderSummary,
-  transportFor, withRetry } from "./service-contract-core.mjs";
+import { buildReport, classifyCheckFailure, classifyHttp, contractFailure, renderSummary,
+  settleLayerChecks, transportFor, withRetry } from "./service-contract-core.mjs";
 
 const {CFG}=await readApp();
 const {CFG:businessCFG}=await readBusinessApp();
@@ -57,10 +56,9 @@ async function contract(key,detail,run){
     console.log("ok",key,detail===undefined?"":detail,note===undefined?"":note);
     return true;
   }catch(error){
-    const kind=error?.kind==="contract"||error instanceof assert.AssertionError
-      ? "contract" : (error?.kind||"unknown");
     checks.push({key,ok:false,detail,
-      failure:{kind,message:error?.message||String(error),attempts:error?.attempts||1}});
+      failure:{kind:classifyCheckFailure(error),message:error?.message||String(error),
+        attempts:error?.attempts||1}});
     console.error("FAIL",key,"-",error?.message||error);
     return false;
   }
@@ -239,27 +237,46 @@ await contract("long-geometry-parcel",longGeometryParcelId,async()=>{
   longGeometry=longParcel.features?.[0]?.geometry;
   if(!longGeometry)
     throw contractFailure("the long-geometry test parcel is no longer published");
-  const answers=await Promise.all(polygonLayers.map(async layer=>{
-    const longQueryParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:"*",
-      geometry:JSON.stringify(longGeometry),geometryType:"esriGeometryPolygon",inSR:"4326",
-      spatialRel:"esriSpatialRelIntersects"});
-    const result=await json(layerUrl(layer.url)+"/query?"+longQueryParams);
-    if(!Array.isArray(result.features))
-      throw contractFailure(layer.key+" returned no feature array for the long-geometry parcel");
-    return result.features.length;
-  }));
-  if(!answers.some(count=>count>0))
+  // A1-R02: settle every polygon layer instead of racing them in one Promise.all.
+  // The old fail-fast race meant that when a transport error on one layer landed
+  // at the same time as a malformed response on another, only whichever rejected
+  // first was ever recorded — the other vanished, and which one survived depended
+  // on timing. settleLayerChecks() waits for all of them, so every layer's own
+  // failure is recorded here, under its own name and classification, before this
+  // check says anything aggregate.
+  const {failures,values}=await settleLayerChecks(polygonLayers,
+    layer=>"long-geometry-parcel:"+layer.key,async layer=>{
+      const longQueryParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:"*",
+        geometry:JSON.stringify(longGeometry),geometryType:"esriGeometryPolygon",inSR:"4326",
+        spatialRel:"esriSpatialRelIntersects"});
+      const result=await json(layerUrl(layer.url)+"/query?"+longQueryParams);
+      if(!Array.isArray(result.features))
+        throw contractFailure(layer.key+" returned no feature array for the long-geometry parcel");
+      return result.features.length;
+    });
+  for(const failure of failures) checks.push({...failure,detail:longGeometryParcelId});
+  if(failures.length)
+    return failures.length+" of "+polygonLayers.length+
+      " polygon layers failed - see the per-layer long-geometry-parcel: results above";
+  if(!values.some(count=>count>0))
     throw contractFailure("no polygon layer returned a feature for the long-geometry parcel, "+
       "so an outage and a genuine 'no' cannot be told apart here");
   return polygonLayers.length+" polygon layers answered, "+
-    answers.reduce((total,count)=>total+count,0)+" features";
+    values.reduce((total,count)=>total+count,0)+" features";
 });
 
 /* The boundary the check above depends on. If the test parcel's query stopped
    being long enough to need a POST — a re-drawn boundary, a shorter service
-   path — the check would still pass while proving nothing, so say so instead. */
-await contract("long-geometry-transport",longGeometryParcelId,async()=>{
-  if(!longGeometry) throw contractFailure("the long-geometry parcel geometry is unavailable");
+   path — the check would still pass while proving nothing, so say so instead.
+
+   A1-R01: this only runs once the prerequisite above actually retrieved a
+   geometry. When that fetch instead exhausted its retries on a transport
+   failure, longGeometry stays null and this check used to run anyway, throwing
+   its own contractFailure over data nothing had inspected — turning a service
+   outage into what a reader saw as "Contract drift". The prerequisite's own
+   check already carries the correct (transport) classification for that
+   failure, so a missing geometry here is skipped, not re-reported as drift. */
+if(longGeometry) await contract("long-geometry-transport",longGeometryParcelId,async()=>{
   const layer=polygonLayers[0];
   const boundaryParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:"*",
     geometry:JSON.stringify(longGeometry),geometryType:"esriGeometryPolygon",inSR:"4326",
@@ -275,6 +292,8 @@ await contract("long-geometry-transport",longGeometryParcelId,async()=>{
     throw contractFailure("transportFor no longer switches at exactly CFG.request.maxUrlBytes");
   return bytes+" bytes, over the "+limit+"-byte limit";
 });
+else skip("long-geometry-transport",
+  "the long-geometry parcel prerequisite failed, so its geometry was never retrieved");
 
 const informationalHazardParcels={
   liquefaction:"22062280160000",

@@ -24,7 +24,7 @@ function pureApp(){
   return vm.runInNewContext(
     script.slice(cfgStart,cfgEnd)+"\n"+script.slice(helperStart,helperEnd)+
     "\n;({CFG,parseAddress,decode,floodRank,selectHighestFlood,selectHighestCategory,floodClassSet,"+
-    "sameSet,matchSummary,esc,likeOperand});"
+    "sameSet,matchSummary,esc,likeOperand,outFieldsFor,parcelOutFields});"
   );
 }
 
@@ -128,6 +128,61 @@ test("the service monitor carries the page's transport rule verbatim",async()=>{
   };
   assert.equal(transportSource(core,"service-contract-core.mjs"),
     transportSource(sharedRegion(script,"REQUEST LAYER"),"the shared request layer"));
+});
+
+/* No query anywhere requests outFields=* (A2, 10 September 2026). Every layer
+   query asks for exactly the fields it renders plus the layer's object id;
+   the parcel record query asks for exactly the parcel facts, owner fields and
+   coordinates the page displays. scripts/service-contract-core.mjs carries
+   the same formula for the live monitor — this compares the page's inline
+   duplicate against it field for field, the same discipline as the
+   transportFor comparison above. */
+test("the page's explicit field lists agree with the live monitor's",async()=>{
+  const {layerFieldList,parcelFieldList}=
+    await import("../scripts/service-contract-core.mjs");
+  const {CFG,outFieldsFor,parcelOutFields}=pureApp();
+  assert.equal(parcelOutFields(),parcelFieldList(CFG).join(","),
+    "the parcel query's field list must match what check-services.mjs verifies against "+
+    "the live service");
+  for(const L of CFG.LAYERS)
+    assert.equal(outFieldsFor(L),layerFieldList(L).join(","),
+      L.key+": the layer query's field list must match what check-services.mjs verifies "+
+      "against the live service");
+});
+
+/* Verified 10 September 2026 against the live service metadata
+   (<url>?f=json -> objectIdField): these two layers are the only ones whose
+   object id field is not the ArcGIS default "OBJECTID". Getting this wrong
+   would make outFieldsFor() ask for a field the service does not have, and
+   check-services.mjs's schema contract for that layer would fail. */
+test("the two layers whose object id field is not OBJECTID are configured",()=>{
+  const {CFG}=pureApp();
+  const byKey=key=>CFG.LAYERS.find(L=>L.key===key);
+  assert.equal(byKey("ccoz").oidField,"OBJECTID_1");
+  assert.equal(byKey("council").oidField,"OBJECTID_12");
+  // Every other layer relies on the default, so it must not declare an override
+  // that was never verified.
+  for(const L of CFG.LAYERS)
+    if(L.key!=="ccoz"&&L.key!=="council")
+      assert.equal(L.oidField,undefined,L.key+" has an unverified oidField override");
+});
+
+/* The self-configuring fallback (first three non-JUNK attributes) exists for a
+   layer added without `fields`, and it is how an irrelevant Salt Lake County
+   contact once appeared under Services (USAGE.md). Every currently configured
+   non-boolean layer names `fields` explicitly, so the fallback renders for
+   none of them today. This keeps that fact asserted rather than assumed, so a
+   layer added later without `fields` is a deliberate, visible choice. */
+test("the unconfigured-layer fallback renderer is currently unreachable",()=>{
+  const {CFG}=pureApp();
+  // CFG.LAYERS is an array from pureApp()'s own vm sandbox realm, so compare
+  // its length rather than deepEqual it against a host-realm array literal —
+  // deepStrictEqual treats same-shaped arrays from different realms as unequal.
+  const unconfigured=CFG.LAYERS.filter(L=>!L.boolean&&!L.fields).map(L=>L.key);
+  assert.equal(unconfigured.length,0,
+    "every non-boolean layer must configure `fields`, or the self-configuring fallback "+
+    "renders for it silently — see USAGE.md's fireworks-layer warning. Unconfigured: "+
+    Array.prototype.join.call(unconfigured,", "));
 });
 
 test("the shared request layer classifies errors and retries only transient ones",()=>{
@@ -252,10 +307,20 @@ test("the page reads parcel fields through configuration, not by hardcoded name"
 });
 
 test("the live service contract derives parcel fields from configuration",async()=>{
+  // A2 moved the field-list formula into service-contract-core.mjs's
+  // parcelFieldList(), shared with the page's own inline copy (see
+  // "the page's explicit field lists agree with the live monitor's" above).
+  // check-services.mjs now verifies these fields through that import rather
+  // than naming them itself, so both files together are what must still name
+  // every one of them literally.
   const source=await readFile(new URL("../scripts/check-services.mjs",import.meta.url),"utf8");
+  const core=await readFile(new URL("../scripts/service-contract-core.mjs",import.meta.url),"utf8");
+  assert.match(source,/parcelFieldList\(CFG\)/,
+    "check-services.mjs must derive the parcel query's fields from parcelFieldList(CFG), "+
+    "not reconstruct or hardcode them separately");
   for(const key of ["ownerField","careOfField","assessorLinkField"])
-    assert.match(source,new RegExp("CFG\\.parcel\\."+key),
-      "check-services.mjs verifies CFG.parcel."+key);
+    assert.match(core,new RegExp("CFG\\.parcel\\."+key),
+      "service-contract-core.mjs's parcelFieldList verifies CFG.parcel."+key);
 });
 
 /* A1-R01 / A1-R02 (2026-09-10): the long-geometry checks' own reasoning turned

@@ -1259,6 +1259,21 @@ function probePoints(geometry,cfg,storedPoint){
   return points;
 }
 
+/* A stored coordinate is only usable if it is a real, in-range number.
+   `Number(null)` and `Number("")` are both 0 — a naive `Number.isFinite`
+   check would treat a missing latitude or longitude as a valid point at
+   (0, 0) and send a real spatial query there, which then comes back as
+   "temporarily unavailable" instead of admitting the location was never
+   known (A3-R02). Rejected before conversion, so the caller never sees a
+   coordinate that merely happened to convert to zero. */
+function validCoordinate(value,min,max){
+  if(value==null) return false;
+  if(typeof value!=="number" && typeof value!=="string") return false;
+  if(typeof value==="string" && value.trim()==="") return false;
+  const n=Number(value);
+  return Number.isFinite(n) && n>=min && n<=max;
+}
+
 /* How a layer names the thing it reports. Zoning and future land use answer
    with the value of a field; the City Center Overlay has no such field, because
    membership is the whole answer, so every feature it returns maps to one
@@ -1277,26 +1292,32 @@ function coverageIdentity(L){
    districts. Grouping happens after the object-id join, so a feature is counted
    once however many queries returned it.
 
-   A feature with no usable designation or no object id is counted in `missing`
-   rather than dropped silently: the caller reports that as a check it could not
-   complete, never as a confirmation. */
+   A feature whose designation cannot be read at all — no attributes, or a
+   blank/missing designation value — is counted in `unidentified` rather than
+   dropped silently: it is a match the map returned that this page cannot name,
+   which is different from the map having nothing there, and the caller must
+   not treat the two alike (A3-R01). A feature whose designation IS readable
+   but has no object id is still a real, nameable candidate — it is kept in
+   `groups` so it renders as an unconfirmed touch — it simply cannot be joined
+   to Q2/Q3, so it can never move past "unconfirmed" on its own. `missing` is
+   kept as an alias of `unidentified` for callers that only need the count. */
 function groupByDesignation(features,identity){
   const oidField=(identity&&identity.oid)||"OBJECTID";
   const groups=new Map();
   const keyByOid=new Map();
-  let missing=0;
+  let unidentified=0;
   for(const attributes of features||[]){
-    if(!attributes){ missing++; continue; }
+    if(!attributes){ unidentified++; continue; }
     const raw=(identity&&identity.constant!=null)
       ? identity.constant : attributes[identity&&identity.field];
     const key=raw==null?"":String(raw).trim();
-    const oid=attributes[oidField];
-    if(!key||oid==null){ missing++; continue; }
+    if(!key){ unidentified++; continue; }
     if(!groups.has(key)) groups.set(key,[]);
     groups.get(key).push(attributes);
-    keyByOid.set(String(oid),key);
+    const oid=attributes[oidField];
+    if(oid!=null) keyByOid.set(String(oid),key);
   }
-  return {groups,keyByOid,missing};
+  return {groups,keyByOid,missing:unidentified,unidentified};
 }
 
 /* What the evidence supports, kept separate from how well the requests went.
@@ -1318,6 +1339,10 @@ function groupByDesignation(features,identity){
      probes      how many probe points survived
      storedPoint "valid" | "invalid"
      pointHits   Set of keys from the point-only query, or null
+     unidentified  count of Q1 features that returned but could not be
+                    identified (no attributes, or a blank/missing designation
+                    value) — evidence something is there, not evidence that
+                    nothing is (A3-R01)
 
    Geometry precedence: the polygon path is used whenever the boundary is usable
    and at least one probe survived; an invalid stored point is simply left out of
@@ -1326,12 +1351,21 @@ function groupByDesignation(features,identity){
 
    A key Q3 returned counts as covering the property even when Q3 was cut short,
    which is why `covered` unions confirmed with whole: an incomplete Q3 cannot
-   conclude `whole` or `conflict`, but what it did return is still evidence. */
+   conclude `whole` or `conflict`, but what it did return is still evidence.
+
+   Absence is only ever concluded from a Q1 response that is both complete AND
+   genuinely empty. A complete Q1 that returned features nothing could be
+   identified from is not empty — it is unreadable — so it is reported exactly
+   like an incomplete Q1 that retained nothing: `unknown`, never `none` (Astra
+   A5-01, A3-R01). A CCOZ Q1 response of bare `attributes:{}` must never read
+   as a confirmed "No", and a zoning feature with a designation but no object
+   id must never make the map look empty. */
 function coverageState(input){
   const q1=input.q1||"ok", q2=input.q2||"ok", q3=input.q3||"ok";
   const candidates=input.candidates||new Set();
   const confirmed=input.confirmed||new Set();
   const whole=input.whole||new Set();
+  const unidentified=Number(input.unidentified)||0;
   const health={
     probesFailed: q2==="failed",
     wholeCheckFailed: q3==="failed",
@@ -1348,13 +1382,13 @@ function coverageState(input){
       if(hits.size===0) return "pointOnly-none";
       return hits.size===1 ? "pointOnly-one" : "pointOnly-many";
     }
+    if(candidates.size===0 && (q1==="incomplete"||unidentified>0)) return "unknown";
     if(q1==="ok" && candidates.size===0) return "none";
     if(q3==="ok" && whole.size===1 && [...confirmed].some(key=>!whole.has(key))) return "conflict";
     if(q3==="ok" && whole.size===1) return "whole";
     if(whole.size>1) return "overlap";
     if(covered.size>1) return "split";
     if(covered.size===1) return "present";
-    if(q1==="incomplete" && candidates.size===0) return "unknown";
     return "unconfirmedOnly";
   })();
   return {state,health};
@@ -1861,9 +1895,11 @@ async function coverageHits(L,lon,lat,parcelGeometry,signal){
   const rings=(parcelGeometry&&parcelGeometry.rings)||null;
   const polygonUsable=Array.isArray(rings)&&
     rings.some(ring=>Array.isArray(ring)&&ring.length>=3);
-  const storedPointValid=Number.isFinite(Number(lon))&&Number.isFinite(Number(lat));
+  const nlon=validCoordinate(lon,-180,180)?Number(lon):null;
+  const nlat=validCoordinate(lat,-90,90)?Number(lat):null;
+  const storedPointValid=nlon!=null&&nlat!=null;
   const probes=polygonUsable
-    ? probePoints(parcelGeometry,CFG.coverage,storedPointValid?[Number(lon),Number(lat)]:null)
+    ? probePoints(parcelGeometry,CFG.coverage,storedPointValid?[nlon,nlat]:null)
     : [];
   const usePolygon=polygonUsable&&probes.length>0;
   const dead={status:"ok",features:[]};
@@ -1894,7 +1930,7 @@ async function coverageHits(L,lon,lat,parcelGeometry,signal){
     schemaResult=settled[3];
   }else if(storedPointValid){
     const settled=await Promise.allSettled([
-      coverageQuery(L.url,{geometry:String(lon)+","+String(lat),
+      coverageQuery(L.url,{geometry:nlon+","+nlat,
         geometryType:"esriGeometryPoint",inSR:"4326",
         spatialRel:"esriSpatialRelIntersects",outFields:outFieldsFor(L)},oidField,signal),
       schema(L.url,signal)
@@ -1916,7 +1952,7 @@ async function coverageHits(L,lon,lat,parcelGeometry,signal){
 
   const grouped=groupByDesignation(q1.features,identity);
   const candidates=new Set(grouped.groups.keys());
-  let identityMissing=grouped.missing>0;
+  let identityMissing=grouped.unidentified>0;
   const joined=features=>{
     const keys=new Set();
     for(const attributes of features){
@@ -1933,6 +1969,7 @@ async function coverageHits(L,lon,lat,parcelGeometry,signal){
     candidates,confirmed,whole:wholeKeys,
     q1:q1.status, q2:usePolygon?q2.status:"ok", q3:usePolygon?q3.status:"ok",
     identity:identityMissing?"missing":"ok",
+    unidentified:grouped.unidentified,
     polygon:polygonUsable?"usable":"unusable",
     probes:probes.length,
     storedPoint:storedPointValid?"valid":"invalid",
@@ -2229,6 +2266,20 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
          polygon says the map has a gap, and the optional overlay says No. */
       if(o.coverage){
         if(o.schemaFailed) gnotes.push(o.label+": field descriptions were temporarily unavailable, so coded values may not be expanded.");
+        // Built once and reused below: as the paragraphs that always follow the
+        // rows, and — only when there are no rows to show it next to — as the
+        // text of a labelled fallback row, so the outcome sentence is never
+        // duplicated or reworded (A3-R03).
+        const sentences=coverageSentences({
+          state:o.state, health:o.health,
+          named:!o.designationConstant,
+          noun:o.coverageNoun, nounPlural:o.coverageNounPlural,
+          wholeNoun:o.coverageWholeNoun, mapName:o.coverageMapName,
+          polygonNoun:o.coveragePolygonNoun, gapTail:o.coverageGapTail,
+          expectedCoverage:!!o.expectedCoverage,
+          whole:[...o.wholeKeys], covered:o.coveredKeys, unconfirmed:o.unconfirmedKeys,
+          phone:CFG.planning.phone
+        });
         if(o.boolean){
           // The overlay's own Yes/No/Unknown; the boolean renderer below never
           // sees a coverage layer, so an edge-only touch cannot become a "Yes".
@@ -2250,18 +2301,18 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
             // designations it reports.
             if(!printed) dl.append(pair(o.label+" — Designation", key));
           });
+          // A fallback outcome (a map gap, an unreadable response, a stored
+          // point that could not be checked, ...) shows no designation, but the
+          // layer must still identify itself: without this row, two coverage
+          // layers with the same generic outcome sentence — base zoning and
+          // future land use both reporting a gap, say — are indistinguishable
+          // on screen and in the copied text, and neither names what was
+          // actually checked (A3-R03).
+          if(!o.shownKeys.length)
+            dl.append(pair(o.label+" — Result", sentences[0]||"No result was returned."));
         }
         flush();
-        coverageSentences({
-          state:o.state, health:o.health,
-          named:!o.designationConstant,
-          noun:o.coverageNoun, nounPlural:o.coverageNounPlural,
-          wholeNoun:o.coverageWholeNoun, mapName:o.coverageMapName,
-          polygonNoun:o.coveragePolygonNoun, gapTail:o.coverageGapTail,
-          expectedCoverage:!!o.expectedCoverage,
-          whole:[...o.wholeKeys], covered:o.coveredKeys, unconfirmed:o.unconfirmedKeys,
-          phone:CFG.planning.phone
-        }).forEach(sentence=>card.append(el("p",{class:"meta",text:sentence})));
+        sentences.forEach(sentence=>card.append(el("p",{class:"meta",text:sentence})));
         return;
       }
 

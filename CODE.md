@@ -370,9 +370,34 @@ nothing Q1 found is ever suppressed. No coverage state can render "Not in this a
 "most", "small" and "too small" appear in none of these sentences, because the page measures no
 proportion.
 
+**Absence is never inferred from a match this page could not read (10 September 2026 review, A3-R01).**
+`groupByDesignation()` keeps a feature with a readable designation but no object id as a real,
+unconfirmable candidate rather than dropping it, and separately counts `unidentified` — features that
+returned with no attributes at all, or a blank/missing designation value. `coverageState()` only
+resolves to `none` when Q1 is complete **and** genuinely empty; a complete Q1 that returned nothing
+identifiable (`unidentified > 0`) resolves to `unknown` instead, exactly like an incomplete Q1 that
+retained nothing. A CCOZ match with bare `attributes:{}` can therefore never read as a confirmed "No".
+
+**A stored coordinate is validated before conversion (A3-R02).** `Number(null)` and `Number("")` are
+both `0`, so a missing latitude or longitude used to pass a naive `Number.isFinite` check and be sent
+as a real point query at `(0, 0)`. `validCoordinate(value, min, max)` rejects `null`, blank strings and
+non-numeric values before any conversion, and checks the result is in range (longitude −180…180,
+latitude −90…90); `coverageHits()` uses it for both the probe-generation point and the point-only
+query, and serialises only the validated number. Missing geometry together with an invalid stored
+point sends no spatial query at all and renders `pointOnly-unusable`.
+
 `draw()` renders one row set per shown designation, then the state's sentence, then any health
 warning. The overlay's Yes / No / Unknown comes from `coverageFlag()`: only a complete query that
 found nothing is No, and an unconfirmed boundary touch is Unknown rather than Yes.
+
+**Every coverage layer identifies itself, even with nothing to show (A3-R03).** A non-boolean coverage
+layer whose state renders no designation (`none`, `unknown`, `pointOnly-none`, `pointOnly-unusable`)
+used to contribute only an unlabelled sentence paragraph — indistinguishable from another coverage
+layer's equally generic fallback sentence in the same card, both on screen and in the copied text,
+since base zoning and future land use share the "Zoning" card. `draw()` now emits one labelled fallback
+row (`<dt>` "`<Layer label>` — Result", `<dd>` the state's own first sentence) whenever a coverage
+layer has no `shownKeys`, so a reader — and the clipboard copy — can always tell which layer a fallback
+sentence belongs to.
 
 `draw()` emits cards in this order:
 

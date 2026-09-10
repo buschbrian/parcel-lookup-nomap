@@ -123,13 +123,23 @@ function outFieldsOf(request){
 /* The real ArcGIS service only returns what outFields asked for. Filtering the
    fixture the same way turns "the page rendered a field it never requested"
    into a failing test instead of a silent pass — outFields=* is exactly what
-   used to hide that. */
-function filterAttributes(attributes,outFieldsParam,oidField){
+   used to hide that.
+
+   By default a fixture feature that omits its object id still gets one here
+   (`?? 1`), so most fixtures do not have to spell out an id they do not care
+   about. A3-R01 specifically needs the opposite: a feature the live service
+   returned with no readable object id, or no readable attributes at all, so
+   that the page's own handling of an unidentifiable match can be exercised
+   rather than the mock quietly making every match identifiable. Passing
+   `{synthesizeOid:false}` (wired to `state.noOidSynthesis` below) turns that
+   synthesis off. */
+function filterAttributes(attributes,outFieldsParam,oidField,{synthesizeOid=true}={}){
   const requested=new Set(String(outFieldsParam||"").split(",").map(field=>field.trim()).filter(Boolean));
   const filtered={};
   for(const [field,value] of Object.entries(attributes))
     if(requested.has(field)) filtered[field]=value;
-  if(requested.has(oidField)&&!(oidField in filtered)) filtered[oidField]=attributes[oidField]??1;
+  if(synthesizeOid&&requested.has(oidField)&&!(oidField in filtered))
+    filtered[oidField]=attributes[oidField]??1;
   return filtered;
 }
 
@@ -212,7 +222,8 @@ async function mockArcGIS(page,state={}){
       const roles=roleFeaturesFor(name,features,state);
       const scenario=roles.scenario;
       const shape=list=>list.map(attributes=>
-        ({attributes:filterAttributes(attributes,outFieldsParam,oidField)}));
+        ({attributes:filterAttributes(attributes,outFieldsParam,oidField,
+          {synthesizeOid:!state.noOidSynthesis})}));
       // A query the service rejects outright.
       if(scenario.delayMs&&(scenario.delayRole||"intersects")===role)
         await new Promise(resolve=>setTimeout(resolve,scenario.delayMs));
@@ -892,6 +903,84 @@ test("a boundary with no interior falls back to the stored point rather than goi
   await expect(zoningCard(page)).toContainText("Base zoning district — CodeR-1-8");
   await expect(zoningCard(page))
     .toContainText("We could only check the centre of this property.");
+});
+
+/* ===========================================================================
+   A3-R01, A3-R02, A3-R03 (10 September 2026 review findings): absence must
+   never be inferred from an unreadable match, a missing stored coordinate must
+   never be treated as a real point at (0, 0), and every coverage layer must
+   name itself even when it has nothing to show.
+   =========================================================================== */
+
+test("an unreadable overlay match never reads as a confirmed No (A3-R01)",async({page})=>{
+  // The service returned a real feature the mock deliberately leaves with no
+  // object id and no other attributes — exactly the shape of a live response
+  // this page cannot join back to anything. That is different from the
+  // overlay genuinely finding nothing, and must not render the same way.
+  await coverageLookup(page,{noOidSynthesis:true,
+    coverage:{[CCOZ]:{intersects:[{}],probe:[{}],within:[]}}});
+  const overlay=page.locator(".pair",{hasText:"City Center Overlay"});
+  await expect(overlay).toContainText("Unknown — verify with staff");
+  await expect(zoningCard(page)).toContainText(
+    "We could not confirm which of these covers this property.");
+});
+
+test("a readable zoning designation with no object id is shown, never dropped (A3-R01)",
+  async({page})=>{
+  await coverageLookup(page,{noOidSynthesis:true,
+    coverage:{[ZONE]:{intersects:[{ZONE_:"R-1-8",ZONE_DESC:"Residential",
+      Zone_Desc1:"https://example.test/zoning"}],probe:[],within:[]}}});
+  await expect(zoningCard(page)).toContainText("Base zoning district — CodeR-1-8");
+  await expect(zoningCard(page)).toContainText(
+    "The zoning map touches this property with R-1-8, but we could not confirm "+
+    "which part of the property it covers. Call Planning and Zoning at "+PLANNING+".");
+  await expect(zoningCard(page)).not.toContainText("No zoning polygon was found");
+});
+
+test("a zoning match with an object id but no readable designation reports unknown, "+
+  "not a gap (A3-R01)",async({page})=>{
+  await coverageLookup(page,{noOidSynthesis:true,
+    coverage:{[ZONE]:{intersects:[{OBJECTID:900}],probe:[],within:[]}}});
+  await expect(zoningCard(page)).toContainText(
+    "We could not read the zoning map for this property. Call Planning and Zoning at "+
+    PLANNING+".");
+  await expect(zoningCard(page)).not.toContainText("No zoning polygon was found");
+  await expect(zoningCard(page)).not.toContainText("Not in this area");
+});
+
+test("missing geometry and missing coordinates send no spatial query and say so (A3-R02)",
+  async({page})=>{
+  const requests=await coverageLookup(page,{omitParcelGeometry:true,
+    parcel:{parcel_latitude:null,parcel_longitude:null}});
+  const zoneQueries=requests.filter(request=>
+    request.url.includes("Zone_Update_2025___Related_Master")&&request.url.includes("/query"));
+  expect(zoneQueries.length,"no spatial query is sent without geometry or a usable point").toBe(0);
+  await expect(zoningCard(page)).toContainText(
+    "We could not check this property's location. Call Planning and Zoning at "+PLANNING+".");
+  // A3-R03: the fallback still names the layer instead of leaving an unlabelled
+  // sentence sitting in the card.
+  await expect(page.locator(".pair",{hasText:"Base zoning district — Result"}))
+    .toContainText("We could not check this property's location.");
+});
+
+test("an out-of-range stored coordinate is treated as missing, not as a real point (A3-R02)",
+  async({page})=>{
+  const requests=await coverageLookup(page,{omitParcelGeometry:true,
+    parcel:{parcel_latitude:200,parcel_longitude:-111.815}});
+  const zoneQueries=requests.filter(request=>
+    request.url.includes("Zone_Update_2025___Related_Master")&&request.url.includes("/query"));
+  expect(zoneQueries.length,"an out-of-range latitude is never sent as a coordinate").toBe(0);
+  await expect(zoningCard(page)).toContainText("We could not check this property's location.");
+});
+
+test("mixed zoning and future-land-use gaps are distinguishable, not identical "+
+  "anonymous text (A3-R03)",async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[]},[FUTURE]:{intersects:[]}}});
+  await expect(page.locator(".pair",{hasText:"Base zoning district — Result"})).toContainText(
+    "That is a gap in the map, not a statement that this property has no zoning.");
+  await expect(page.locator(".pair",{hasText:"Future land use — Result"})).toContainText(
+    "That is a gap in the map, not a statement that this property has no future land "+
+    "use designation.");
 });
 
 test("a coverage query in flight is abandoned when the search is cleared",async({page})=>{

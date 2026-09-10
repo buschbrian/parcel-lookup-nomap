@@ -25,7 +25,7 @@ function pureApp(){
     script.slice(cfgStart,cfgEnd)+"\n"+script.slice(helperStart,helperEnd)+
     "\n;({CFG,parseAddress,decode,floodRank,selectHighestFlood,selectHighestCategory,floodClassSet,"+
     "sameSet,matchSummary,esc,likeOperand,outFieldsFor,parcelOutFields,"+
-    "pointInRings,probePoints,coverageIdentity,groupByDesignation,coverageState,"+
+    "pointInRings,probePoints,validCoordinate,coverageIdentity,groupByDesignation,coverageState,"+
     "coverageSentences,coverageFlag});"
   );
 }
@@ -261,20 +261,99 @@ test("designations are grouped by value, not by feature",()=>{
   assert.equal(grouped.groups.get("R-1-8").length,2);
   assert.equal(grouped.keyByOid.get("2"),"R-1-8","the object-id join covers every feature");
   assert.equal(grouped.missing,0);
-  // A feature with no readable designation is counted, never silently dropped
-  // and never allowed to confirm anything.
+  assert.equal(grouped.unidentified,0);
   assert.equal(groupByDesignation([{OBJECTID:4,ZONE_:"  "}],identity).missing,1);
-  assert.equal(groupByDesignation([{ZONE_:"R-1-8"}],identity).missing,1,"no object id");
   // The overlay has no designation field: every feature maps to one constant key.
   const overlay=coverageIdentity(CFG.LAYERS.find(layer=>layer.key==="ccoz"));
   const overlayGroups=groupByDesignation([{OBJECTID_1:9},{OBJECTID_1:10}],overlay);
   assert.deepEqual([...overlayGroups.groups.keys()],["ccoz"]);
 });
 
+/* A3-R01 truth table: absence must never be inferred from a match this page
+   simply could not read. A genuinely empty response is different from a
+   response full of features nobody could identify, and the two must not
+   collapse into the same "nothing here" outcome. */
+test("unreadable Q1 matches are counted separately from a genuinely empty response",()=>{
+  const {groupByDesignation,coverageIdentity,CFG}=pureApp();
+  const identity=coverageIdentity(CFG.LAYERS.find(layer=>layer.key==="zone"));
+
+  // Attributes-less feature: the service returned a match, but nothing about
+  // it — a body without any usable attributes. Counted as unidentified, and
+  // NOT silently equivalent to zero matches.
+  const blank=groupByDesignation([{}],identity);
+  assert.equal(blank.groups.size,0);
+  assert.equal(blank.unidentified,1,"a match with no readable content is not 'nothing found'");
+
+  // A designation with no object id: readable, so it is kept as a real
+  // candidate — it can never be probe-confirmed (nothing to join Q2/Q3
+  // against), but it must still be shown, never dropped.
+  const noOid=groupByDesignation([{ZONE_:"R-1-8"}],identity);
+  assert.deepEqual([...noOid.groups.keys()],["R-1-8"],
+    "a readable designation is kept even without a joinable object id");
+  assert.equal(noOid.keyByOid.size,0,"nothing to join, so nothing is ever confirmed");
+  assert.equal(noOid.unidentified,0);
+
+  // An object id with no readable designation: a real feature exists, but this
+  // page cannot say what it is. Counted as unidentified, not dropped as if it
+  // were zero matches, and not grouped under an empty-string key.
+  const oidOnly=groupByDesignation([{OBJECTID:9}],identity);
+  assert.equal(oidOnly.groups.size,0);
+  assert.equal(oidOnly.unidentified,1,"an identified feature with no readable designation");
+
+  // A genuinely empty Q1 response is still exactly that: zero candidates,
+  // zero unidentified matches.
+  const empty=groupByDesignation([],identity);
+  assert.equal(empty.groups.size,0);
+  assert.equal(empty.unidentified,0);
+});
+
+test("coverageState never reads unreadable Q1 matches as an established absence (A3-R01)",()=>{
+  const {coverageState}=pureApp();
+
+  // Q1 completed and returned nothing at all: absence IS established.
+  assert.equal(coverageState(evidence({unidentified:0})).state,"none");
+
+  // Q1 completed but every feature it returned was unreadable (no attributes,
+  // or an object id with no designation): absence is NOT established. This is
+  // the exact shape of a CCOZ `attributes:{}` response and of a zoning feature
+  // that carries an object id but no readable ZONE_ value.
+  const unreadable=coverageState(evidence({unidentified:1}));
+  assert.equal(unreadable.state,"unknown","never 'none' when the response could not be read");
+
+  // The same holds when several matches came back and none were identifiable.
+  assert.equal(coverageState(evidence({unidentified:3})).state,"unknown");
+
+  // A readable candidate takes priority over any unidentified stragglers —
+  // once something IS identified, the answer is about what was found, not
+  // about what could not be read.
+  const set=(...keys)=>new Set(keys);
+  assert.equal(coverageState(evidence({candidates:set("R-1-8"),confirmed:set("R-1-8"),
+    unidentified:2})).state,"present");
+});
+
+test("validCoordinate rejects the values that used to convert to a false zero (A3-R02)",()=>{
+  const {validCoordinate}=pureApp();
+  // Number(null) === 0 and Number("") === 0: both are finite, so a naive
+  // isFinite check would accept a missing coordinate as a real point at 0.
+  assert.equal(validCoordinate(null,-180,180),false);
+  assert.equal(validCoordinate(undefined,-180,180),false);
+  assert.equal(validCoordinate("",-180,180),false);
+  assert.equal(validCoordinate("   ",-180,180),false);
+  assert.equal(validCoordinate("not-a-number",-180,180),false);
+  assert.equal(validCoordinate({},-180,180),false);
+  // Out of range is rejected even though it converts cleanly.
+  assert.equal(validCoordinate(200,-180,180),false,"longitude out of range");
+  assert.equal(validCoordinate(95,-90,90),false,"latitude out of range");
+  // Real values, numeric or string, are accepted.
+  assert.equal(validCoordinate(-111.815,-180,180),true);
+  assert.equal(validCoordinate("40.699",-90,90),true);
+  assert.equal(validCoordinate(0,-180,180),true,"a real point at zero is still valid");
+});
+
 const evidence=overrides=>({
   candidates:new Set(),confirmed:new Set(),whole:new Set(),
   q1:"ok",q2:"ok",q3:"ok",identity:"ok",polygon:"usable",probes:9,
-  storedPoint:"valid",pointHits:null,...overrides
+  storedPoint:"valid",pointHits:null,unidentified:0,...overrides
 });
 
 test("coverage evidence maps to exactly one state",()=>{

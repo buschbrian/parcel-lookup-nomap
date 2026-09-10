@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { readApp, readBusinessApp } from "./app-config.mjs";
 import { buildReport, classifyHttp, contractFailure, renderSummary,
-  withRetry } from "./service-contract-core.mjs";
+  transportFor, withRetry } from "./service-contract-core.mjs";
 
 const {CFG}=await readApp();
 const {CFG:businessCFG}=await readBusinessApp();
@@ -13,10 +13,22 @@ const layerUrl=path=>/^https?:\/\//i.test(path)?path:CFG.org+path;
    about its own data is not. An ArcGIS error body is a rejected query — a
    contract finding, not a bad connection — so it is raised as one and reported
    on the first attempt. See scripts/service-contract-core.mjs. */
+/* Long queries go the same way the pages send them. A parcel boundary can push a
+   query URL past the roughly 2,048 bytes the hosted service accepts, and it
+   answers HTTP 404 above that. The pages now post those; if the monitor kept
+   sending them as GET it would fail parcels the pages load fine, and — worse the
+   other way round — a check that passed as GET would prove nothing about the
+   transport a resident actually gets. transportFor() is the pages' own rule,
+   read from the page's own CFG.request.maxUrlBytes. */
 async function json(url){
   const {value}=await withRetry(async()=>{
-    const response=await fetch(url,
-      {signal:AbortSignal.timeout(timeoutMs),headers:{Accept:"application/json"}});
+    const mark=String(url).indexOf("?");
+    const post=mark>=0&&transportFor(url,CFG)==="POST";
+    const response=await fetch(post?String(url).slice(0,mark):url,
+      {signal:AbortSignal.timeout(timeoutMs),
+        headers:{Accept:"application/json",
+          ...(post?{"Content-Type":"application/x-www-form-urlencoded"}:{})},
+        ...(post?{method:"POST",body:String(url).slice(mark+1)}:{})});
     if(!response.ok){
       const {kind,transient}=classifyHttp(response.status);
       const error=new Error(url+" returned HTTP "+response.status);
@@ -202,6 +214,66 @@ await contract("fault-special-study-area",faultParcelId,async()=>{
   if(!(faultResult.features.length>0))
     throw contractFailure("known special-study-area parcel no longer intersects the fault study layer");
   return "intersects";
+});
+
+/* A parcel whose boundary does not fit in a URL.
+   -----------------------------------------------------------------------
+   Verified 10 September 2026: parcel 16273550010000 encodes to a ~3,700-byte
+   query, and every hosted polygon layer answered HTTP 404 to it as a GET while
+   the identical parameters answered 200 as a form-urlencoded POST. About 12 of
+   every 1,000 Millcreek parcels are over the limit, and for each of them the
+   page showed "Temporarily unavailable" on every polygon-queried layer.
+
+   This is a contract check, not a smoke test: it must never be retried or
+   softened. An empty feature array is a real answer — it is the parcel not
+   intersecting that layer — so what is required is that every polygon layer
+   answers at all, and that at least one of them returns a feature, which is
+   what a 404 could never do. */
+const longGeometryParcelId="16273550010000";
+const polygonLayers=CFG.LAYERS.filter(layer=>layer.geometryMode==="parcel");
+let longGeometry=null;
+await contract("long-geometry-parcel",longGeometryParcelId,async()=>{
+  const longParams=new URLSearchParams({f:"json",returnGeometry:"true",outSR:"4326",
+    outFields:"parcel_id,prop_location",where:CFG.parcel.idField+"='"+longGeometryParcelId+"'"});
+  const longParcel=await json(layerUrl(CFG.parcel.url)+"/query?"+longParams);
+  longGeometry=longParcel.features?.[0]?.geometry;
+  if(!longGeometry)
+    throw contractFailure("the long-geometry test parcel is no longer published");
+  const answers=await Promise.all(polygonLayers.map(async layer=>{
+    const longQueryParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:"*",
+      geometry:JSON.stringify(longGeometry),geometryType:"esriGeometryPolygon",inSR:"4326",
+      spatialRel:"esriSpatialRelIntersects"});
+    const result=await json(layerUrl(layer.url)+"/query?"+longQueryParams);
+    if(!Array.isArray(result.features))
+      throw contractFailure(layer.key+" returned no feature array for the long-geometry parcel");
+    return result.features.length;
+  }));
+  if(!answers.some(count=>count>0))
+    throw contractFailure("no polygon layer returned a feature for the long-geometry parcel, "+
+      "so an outage and a genuine 'no' cannot be told apart here");
+  return polygonLayers.length+" polygon layers answered, "+
+    answers.reduce((total,count)=>total+count,0)+" features";
+});
+
+/* The boundary the check above depends on. If the test parcel's query stopped
+   being long enough to need a POST — a re-drawn boundary, a shorter service
+   path — the check would still pass while proving nothing, so say so instead. */
+await contract("long-geometry-transport",longGeometryParcelId,async()=>{
+  if(!longGeometry) throw contractFailure("the long-geometry parcel geometry is unavailable");
+  const layer=polygonLayers[0];
+  const boundaryParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:"*",
+    geometry:JSON.stringify(longGeometry),geometryType:"esriGeometryPolygon",inSR:"4326",
+    spatialRel:"esriSpatialRelIntersects"});
+  const fullUrl=layerUrl(layer.url)+"/query?"+boundaryParams;
+  const bytes=new TextEncoder().encode(fullUrl).length;
+  if(transportFor(fullUrl,CFG)!=="POST")
+    throw contractFailure("the long-geometry parcel no longer exceeds CFG.request.maxUrlBytes ("+
+      bytes+" bytes vs "+CFG.request.maxUrlBytes+"), so this parcel no longer tests the POST path");
+  const limit=CFG.request.maxUrlBytes;
+  const atLimit="https://example.test/"+"a".repeat(limit-"https://example.test/".length);
+  if(transportFor(atLimit,CFG)!=="GET"||transportFor(atLimit+"a",CFG)!=="POST")
+    throw contractFailure("transportFor no longer switches at exactly CFG.request.maxUrlBytes");
+  return bytes+" bytes, over the "+limit+"-byte limit";
 });
 
 const informationalHazardParcels={

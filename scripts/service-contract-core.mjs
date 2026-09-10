@@ -71,6 +71,26 @@ export function classifyThrown(error){
   return {kind:"unknown",transient:false};
 }
 
+/* ==== TRANSPORT POLICY — textually identical to the copy in each page's shared
+   request layer; a unit test compares the two ====
+
+   The monitor must reach the services the same way the pages do. When it sent a
+   long parcel boundary as a GET and the page did too, both failed the same way
+   and the monitor at least agreed with reality; if only one of them changed,
+   the monitor would either pass a parcel the page cannot load or fail one it
+   can. So the rule lives here in the same words, and the request helper in
+   check-services.mjs applies it.
+
+   Keep the function below byte-for-byte the same as the pages' copy. The
+   reasoning behind it — why the whole URL is measured, and why the geometry is
+   never rounded to fit — is documented at that copy in index.html. */
+function transportFor(fullUrl, cfg){
+  const limit = Number(cfg?.request?.maxUrlBytes);
+  if(!Number.isFinite(limit) || limit <= 0) return "GET";
+  return new TextEncoder().encode(String(fullUrl)).length > limit ? "POST" : "GET";
+}
+export { transportFor };
+
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
 /* Run `work`, retrying only transient transport failure, on a bounded schedule.

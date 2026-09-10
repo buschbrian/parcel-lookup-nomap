@@ -204,6 +204,7 @@ async function mockArcGIS(page,state={}){
       }
       if(name==="Millcreek_Parcels"){
         if(state.delayParcel) await new Promise(resolve=>setTimeout(resolve,state.delayParcel));
+        if(state.parcelNotFound) return json({features:[]});
         const feature={attributes:filterAttributes(parcel(state.parcel),outFieldsParam,"OBJECTID")};
         if(!state.omitParcelGeometry) feature.geometry=state.geometry||{rings:[[
           [-111.816,40.698],[-111.814,40.698],[-111.814,40.700],
@@ -1567,4 +1568,80 @@ test("every query names its fields explicitly, and every layer query includes it
       "total_sq_ft","num_housing_units","tax_dist","prop_zip"
     ]));
   }
+});
+
+/* Deep links (A6). A link from the planning map's own Property information
+   popup can open this page by parcel id or by address, and a successful
+   lookup makes the URL itself shareable — replaceState only, parcel id only.
+   See SECURITY.md and CODE.md for why a typed address is never written. */
+
+test("a parcel deep link loads the report with no typing and announces readiness",async({page})=>{
+  await page.goto("/index.html?parcel=16264570030000");
+  await expect(page.locator("#q")).toHaveValue("");
+  await expect(page.locator("#status")).toContainText("Results ready");
+  await expect(page.locator("#results")).toBeVisible();
+  await expect(page.locator("#r-head")).toContainText("3300 E SANTA ROSA AVE");
+});
+
+test("an address deep link runs the same tiered search as typing it",async({page})=>{
+  await page.goto("/index.html?address=3300%20E%20Santa%20Rosa%20Ave");
+  await expect(page.locator("#q")).toHaveValue("3300 E Santa Rosa Ave");
+  await expect(page.locator("#results")).toBeVisible();
+  await expect(page.locator("#status")).toContainText("Results ready");
+});
+
+test("a normal lookup replaces the URL with the loaded parcel id",async({page})=>{
+  await loadKnownProperty(page);
+  await expect.poll(()=>new URL(page.url()).search).toBe("?parcel=16264570030000");
+});
+
+test("a failed lookup leaves the URL alone",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{parcelNotFound:true});
+  await page.reload();
+  // Starts from a plain URL, not a deep link, so a wrongly-added ?parcel=
+  // would be unmistakable rather than coinciding with a query string already
+  // there (the deep-linked parcel id and the loaded parcel id are the same
+  // value, which would otherwise mask a bug that fires replaceState anyway).
+  expect(new URL(page.url()).search).toBe("");
+  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await expect(page.locator("#sugg")).toBeVisible();
+  await page.locator("#q").press("ArrowDown");
+  await page.locator("#q").press("Enter");
+  await expect(page.locator("#status")).toContainText("No parcel found");
+  expect(new URL(page.url()).search).toBe("");
+});
+
+test("lookup, Clear, and reload leaves the form empty",async({page})=>{
+  await loadKnownProperty(page);
+  await expect.poll(()=>new URL(page.url()).search).toBe("?parcel=16264570030000");
+  await page.locator("#clear").click();
+  expect(new URL(page.url()).search).toBe("");
+  await page.reload();
+  await expect(page.locator("#q")).toHaveValue("");
+  await expect(page.locator("#results")).toBeHidden();
+});
+
+test("Clear on an address deep link removes the query parameter",async({page})=>{
+  await page.goto("/index.html?address=3300%20E%20Santa%20Rosa%20Ave");
+  await expect(page.locator("#results")).toBeVisible();
+  await page.locator("#clear").click();
+  expect(new URL(page.url()).search).toBe("");
+  await expect(page.locator("#q")).toHaveValue("");
+});
+
+test("the map link carries lon, lat and scale for the loaded property",async({page})=>{
+  await loadKnownProperty(page);
+  const href=await page.getByRole("link",{name:"interactive zoning map"}).getAttribute("href");
+  const url=new URL(href);
+  expect(url.origin+url.pathname).toBe("https://planning.gis.millcreekut.gov/");
+  expect(url.searchParams.get("lon")).toBe("-111.815000");
+  expect(url.searchParams.get("lat")).toBe("40.699000");
+  expect(url.searchParams.get("scale")).toBe("2000");
+});
+
+test("a parcel deep link produces no detectable axe violations",async({page})=>{
+  await page.goto("/index.html?parcel=16264570030000");
+  await expect(page.locator("#results")).toBeVisible();
+  expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
 });

@@ -100,7 +100,7 @@ Look up `3300 East Santa Rosa Avenue` and let it load.
 | # | Step | Expected |
 |:--|:--|:--|
 | C1 | Listen immediately after it loads. | "Results ready" (or similar) is spoken, and you land on the **"Results for 3300 E SANTA ROSA AVE"** heading. You are not left at the top of the page hunting. |
-| C2 | Press <kbd>H</kbd> repeatedly. | You move through Property record → Zoning → Historic designation → Hazard and special designations → Subdivision and plat → Natural hazards → Informational hazard screening → Representation → Services → Location. |
+| C2 | Press <kbd>H</kbd> repeatedly. | You move through Zoning → Property record → Historic designation → Hazard and special designations → Subdivision and plat → Natural hazards → Informational hazard screening → Representation → Services → Location. ← Zoning leads the report since 10 Sep 2026 (PR A7) |
 | C3 | In Property record, read down with <kbd>Insert</kbd>+<kbd>Down</kbd>. | Each label is followed by its value: "Property address, 3300 E SANTA ROSA AVE", "Parcel number, 1 6 2 6 4…". **Labels and values must not run together into one stream you cannot separate.** |
 | C4 | **Listen to how the parcel number is spoken.** | 14 digits. Digit-by-digit or in groups is fine; a single enormous number is acceptable but note what you hear. This is a known readability question, not a known defect. |
 | C5 | Reach "Owners of record". | Announced as a **list of 2 items**, each ending "joint tenants" — not "jay tee". |

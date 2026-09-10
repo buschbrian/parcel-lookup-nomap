@@ -53,7 +53,7 @@ The page announces the number of matches as you type, tells you if it had to bro
 and moves focus to the **Results** heading when your property loads, so you land directly on the
 information rather than having to hunt for it.
 
-Results are organised under headings — Property record, Zoning, Historic designation, Hazard and
+Results are organised under headings — Zoning, Property record, Historic designation, Hazard and
 special designations, Subdivision and plat, Natural hazards, Informational hazard screening,
 Representation, Services, Location — so you can jump between them by heading. Each item is a
 description list, so labels and values are correctly associated.

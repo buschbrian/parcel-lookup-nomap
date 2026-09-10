@@ -69,6 +69,22 @@ means the authoritative source did not contain a definite value and staff should
 
 ### Reading the answers
 
+**Zoning** answers are read from your whole property, not from one point inside it. A property can
+touch more than one zoning district, and the page tells you which of these it found:
+
+| What it says | What it means |
+|:--|:--|
+| All of this property is in the … district | One district covers the whole property |
+| This property is in the … district | That district covers part of the property; the check found no single district covering all of it |
+| This property has more than one zoning district | The map draws a boundary through your property. Call Planning & Zoning on **801-214-2700** to find out which rules apply to your project |
+| The zoning map also touches this property with … | The map draws that district against your property, and the check could not confirm how much of the property it covers. It is shown rather than hidden |
+| No zoning polygon was found at this property | A gap in the map. It does **not** mean the property has no zoning — call **801-214-2700** |
+| We could only check the centre of this property | The property boundary was not available, so only the stored centre point was checked |
+
+The page never says how much of your property a district covers, because it does not measure that.
+The **City Center Overlay** answers Yes, No or Unknown: Unknown means the overlay boundary touches
+the property and the check could not confirm that the property is inside it.
+
 **Hazard and special designations** are the regulatory flags that affect what you can do with your
 property:
 
@@ -273,6 +289,11 @@ explicitly for anything resident-facing.
 | `reviewedOn` | Date GIS last checked the source and configured fields (`YYYY-MM-DD`) |
 | `cardinality` | `"one"` when one polygon should match; unexpected overlaps are flagged |
 | `geometryMode: "parcel"` | Intersect the full parcel boundary instead of its stored point |
+| `coverage: true` | Report **every** designation that covers the parcel, not the first match. See "Coverage layers" below |
+| `designationKey` | Field whose value identifies a designation (`ZONE_`, `LandUse`). Adjacent features sharing a value are one answer |
+| `designationConstant: true` | The layer has no designation field; membership is the whole answer (the City Center Overlay) |
+| `expectedCoverage: true` | Every parcel should be in one of these, so nothing found is a gap in the map rather than a real "No" |
+| `coverageNoun`, `coverageNounPlural`, `coverageWholeNoun`, `coverageMapName`, `coveragePolygonNoun`, `coverageGapTail` | The words this layer's sentences are built from |
 | `rankField`, `rankOrder` | For overlapping categorical polygons, display the highest configured category |
 | `kind` | Select specialized behavior, currently `femaFlood` or the hidden `femaLocalCrosscheck` |
 | `distance`, `units` | Add an ArcGIS proximity distance to the spatial query |
@@ -394,6 +415,31 @@ with the built artifact. The check refuses to run without `dist/`.
 > before reaching the header checks, which were verified by hand and passed. **Repaired 26–27 August
 > 2026**: Pretty URLs is off, every gate now runs, and all findings are reported together. See
 > docs/changes/CHANGES-2026-08-13.md §7.
+
+### Coverage layers
+
+Base zoning, future land use and the City Center Overlay carry `coverage: true`. They ask three
+questions of their service per lookup instead of one: what the parcel boundary touches, which of
+those cover area inside it (a multipoint of probe points), and whether one of them contains the whole
+parcel (`esriSpatialRelWithin`). `CFG.coverage` holds the probe grid, the probe cap, the coordinate
+precision and the paging budget.
+
+Four rules govern what comes out, and none of them is optional:
+
+- **Nothing the first query found is ever hidden.** A designation the probes could not confirm is
+  labelled as an unconfirmed touch and shown anyway.
+- **No proportion is ever published.** Probes prove a designation covers area inside the property;
+  nothing measures how much. "Most", "small" and "too small" are not available words.
+- **A coverage layer never renders "Not in this area."** No polygon on an `expectedCoverage` layer
+  is a gap in the map; on the optional overlay it is a real "No".
+- **A check that did not complete is reported next to the answer**, never instead of it and never
+  silently.
+
+Adding a coverage layer means adding its `designationKey` (or `designationConstant`), its wording
+keys, and a live contract in `scripts/check-services.mjs` on a real parcel that exercises it. The
+probe geometry lives in two places by necessity — the page's pure helper region and
+`scripts/service-contract-core.mjs` — and a unit test compares them character for character. Edit
+both together.
 
 ### Adding a layer from a different host
 

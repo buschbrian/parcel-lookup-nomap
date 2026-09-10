@@ -24,7 +24,9 @@ function pureApp(){
   return vm.runInNewContext(
     script.slice(cfgStart,cfgEnd)+"\n"+script.slice(helperStart,helperEnd)+
     "\n;({CFG,parseAddress,decode,floodRank,selectHighestFlood,selectHighestCategory,floodClassSet,"+
-    "sameSet,matchSummary,esc,likeOperand,outFieldsFor,parcelOutFields});"
+    "sameSet,matchSummary,esc,likeOperand,outFieldsFor,parcelOutFields,"+
+    "pointInRings,probePoints,coverageIdentity,groupByDesignation,coverageState,"+
+    "coverageSentences,coverageFlag});"
   );
 }
 
@@ -183,6 +185,327 @@ test("the unconfigured-layer fallback renderer is currently unreachable",()=>{
     "every non-boolean layer must configure `fields`, or the self-configuring fallback "+
     "renders for it silently — see USAGE.md's fireworks-layer warning. Unconfigured: "+
     Array.prototype.join.call(unconfigured,", "));
+});
+
+/* ===========================================================================
+   Polygon coverage (A3, 10 September 2026).
+
+   These layers stopped answering from the parcel's stored point and started
+   answering from the whole boundary. The state model below decides what a
+   resident is told about their own zoning, so it is asserted case by case
+   rather than through the rendered page: an overclaim here would be confident,
+   plausible and wrong.
+   =========================================================================== */
+const SQUARE=[[[0,0],[10,0],[10,10],[0,10],[0,0]]];
+const SQUARE_WITH_HOLE=[...SQUARE,[[4,4],[6,4],[6,6],[4,6],[4,4]]];
+const TWO_PARTS=[...SQUARE,[[20,0],[30,0],[30,10],[20,10],[20,0]]];
+
+test("a point is inside a polygon only when it is inside a ring and outside every hole",()=>{
+  const {pointInRings}=pureApp();
+  assert.equal(pointInRings(SQUARE,5,5),true);
+  assert.equal(pointInRings(SQUARE,15,5),false,"outside the ring");
+  assert.equal(pointInRings(SQUARE_WITH_HOLE,5,5),false,"inside the hole is outside the polygon");
+  assert.equal(pointInRings(SQUARE_WITH_HOLE,2,2),true,"inside the ring, outside the hole");
+  assert.equal(pointInRings(TWO_PARTS,25,5),true,"inside the second part");
+  assert.equal(pointInRings(TWO_PARTS,15,5),false,"between the two parts");
+  // On the ring is rejected, not counted. A probe on a boundary is equally
+  // consistent with the district covering the property and with it touching the
+  // edge, and the edge touch is exactly what must not be reported as coverage.
+  assert.equal(pointInRings(SQUARE,0,0),false,"on a vertex");
+  assert.equal(pointInRings(SQUARE,5,0),false,"on an edge");
+  assert.equal(pointInRings(SQUARE_WITH_HOLE,4,5),false,"on a hole's edge");
+});
+
+test("probe points are inside the boundary, rounded first, capped and deterministic",()=>{
+  const {probePoints}=pureApp();
+  const cfg={probeGrid:5,maxProbes:25,coordDecimals:6};
+  const points=probePoints({rings:SQUARE},cfg,[5,5]);
+  assert.equal(points.length,25,"the stored point plus the grid, capped at maxProbes");
+  assert.ok(points.every(([x,y])=>x>0&&x<10&&y>0&&y<10),"every probe is inside the boundary");
+  assert.deepEqual(probePoints({rings:SQUARE},cfg,[5,5]),points,"the same parcel probes the same way");
+  // The cap is a real limit, not an aspiration: 25 grid centres plus a stored
+  // point is 26 candidates.
+  assert.ok(points.length<=cfg.maxProbes);
+  // Rounded to coordDecimals BEFORE the inside test, so what is sent is what was
+  // proven inside.
+  assert.ok(probePoints({rings:SQUARE},{...cfg,coordDecimals:2},null)
+    .every(([x,y])=>Number(x.toFixed(2))===x&&Number(y.toFixed(2))===y));
+});
+
+test("the stored point is a probe like any other and is dropped when it fails",()=>{
+  const {probePoints}=pureApp();
+  const cfg={probeGrid:2,maxProbes:25,coordDecimals:6};
+  const has=(points,x,y)=>points.some(([px,py])=>px===x&&py===y);
+  assert.equal(has(probePoints({rings:SQUARE},cfg,[50,50]),50,50),false,"exterior stored point");
+  assert.equal(has(probePoints({rings:SQUARE_WITH_HOLE},cfg,[5,5]),5,5),false,
+    "a stored point inside a hole");
+  assert.equal(has(probePoints({rings:SQUARE},cfg,[0,0]),0,0),false,"a stored point on the ring");
+  assert.equal(has(probePoints({rings:SQUARE},cfg,[2,2]),2,2),true,"a usable stored point is kept");
+  // A grid centre that rounds onto a ring is excluded too: rounding happens
+  // first, so the rounded point is the one tested.
+  assert.equal(has(probePoints({rings:[[[0,0],[10,0],[10,10],[0,10],[0,0]]]},
+    {probeGrid:1,maxProbes:25,coordDecimals:0},null),5,5),true);
+  assert.equal(probePoints({rings:[[[0,0],[10,0],[0,0]]]},cfg,null).length,0,
+    "a boundary with no interior generates no probe");
+  assert.equal(probePoints(null,cfg,null).length,0,"no geometry generates no probe");
+});
+
+test("designations are grouped by value, not by feature",()=>{
+  const {groupByDesignation,coverageIdentity,CFG}=pureApp();
+  const identity=coverageIdentity(CFG.LAYERS.find(layer=>layer.key==="zone"));
+  const grouped=groupByDesignation([
+    {OBJECTID:1,ZONE_:"R-1-8"},{OBJECTID:2,ZONE_:"R-1-8"},{OBJECTID:3,ZONE_:"C-2"}
+  ],identity);
+  assert.deepEqual([...grouped.groups.keys()],["R-1-8","C-2"],
+    "two adjacent features with the same code are one designation");
+  assert.equal(grouped.groups.get("R-1-8").length,2);
+  assert.equal(grouped.keyByOid.get("2"),"R-1-8","the object-id join covers every feature");
+  assert.equal(grouped.missing,0);
+  // A feature with no readable designation is counted, never silently dropped
+  // and never allowed to confirm anything.
+  assert.equal(groupByDesignation([{OBJECTID:4,ZONE_:"  "}],identity).missing,1);
+  assert.equal(groupByDesignation([{ZONE_:"R-1-8"}],identity).missing,1,"no object id");
+  // The overlay has no designation field: every feature maps to one constant key.
+  const overlay=coverageIdentity(CFG.LAYERS.find(layer=>layer.key==="ccoz"));
+  const overlayGroups=groupByDesignation([{OBJECTID_1:9},{OBJECTID_1:10}],overlay);
+  assert.deepEqual([...overlayGroups.groups.keys()],["ccoz"]);
+});
+
+const evidence=overrides=>({
+  candidates:new Set(),confirmed:new Set(),whole:new Set(),
+  q1:"ok",q2:"ok",q3:"ok",identity:"ok",polygon:"usable",probes:9,
+  storedPoint:"valid",pointHits:null,...overrides
+});
+
+test("coverage evidence maps to exactly one state",()=>{
+  const {coverageState}=pureApp();
+  const state=overrides=>coverageState(evidence(overrides)).state;
+  const set=(...keys)=>new Set(keys);
+
+  // A 100x100 parcel with a 9-unit strip of a second district along the bottom.
+  // The 5x5 grid's lowest row of centres sits at y=10, so no probe lands in the
+  // strip. The strip is still a candidate, and it is still shown — it is simply
+  // not confirmed. It is never suppressed and never described by size.
+  assert.equal(state({candidates:set("R-1-8","C-2"),confirmed:set("R-1-8")}),"present");
+  // A district covering only the central 20x20 of the parcel: probes confirm it,
+  // Within returns nothing. "Present" is the honest word; the page cannot say
+  // how much of the property it covers, so it does not.
+  assert.equal(state({candidates:set("R-1-8"),confirmed:set("R-1-8")}),"present");
+  // Two adjacent same-code features have already collapsed to one key upstream.
+  assert.equal(state({candidates:set("R-1-8"),confirmed:set("R-1-8"),whole:set()}),"present");
+  assert.equal(state({candidates:set(),confirmed:set()}),"none");
+  assert.equal(state({candidates:set("R-1-8")}),"unconfirmedOnly",
+    "a candidate no probe reached and no Within match");
+  assert.equal(state({candidates:set("R-1-8","C-2"),confirmed:set("R-1-8"),whole:set("R-1-8")}),
+    "whole");
+  assert.equal(state({candidates:set("R-1-8","C-2"),confirmed:set("R-1-8","C-2")}),"split");
+  assert.equal(state({candidates:set("R-1-8","C-2"),confirmed:set("R-1-8","C-2"),
+    whole:set("R-1-8","C-2")}),"overlap");
+  assert.equal(state({candidates:set("R-1-8","C-2"),confirmed:set("R-1-8","C-2"),
+    whole:set("R-1-8")}),"conflict",
+    "one district contains the parcel while another demonstrably covers part of it");
+  assert.equal(state({q1:"failed"}),"failed");
+});
+
+test("a failed or truncated check is reported without withdrawing the evidence",()=>{
+  const {coverageState}=pureApp();
+  const set=(...keys)=>new Set(keys);
+
+  // Probes failed, Within returned one district. The district still contains the
+  // whole parcel; what could not be done is reported separately.
+  const probesFailed=coverageState(evidence({candidates:set("R-1-8"),whole:set("R-1-8"),
+    q2:"failed"}));
+  assert.equal(probesFailed.state,"whole");
+  assert.equal(probesFailed.health.probesFailed,true);
+
+  // Two districts confirmed, the whole-parcel check failed. Both are said.
+  const wholeFailed=coverageState(evidence({candidates:set("R-1-8","C-2"),
+    confirmed:set("R-1-8","C-2"),q3:"failed"}));
+  assert.equal(wholeFailed.state,"split");
+  assert.equal(wholeFailed.health.wholeCheckFailed,true);
+
+  // Q1 complete, Q2 failed, Q3 cut short after returning one district. What Q3
+  // did return is still evidence, so the answer falls to `present` rather than
+  // to `whole` — an incomplete check cannot conclude that one district contains
+  // the whole parcel — and both warnings are reported.
+  const partial=coverageState(evidence({candidates:set("R-1-8","C-2"),whole:set("R-1-8"),
+    q2:"failed",q3:"incomplete"}));
+  assert.equal(partial.state,"present");
+  assert.equal(partial.health.probesFailed,true);
+  assert.equal(partial.health.incomplete,true);
+
+  // An incomplete Q1 that retained nothing is `unknown`, never `none`: the page
+  // has not established that there is no polygon here.
+  const nothingRead=coverageState(evidence({q1:"incomplete"}));
+  assert.equal(nothingRead.state,"unknown");
+  assert.equal(nothingRead.health.incomplete,true);
+
+  // An incomplete Q2 that confirmed nothing still describes the evidence
+  // received rather than proving an absence.
+  const partialProbes=coverageState(evidence({candidates:set("R-1-8"),q2:"incomplete"}));
+  assert.equal(partialProbes.state,"unconfirmedOnly");
+  assert.equal(partialProbes.health.incomplete,true);
+
+  // A response whose identity could not be joined never confirms anything.
+  assert.equal(coverageState(evidence({candidates:set("R-1-8"),identity:"missing"}))
+    .health.identityMissing,true);
+});
+
+test("the polygon path is preferred, and the point-only path says what it checked",()=>{
+  const {coverageState}=pureApp();
+  const set=(...keys)=>new Set(keys);
+  // An invalid stored point does not push a usable polygon onto the point path;
+  // the point is simply left out of the probes.
+  assert.equal(coverageState(evidence({candidates:set("R-1-8"),confirmed:set("R-1-8"),
+    storedPoint:"invalid"})).state,"present");
+  const pointOnly=overrides=>coverageState(evidence({polygon:"unusable",probes:0,...overrides})).state;
+  assert.equal(pointOnly({pointHits:new Set()}),"pointOnly-none");
+  assert.equal(pointOnly({pointHits:new Set(["R-1-8"])}),"pointOnly-one");
+  assert.equal(pointOnly({pointHits:new Set(["R-1-8","C-2"])}),"pointOnly-many");
+  assert.equal(pointOnly({storedPoint:"invalid",pointHits:new Set()}),"pointOnly-unusable");
+  // A usable polygon that generated no probe also falls back to the point.
+  assert.equal(coverageState(evidence({polygon:"usable",probes:0,pointHits:new Set(["R-1-8"])}))
+    .state,"pointOnly-one");
+});
+
+test("every coverage state has a sentence, and none of them claims a proportion",()=>{
+  const {coverageSentences,CFG}=pureApp();
+  const zone=CFG.LAYERS.find(layer=>layer.key==="zone");
+  const say=(state,overrides={})=>coverageSentences({
+    state,health:{},named:true,
+    noun:zone.coverageNoun,nounPlural:zone.coverageNounPlural,
+    wholeNoun:zone.coverageWholeNoun,mapName:zone.coverageMapName,
+    polygonNoun:zone.coveragePolygonNoun,gapTail:zone.coverageGapTail,
+    expectedCoverage:true,whole:[],covered:[],unconfirmed:[],
+    phone:CFG.planning.phone,...overrides});
+
+  assert.deepEqual([...say("whole",{whole:["R-1-8"],covered:["R-1-8"]})],
+    ["All of this property is in the R-1-8 zoning district."]);
+  assert.deepEqual([...say("present",{covered:["R-1-8"]})],
+    ["This property is in the R-1-8 zoning district."]);
+  assert.deepEqual([...say("split",{covered:["R-1-8","C-2"]})],
+    ["This property has more than one zoning district. Part of it is R-1-8. "+
+     "Part of it is C-2. Call Planning and Zoning at 801-214-2700 to find out "+
+     "which rules apply to your project."]);
+  assert.deepEqual([...say("overlap",{whole:["R-1-8","C-2"],covered:["R-1-8","C-2"]})],
+    ["The map shows two zoning districts covering this property. Only one can apply. "+
+     "Call Planning and Zoning at 801-214-2700."]);
+  assert.deepEqual([...say("conflict",{whole:["R-1-8"],covered:["R-1-8","C-2"]})],
+    ["The map shows all of this property in R-1-8, and it also shows C-2 covering "+
+     "part of it. Only one can apply. Call Planning and Zoning at 801-214-2700."]);
+  assert.deepEqual([...say("unconfirmedOnly",{unconfirmed:["R-1-8"]})],
+    ["The zoning map touches this property with R-1-8, but we could not confirm "+
+     "which part of the property it covers. Call Planning and Zoning at 801-214-2700."]);
+  assert.deepEqual([...say("none")],
+    ["No zoning polygon was found at this property. That is a gap in the map, not a "+
+     "statement that this property has no zoning. Call Planning and Zoning at 801-214-2700."]);
+  assert.deepEqual([...say("pointOnly-none")],
+    ["We could only check the centre of this property. Nothing was found there. "+
+     "We do not know whether the edges of the property are covered."]);
+  assert.deepEqual([...say("pointOnly-unusable")],
+    ["We could not check this property's location. Call Planning and Zoning at 801-214-2700."]);
+  assert.deepEqual([...say("unknown")],
+    ["We could not read the zoning map for this property. "+
+     "Call Planning and Zoning at 801-214-2700."]);
+
+  // An unconfirmed candidate is shown in EVERY state, never suppressed.
+  const contained=[...say("whole",{whole:["R-1-8"],covered:["R-1-8"],unconfirmed:["C-2"]})];
+  assert.equal(contained.length,2);
+  assert.equal(contained[1],"The zoning map also touches this property with C-2. "+
+    "We could not confirm how much of the property it covers.");
+
+  // Health warnings render whatever the state, and never replace it.
+  const degraded=[...coverageSentences({state:"whole",whole:["R-1-8"],covered:["R-1-8"],
+    unconfirmed:[],named:true,noun:zone.coverageNoun,wholeNoun:zone.coverageWholeNoun,
+    mapName:zone.coverageMapName,phone:CFG.planning.phone,
+    health:{probesFailed:true,wholeCheckFailed:true,incomplete:true}})];
+  assert.equal(degraded[0],"All of this property is in the R-1-8 zoning district.");
+  assert.ok(degraded.includes("We could not confirm which of these covers this property."));
+  assert.ok(degraded.includes(
+    "We could not check whether one district covers all of this property."));
+  assert.ok(degraded.includes("We could not read all of the map for this property. "+
+    "Some information may be missing. Call Planning and Zoning at 801-214-2700."));
+
+  /* No sentence may describe a proportion. Probes prove that a designation
+     covers area inside the property; nothing measures how much, so "most",
+     "small" and "too small" are not available words here. */
+  const everyState=["failed","pointOnly-none","pointOnly-one","pointOnly-many",
+    "pointOnly-unusable","none","conflict","whole","overlap","split","present",
+    "unknown","unconfirmedOnly"];
+  for(const state of everyState){
+    const lines=say(state,{whole:["R-1-8"],covered:["R-1-8","C-2"],unconfirmed:["C-2"]});
+    for(const line of lines){
+      assert.doesNotMatch(line,/\bmost\b/i,state+": no sentence may claim a proportion");
+      assert.doesNotMatch(line,/\bsmall\b/i,state+": no sentence may claim a size");
+      assert.doesNotMatch(line,/Not in this area/,state+": a coverage layer has no such state");
+    }
+  }
+});
+
+test("the optional overlay reads Yes, No or Unknown, and an edge touch is Unknown",()=>{
+  const {coverageFlag}=pureApp();
+  assert.equal(coverageFlag("none"),"no","a complete query that found nothing");
+  assert.equal(coverageFlag("whole"),"yes");
+  assert.equal(coverageFlag("present"),"yes");
+  assert.equal(coverageFlag("unconfirmedOnly"),"unknown",
+    "an edge-only touch is not membership");
+  assert.equal(coverageFlag("pointOnly-none"),"unknown","never No on a centre-only miss");
+  assert.equal(coverageFlag("pointOnly-unusable"),"unknown");
+  assert.equal(coverageFlag("unknown"),"unknown");
+  assert.equal(coverageFlag("failed"),"unknown");
+});
+
+test("the three coverage layers are configured to answer from the whole parcel",()=>{
+  const {CFG}=pureApp();
+  const byKey=key=>CFG.LAYERS.find(layer=>layer.key===key);
+  for(const key of ["zone","futureland","ccoz"]){
+    const layer=byKey(key);
+    assert.equal(layer.coverage,true,key+" is a coverage layer");
+    assert.equal(layer.geometryMode,"parcel",key+" uses the parcel boundary");
+    assert.equal(layer.cardinality,"many",key+" may legitimately return several polygons");
+    assert.ok(layer.coverageNoun&&layer.coverageMapName,key+" names what it reports");
+  }
+  // Zoning and future land use should cover every parcel in the city, so nothing
+  // found is a gap in the map. The City Center Overlay is optional, so nothing
+  // found is a real "No".
+  assert.equal(byKey("zone").expectedCoverage,true);
+  assert.equal(byKey("futureland").expectedCoverage,true);
+  assert.equal(byKey("ccoz").expectedCoverage,undefined);
+  assert.equal(byKey("zone").designationKey,"ZONE_");
+  assert.equal(byKey("futureland").designationKey,"LandUse");
+  assert.equal(byKey("ccoz").designationConstant,true,
+    "the overlay has no designation field: membership is the whole answer");
+  // The designation field has to be requested, or the grouping key would be
+  // absent from every response.
+  const {outFieldsFor}=pureApp();
+  assert.match(outFieldsFor(byKey("zone")),/(^|,)ZONE_(,|$)/);
+  assert.match(outFieldsFor(byKey("futureland")),/(^|,)LandUse(,|$)/);
+  assert.match(outFieldsFor(byKey("ccoz")),/(^|,)OBJECTID_1(,|$)/);
+  // The probe budget stays small enough that a probe query is never the request
+  // that has to be posted.
+  assert.equal(CFG.coverage.probeGrid,5);
+  assert.equal(CFG.coverage.maxProbes,25);
+  assert.equal(CFG.coverage.coordDecimals,6);
+  assert.ok(CFG.coverage.maxPages>=1&&CFG.coverage.maxPages<=5);
+});
+
+/* The monitor has to build the same probe points the page builds. If it probed
+   differently it would confirm designations the page cannot, or miss ones it
+   can, and the live contract would be checking something no resident receives.
+   Same discipline as the transportFor comparison above. */
+test("the service monitor carries the page's probe geometry verbatim",async()=>{
+  const core=await readFile(new URL("../scripts/service-contract-core.mjs",import.meta.url),"utf8");
+  const functionSource=(source,name,where)=>{
+    const start=source.indexOf("function "+name);
+    assert.ok(start>=0,where+" has no "+name);
+    const end=source.indexOf("\n}\n",start);
+    assert.ok(end>start,where+" "+name+" has no closing brace");
+    return source.slice(start,end+3);
+  };
+  for(const name of ["pointInRings","probePoints"])
+    assert.equal(functionSource(core,name,"service-contract-core.mjs"),
+      functionSource(script,name,"index.html"),
+      name+" has drifted between the page and the live monitor");
 });
 
 test("the shared request layer classifies errors and retries only transient ones",()=>{

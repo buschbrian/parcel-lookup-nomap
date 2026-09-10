@@ -18,26 +18,31 @@ function parcel(overrides={}){
   };
 }
 
+/* Every fixture feature carries a stable, distinct object id under its layer's
+   configured id field (A8). The coverage queries join Q2 and Q3 back to Q1 by
+   object id alone, so fixtures that all answered to id 1 would make every join
+   succeed and every coverage assertion vacuous. */
 const layerFeatures={
-  Zone_Update_2025___Related_Master:[{ZONE_:"R-1-8",ZONE_DESC:"Residential",
+  Zone_Update_2025___Related_Master:[{OBJECTID:101,ZONE_:"R-1-8",ZONE_DESC:"Residential",
     Zone_Desc1:"https://example.test/zoning"}],
-  FutureLandUse_2024_Millcreek:[{LandUse:"Neighborhood 1",GENPLAN_WEBSITE:"https://example.test/plan",
+  FutureLandUse_2024_Millcreek:[{OBJECTID:201,LandUse:"Neighborhood 1",
+    GENPLAN_WEBSITE:"https://example.test/plan",
     GENPLAN_DOCUMENT:"https://example.test/document"}],
   HistoricDistricts:[], Zone_TCOZ:[], WUI:[], Sensitive_Land_Areas__Feb24:[],
   Subdivision_Dissovle_3:[{OBJECTID:7,SUB_PLAT:"EL SERRITO 2",PLAT_NUM:"22"}],
   FEMA_NFHL:[
-    {FLD_ZONE:"X",ZONE_SUBTY:"AREA OF MINIMAL FLOOD HAZARD",SFHA_TF:"F",
+    {OBJECTID:301,FLD_ZONE:"X",ZONE_SUBTY:"AREA OF MINIMAL FLOOD HAZARD",SFHA_TF:"F",
       STATIC_BFE:-9999,LEN_UNIT:"Feet",SOURCE_CIT:"Mock FIRM"},
-    {FLD_ZONE:"AE",ZONE_SUBTY:"FLOODWAY",SFHA_TF:"T",
+    {OBJECTID:302,FLD_ZONE:"AE",ZONE_SUBTY:"FLOODWAY",SFHA_TF:"T",
       STATIC_BFE:4387,LEN_UNIT:"Feet",SOURCE_CIT:"Mock FIRM"}
   ],
   Flood_Hazard_Zones_Final_Update:[
-    {FLD_ZONE:"AE",ZONE_SUBTY:"Floodway",SFHA_TF:"T"}
+    {OBJECTID:311,FLD_ZONE:"AE",ZONE_SUBTY:"Floodway",SFHA_TF:"T"}
   ],
   Fault_Study_Area:[],
   LiquefactionPotential:[
-    {POTENTIAL:"Moderate",Lqf_Desc:"Moderate published potential."},
-    {POTENTIAL:"High",Lqf_Desc:"High published potential."}
+    {OBJECTID:401,POTENTIAL:"Moderate",Lqf_Desc:"Moderate published potential."},
+    {OBJECTID:402,POTENTIAL:"High",Lqf_Desc:"High published potential."}
   ],
   DebrisFlow_WasatchFront_ClipBuffer:[{OBJECTID:31,Hazard:"Debris Flow"}],
   AlluvialFans:[{OBJECTID:41,GEODESCSHORT:"Fan alluvium"}],
@@ -45,14 +50,53 @@ const layerFeatures={
   // see OID_FIELD_BY_SERVICE.
   Millcreek_City_Council_Dist_2022:[{OBJECTID_12:12,DIST:"1",COUNCILMEMBER:"Example Member",
     WEB:"https://example.test/council"}],
-  TrashPickupDays:[{PickupDay:"Tuesday",phonenumberfix:"385-468-6325",
+  TrashPickupDays:[{OBJECTID:501,PickupDay:"Tuesday",phonenumberfix:"385-468-6325",
     websitelink:"https://example.test/waste"}],
-  SewerDistrictsUpdated:[{District:"Mount Olympus Improvement District",Phone:"801-262-2904"}],
-  Water_Services_2021:[{DWNAME:"Salt Lake City Water System",phone:"801-483-6900",
+  SewerDistrictsUpdated:[{OBJECTID:502,District:"Mount Olympus Improvement District",
+    Phone:"801-262-2904"}],
+  Water_Services_2021:[{OBJECTID:503,DWNAME:"Salt Lake City Water System",phone:"801-483-6900",
     webpublic:"https://example.test/water"}],
-  Electrical_Service:[{PROVIDER:"Rocky Mountain Power",TELEPHONE:"1-888-221-7070",
+  Electrical_Service:[{OBJECTID:504,PROVIDER:"Rocky Mountain Power",TELEPHONE:"1-888-221-7070",
     WEBLINK:"https://example.test/power",NOTES:""}]
 };
+
+/* The three coverage services, by fixture name, so a scenario can be written
+   against the layer a reader recognises. */
+const ZONE="Zone_Update_2025___Related_Master";
+const FUTURE="FutureLandUse_2024_Millcreek";
+const CCOZ="Zone_TCOZ";
+
+/* Which of a coverage layer's three queries a request is.
+
+   The page asks each coverage layer the same layer URL three times and the only
+   difference is in the parameters, so the mock has to read them: the multipoint
+   geometry is the probe query, `esriSpatialRelWithin` is the whole-parcel query,
+   and everything else is the candidate query. A point geometry is the fallback
+   the page uses when there is no usable boundary. */
+function queryRole(params){
+  const geometryType=params.get("geometryType")||"";
+  const spatialRel=params.get("spatialRel")||"";
+  if(geometryType==="esriGeometryMultipoint") return "probe";
+  if(spatialRel==="esriSpatialRelWithin") return "within";
+  if(geometryType==="esriGeometryPoint") return "point";
+  return "intersects";
+}
+
+/* A layer's answers per role, with the defaults that keep every pre-existing
+   test meaning what it meant: the probe query returns what the candidate query
+   returns, and the whole-parcel query returns the single candidate when there is
+   exactly one and nothing when the map is ambiguous. */
+function roleFeaturesFor(name,base,state){
+  const scenario=(state.coverage||{})[name]||{};
+  const candidates=scenario.intersects?[...scenario.intersects]:base;
+  return {
+    scenario,
+    intersects:candidates,
+    probe:scenario.probe?[...scenario.probe]:candidates,
+    within:scenario.within?[...scenario.within]:(candidates.length===1?candidates:[]),
+    point:scenario.point?[...scenario.point]:candidates
+  };
+}
 
 function serviceName(pathname){
   if(pathname.includes("/public/NFHL/MapServer/28")) return "FEMA_NFHL";
@@ -160,10 +204,38 @@ async function mockArcGIS(page,state={}){
       if(name==="HistoricDistricts" && state.historicFeatures) features=[...state.historicFeatures];
       if(name==="Fault_Study_Area" && state.faultFeatures) features=[...state.faultFeatures];
       if(name==="Water_Services_2021" && state.multipleWater)
-        features.push({DWNAME:"Overlapping Provider",phone:"801-555-0100",webpublic:"https://example.test/overlap"});
+        features.push({OBJECTID:599,DWNAME:"Overlapping Provider",phone:"801-555-0100",
+          webpublic:"https://example.test/overlap"});
       const oidField=oidFieldFor(name);
-      return json({features:features.map(attributes=>
-        ({attributes:filterAttributes(attributes,outFieldsParam,oidField)}))});
+      const queryParams=method==="POST"?new URLSearchParams(body):url.searchParams;
+      const role=queryRole(queryParams);
+      const roles=roleFeaturesFor(name,features,state);
+      const scenario=roles.scenario;
+      const shape=list=>list.map(attributes=>
+        ({attributes:filterAttributes(attributes,outFieldsParam,oidField)}));
+      // A query the service rejects outright.
+      if(scenario.delayMs&&(scenario.delayRole||"intersects")===role)
+        await new Promise(resolve=>setTimeout(resolve,scenario.delayMs));
+      if((scenario.fail||{})[role])
+        return route.fulfill({status:500,body:"temporary "+role+" failure"});
+      // A 200 whose body carries no `features` array. The page must read this as
+      // a failed query, never as "no features" — that is the false negative the
+      // whole feature exists to prevent.
+      if((scenario.malformed||{})[role])
+        return json({objectIdFieldName:oidField,fields:[]});
+      // Truncated responses. Each entry is one page: {features, more}. `more`
+      // sets exceededTransferLimit, which is what makes the page ask again.
+      const pages=(scenario.pages||{})[role];
+      if(pages){
+        const counts=state.pageCounts||(state.pageCounts={});
+        const countKey=name+":"+role;
+        const index=counts[countKey]||0;
+        counts[countKey]=index+1;
+        const page=pages[Math.min(index,pages.length-1)];
+        return json({features:shape(page.features||[]),
+          exceededTransferLimit:page.more!==false});
+      }
+      return json({features:shape(roles[role])});
     }
 
     if(name==="Millcreek_Parcels"&&state.parcelSchemaFailure)
@@ -499,6 +571,10 @@ test("parcel values remain available when only schema metadata fails",async({pag
   await expect(page.locator("#status")).toContainText("data source issue");
 });
 
+/* Missing boundary: the polygon layers report unavailable, but a coverage layer
+   falls back to a real query at the stored point and says out loud that only the
+   centre was checked. Reporting a centre-only answer as if the whole property had
+   been checked is the failure this sentence exists to prevent. */
 test("full-parcel layers are unavailable when parcel geometry is missing",async({page})=>{
   await page.unrouteAll({behavior:"wait"});
   await mockArcGIS(page,{omitParcelGeometry:true});
@@ -507,18 +583,356 @@ test("full-parcel layers are unavailable when parcel geometry is missing",async(
   await loadKnownProperty(page);
   await expect(page.locator(".pair",{hasText:"FEMA flood hazard"}))
     .toContainText("Temporarily unavailable");
+  await expect(page.locator("#results-body")).toContainText("Base zoning district — CodeR-1-8");
+  await expect(page.locator("#results-body"))
+    .toContainText("We could only check the centre of this property.");
+  await expect(page.locator("#results-body"))
+    .toContainText("We do not know whether the edges of the property are covered.");
   await expect(page.locator("#status")).toContainText("data source issue");
 });
 
-test("full-parcel layers still run when parcel centroid coordinates are missing",async({page})=>{
+/* Inverted on 10 September 2026 (A3). Zoning used to be read from the stored
+   point and reported "Temporarily unavailable" without one; it is now read from
+   the parcel boundary and answers perfectly well. Culinary water is the layer
+   that genuinely needs the stored point, so it is the one that must report the
+   gap — and something still has to, or a missing centroid would fail silently. */
+test("coverage layers still answer when parcel centroid coordinates are missing",async({page})=>{
   await page.unrouteAll({behavior:"wait"});
   await mockArcGIS(page,{parcel:{parcel_latitude:null,parcel_longitude:null}});
   await page.reload();
   await loadKnownProperty(page);
   await expect(page.locator(".pair",{hasText:"In FEMA Special Flood Hazard Area"}))
     .toContainText("Yes");
-  await expect(page.locator(".pair",{hasText:"Base zoning"}))
+  await expect(page.locator("#results-body")).toContainText("Base zoning district — CodeR-1-8");
+  await expect(page.locator("#results-body"))
+    .toContainText("All of this property is in the R-1-8 zoning district.");
+  await expect(page.locator(".pair",{hasText:"Culinary water"}))
     .toContainText("Temporarily unavailable");
+});
+
+/* ===========================================================================
+   Polygon coverage for zoning, future land use and the City Center Overlay
+   (A3, 10 September 2026).
+
+   These specs are about what a resident is told, so they assert the published
+   sentence rather than a class name or an internal state. Each one names the
+   evidence the fixture supplies, because the sentence is only correct for that
+   evidence: a fixture edited without the assertion is how an overclaim ships.
+   =========================================================================== */
+const R18={OBJECTID:101,ZONE_:"R-1-8",ZONE_DESC:"Residential",
+  Zone_Desc1:"https://example.test/zoning"};
+const R18_ADJACENT={OBJECTID:103,ZONE_:"R-1-8",ZONE_DESC:"Residential",
+  Zone_Desc1:"https://example.test/zoning"};
+const C2={OBJECTID:102,ZONE_:"C-2",ZONE_DESC:"Commercial",
+  Zone_Desc1:"https://example.test/commercial"};
+const CCOZ_FEATURE={OBJECTID_1:701};
+const PLANNING="801-214-2700";
+
+// A boundary with a hole around the parcel's stored point and a detached second
+// part, so the probe rule is exercised on geometry it must not mishandle.
+const MULTIPART_WITH_HOLE={rings:[
+  [[-111.816,40.698],[-111.814,40.698],[-111.814,40.700],[-111.816,40.700],[-111.816,40.698]],
+  [[-111.8154,40.6989],[-111.8146,40.6989],[-111.8146,40.6991],[-111.8154,40.6991],
+    [-111.8154,40.6989]],
+  [[-111.812,40.698],[-111.810,40.698],[-111.810,40.700],[-111.812,40.700],[-111.812,40.698]]
+],spatialReference:{wkid:4326}};
+// A closed ring with no interior at all: every probe would land on the boundary,
+// so none survives and the layer has to fall back to the stored point.
+const DEGENERATE={rings:[[[-111.816,40.698],[-111.814,40.698],[-111.816,40.698]]],
+  spatialReference:{wkid:4326}};
+
+async function coverageLookup(page,state){
+  await page.unrouteAll({behavior:"wait"});
+  const requests=await mockArcGIS(page,state);
+  await page.reload();
+  await page.evaluate(()=>{ CFG.request.retryDelayMs=1; });
+  await loadKnownProperty(page);
+  return requests;
+}
+const zoningCard=page=>page.locator(".card").filter({has:page.locator("h3",{hasText:"Zoning"})});
+
+test("one district containing the whole parcel is reported as covering all of it",async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[R18],probe:[R18],within:[R18]}}});
+  await expect(zoningCard(page))
+    .toContainText("All of this property is in the R-1-8 zoning district.");
+  await expect(zoningCard(page)).not.toContainText("Not in this area");
+});
+
+/* Nothing Q1 found is ever hidden. A district that contains the whole parcel does
+   not license suppressing a second one the map also draws on it — the reader is
+   told about both, and told which one could not be confirmed. */
+test("a contained district still shows every other designation the map touches",async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[R18,C2],probe:[R18],within:[R18]}}});
+  await expect(zoningCard(page))
+    .toContainText("All of this property is in the R-1-8 zoning district.");
+  await expect(zoningCard(page)).toContainText(
+    "The zoning map also touches this property with C-2. "+
+    "We could not confirm how much of the property it covers.");
+  await expect(zoningCard(page)).toContainText("Base zoning district — CodeC-2");
+});
+
+test("a probe-confirmed district with no whole-parcel match reads as present",async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[R18],probe:[R18],within:[]}}});
+  await expect(zoningCard(page)).toContainText("This property is in the R-1-8 zoning district.");
+  await expect(zoningCard(page))
+    .not.toContainText("All of this property is in the R-1-8 zoning district.");
+});
+
+/* The boundary-overlap case, taken from real parcel 16263780070000: two
+   candidates, one probe-confirmed, none containing the parcel. The unconfirmed
+   one is neither promoted to a second district nor suppressed. */
+test("only one of two candidate object ids confirmed leaves the other an unconfirmed touch",
+  async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[R18,C2],probe:[R18],within:[]}}});
+  await expect(zoningCard(page)).toContainText("This property is in the R-1-8 zoning district.");
+  await expect(zoningCard(page)).toContainText(
+    "The zoning map also touches this property with C-2. "+
+    "We could not confirm how much of the property it covers.");
+});
+
+test("two probe-confirmed districts read as a split property",async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[R18,C2],probe:[R18,C2],within:[]}}});
+  await expect(zoningCard(page)).toContainText(
+    "This property has more than one zoning district. Part of it is R-1-8. "+
+    "Part of it is C-2. Call Planning and Zoning at "+PLANNING+
+    " to find out which rules apply to your project.");
+});
+
+test("two districts each containing the whole parcel are reported as a map conflict",
+  async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[R18,C2],probe:[R18,C2],
+    within:[R18,C2]}}});
+  await expect(zoningCard(page)).toContainText(
+    "The map shows two zoning districts covering this property. Only one can apply. "+
+    "Call Planning and Zoning at "+PLANNING+".");
+  await expect(page.locator("#status")).toContainText("data source issue");
+});
+
+test("one district containing the parcel while another covers part of it is a conflict",
+  async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[R18,C2],probe:[R18,C2],within:[R18]}}});
+  await expect(zoningCard(page)).toContainText(
+    "The map shows all of this property in R-1-8, and it also shows C-2 covering "+
+    "part of it. Only one can apply. Call Planning and Zoning at "+PLANNING+".");
+});
+
+test("a candidate no probe reached is shown as an unconfirmed touch, never hidden",
+  async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[R18],probe:[],within:[]}}});
+  await expect(zoningCard(page)).toContainText(
+    "The zoning map touches this property with R-1-8, but we could not confirm "+
+    "which part of the property it covers. Call Planning and Zoning at "+PLANNING+".");
+  await expect(zoningCard(page)).toContainText("Base zoning district — CodeR-1-8");
+  await expect(page.locator("#status")).toContainText("data source issue");
+});
+
+/* The sentence that replaced "Not in this area" for parcel 15353000130000. A gap
+   in the map is a gap in the map; it is not a property without zoning, and the
+   difference is the whole point. */
+test("no zoning polygon reports a gap in the map, not an absence of zoning",async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[]}}});
+  await expect(zoningCard(page)).toContainText(
+    "No zoning polygon was found at this property. That is a gap in the map, not a "+
+    "statement that this property has no zoning. Call Planning and Zoning at "+PLANNING+".");
+  await expect(zoningCard(page)).not.toContainText("Not in this area");
+});
+
+test("the optional overlay answers No when a complete query finds nothing",async({page})=>{
+  await coverageLookup(page,{});
+  await expect(page.locator(".pair",{hasText:"City Center Overlay"})).toContainText("No");
+});
+
+/* An edge-only touch is not membership. A resident told "Yes" on that evidence
+   would be told to meet overlay standards that may not apply to their property. */
+test("an unconfirmed overlay touch answers Unknown rather than Yes",async({page})=>{
+  await coverageLookup(page,{coverage:{[CCOZ]:{intersects:[CCOZ_FEATURE],probe:[],within:[]}}});
+  await expect(page.locator(".pair",{hasText:"City Center Overlay"})).toContainText("Unknown");
+  await expect(zoningCard(page)).toContainText(
+    "The City Center Overlay map touches this property, but we could not confirm "+
+    "which part of the property it covers.");
+});
+
+test("an overlay containing the whole parcel says so, and a partial one does not",
+  async({page})=>{
+  await coverageLookup(page,{coverage:{[CCOZ]:{intersects:[CCOZ_FEATURE],
+    probe:[CCOZ_FEATURE],within:[CCOZ_FEATURE]}}});
+  await expect(page.locator(".pair",{hasText:"City Center Overlay"}))
+    .toContainText("Yes — all of this property");
+  await coverageLookup(page,{coverage:{[CCOZ]:{intersects:[CCOZ_FEATURE],
+    probe:[CCOZ_FEATURE],within:[]}}});
+  const overlay=page.locator(".pair",{hasText:"City Center Overlay"});
+  await expect(overlay).toContainText("Yes");
+  await expect(overlay).not.toContainText("all of this property");
+});
+
+test("two adjacent features with the same code are one designation",async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[R18,R18_ADJACENT],
+    probe:[R18,R18_ADJACENT],within:[]}}});
+  await expect(zoningCard(page)).toContainText("This property is in the R-1-8 zoning district.");
+  await expect(zoningCard(page)).not.toContainText("more than one zoning district");
+  await expect(page.locator("#results-body dt",{hasText:"Base zoning district — Code"}))
+    .toHaveCount(1);
+});
+
+/* A check that did not complete is reported beside the answer, never instead of
+   it and never silently. */
+test("a failed probe query is reported alongside the answer it could not confirm",
+  async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[R18],fail:{probe:true},
+    within:[R18]}}});
+  await expect(zoningCard(page))
+    .toContainText("All of this property is in the R-1-8 zoning district.");
+  await expect(zoningCard(page))
+    .toContainText("We could not confirm which of these covers this property.");
+  await expect(page.locator("#status")).toContainText("data source issue");
+});
+
+test("a failed whole-parcel query is reported alongside a split answer",async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[R18,C2],probe:[R18,C2],
+    fail:{within:true}}}});
+  await expect(zoningCard(page)).toContainText("This property has more than one zoning district.");
+  await expect(zoningCard(page))
+    .toContainText("We could not check whether one district covers all of this property.");
+});
+
+test("a body without a features array is a failed query, not an empty answer",async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{malformed:{intersects:true}}}});
+  await expect(page.locator(".pair",{hasText:"Base zoning district"}))
+    .toContainText("Temporarily unavailable");
+  await expect(zoningCard(page)).not.toContainText("No zoning polygon was found");
+  // One failed layer never blanks the page.
+  await expect(zoningCard(page)).toContainText("Future land use — Designation");
+});
+
+test("a truncated response that repeats itself stops after two requests and says so",
+  async({page})=>{
+  const requests=await coverageLookup(page,{coverage:{[ZONE]:{pages:{intersects:[
+    {features:[R18],more:true},{features:[R18],more:true}]}}}});
+  const candidateQueries=requests.filter(request=>
+    request.url.includes("Zone_Update_2025___Related_Master")&&request.url.includes("/query")&&
+    !request.url.includes("spatialRel=esriSpatialRelWithin")&&
+    !request.url.includes("esriGeometryMultipoint"));
+  expect(candidateQueries.length,"the repeated page stops paging immediately").toBe(2);
+  await expect(zoningCard(page)).toContainText("Base zoning district — CodeR-1-8");
+  await expect(zoningCard(page)).toContainText(
+    "We could not read all of the map for this property. Some information may be "+
+    "missing. Call Planning and Zoning at "+PLANNING+".");
+});
+
+test("distinct truncated pages stop at the configured page budget and say so",async({page})=>{
+  const requests=await coverageLookup(page,{coverage:{[ZONE]:{pages:{intersects:[
+    {features:[R18],more:true},{features:[C2],more:true},
+    {features:[R18_ADJACENT],more:true}]}}}});
+  const candidateQueries=requests.filter(request=>
+    request.url.includes("Zone_Update_2025___Related_Master")&&request.url.includes("/query")&&
+    !request.url.includes("spatialRel=esriSpatialRelWithin")&&
+    !request.url.includes("esriGeometryMultipoint"));
+  const budget=await page.evaluate(()=>CFG.coverage.maxPages);
+  expect(candidateQueries.length,"paging is bounded by CFG.coverage.maxPages").toBe(budget);
+  await expect(zoningCard(page)).toContainText("Base zoning district — CodeR-1-8");
+  await expect(zoningCard(page))
+    .toContainText("We could not read all of the map for this property.");
+});
+
+/* No boundary at all: the layer runs a real query at the stored point and says
+   only the centre was checked. It never renders that as "No". */
+test("a point-only check that finds nothing says so, and the overlay reads Unknown",
+  async({page})=>{
+  await coverageLookup(page,{omitParcelGeometry:true,
+    coverage:{[ZONE]:{point:[]},[CCOZ]:{point:[]}}});
+  await expect(zoningCard(page)).toContainText(
+    "We could only check the centre of this property. Nothing was found there. "+
+    "We do not know whether the edges of the property are covered.");
+  await expect(page.locator(".pair",{hasText:"City Center Overlay"})).toContainText("Unknown");
+  await expect(zoningCard(page)).not.toContainText("Not in this area");
+});
+
+test("several designations at the stored point are all shown and flagged",async({page})=>{
+  await coverageLookup(page,{omitParcelGeometry:true,coverage:{[ZONE]:{point:[R18,C2]}}});
+  await expect(zoningCard(page)).toContainText("Base zoning district — CodeR-1-8");
+  await expect(zoningCard(page)).toContainText("Base zoning district — CodeC-2");
+  await expect(zoningCard(page)).toContainText(
+    "The map shows more than one designation at the centre of this property. "+
+    "Only one can apply.");
+  // A centre-only match is not an "unconfirmed touch": neither the probes nor the
+  // whole-parcel check ran, and saying the doubt twice in two different vocabularies
+  // is how a reader concludes there are more designations than there are.
+  await expect(zoningCard(page)).not.toContainText("also touches this property");
+});
+
+/* Multipart geometry with a hole. The stored point sits inside the hole, so it is
+   not part of the property and must not be sent as evidence about it — the stored
+   point gets no privilege over any other probe. */
+test("probe points respect holes and multiple parts, and never privilege the stored point",
+  async({page})=>{
+  const requests=await coverageLookup(page,{geometry:MULTIPART_WITH_HOLE,
+    coverage:{[ZONE]:{intersects:[R18],probe:[R18],within:[]}}});
+  const probeQuery=requests.find(request=>
+    request.url.includes("Zone_Update_2025___Related_Master")&&
+    (request.url+request.body).includes("esriGeometryMultipoint"));
+  expect(probeQuery,"the probe query was sent").toBeTruthy();
+  const params=probeQuery.method==="POST"
+    ? new URLSearchParams(probeQuery.body) : new URL(probeQuery.url).searchParams;
+  const points=JSON.parse(params.get("geometry")).points;
+  expect(points.length,"probes were generated inside both parts").toBeGreaterThan(1);
+  expect(points.length,"the probe cap holds").toBeLessThanOrEqual(25);
+  expect(points.some(([x,y])=>x===-111.815&&y===40.699),
+    "a stored point inside a hole is not sent as evidence").toBe(false);
+  expect(points.every(([x,y])=>x<=-111.814||x>=-111.812),
+    "no probe falls in the gap between the two parts").toBe(true);
+  await expect(zoningCard(page)).toContainText("This property is in the R-1-8 zoning district.");
+});
+
+test("a boundary with no interior falls back to the stored point rather than going quiet",
+  async({page})=>{
+  const requests=await coverageLookup(page,{geometry:DEGENERATE,
+    coverage:{[ZONE]:{point:[R18]}}});
+  const multipoint=requests.filter(request=>(request.url+request.body).includes("esriGeometryMultipoint"));
+  expect(multipoint.length,"no probe query is sent when no probe survives").toBe(0);
+  await expect(zoningCard(page)).toContainText("Base zoning district — CodeR-1-8");
+  await expect(zoningCard(page))
+    .toContainText("We could only check the centre of this property.");
+});
+
+test("a coverage query in flight is abandoned when the search is cleared",async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{coverage:{[ZONE]:{delayMs:600}}});
+  await page.reload();
+  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await expect(page.locator("#sugg")).toBeVisible();
+  await page.locator("#q").press("ArrowDown");
+  await page.locator("#q").press("Enter");
+  await page.locator("#clear").click();
+  await page.waitForTimeout(900);
+  await expect(page.locator("#results")).toBeHidden();
+  await expect(page.locator("#q")).toHaveValue("");
+});
+
+/* No sentence on this page may describe a proportion. Probes prove that a
+   designation covers area inside the property; nothing here measures how much,
+   so "most", "small" and "too small" are not available words. */
+test("no coverage answer describes how much of the property a designation covers",
+  async({page})=>{
+  for(const scenario of [
+    {[ZONE]:{intersects:[R18,C2],probe:[R18],within:[]}},
+    {[ZONE]:{intersects:[R18],probe:[],within:[]}},
+    {[ZONE]:{intersects:[]}},
+    {[ZONE]:{intersects:[R18,C2],probe:[R18,C2],within:[R18]}}
+  ]){
+    await coverageLookup(page,{coverage:scenario});
+    const text=await zoningCard(page).innerText();
+    expect(text,"a coverage answer must not claim a proportion")
+      .not.toMatch(/\bmost\b|\bsmall\b/i);
+    expect(text).not.toContain("Not in this area");
+  }
+});
+
+test("coverage sentences reach the copied text",async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[R18,C2],probe:[R18],within:[]}}});
+  await page.locator("#copy").click();
+  const copied=await page.evaluate(()=>navigator.clipboard.readText());
+  expect(copied).toContain("This property is in the R-1-8 zoning district.");
+  expect(copied).toContain("The zoning map also touches this property with C-2.");
 });
 
 /* ---------------------------------------------------------------------------

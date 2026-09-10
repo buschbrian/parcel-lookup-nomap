@@ -1,7 +1,8 @@
 import { writeFile } from "node:fs/promises";
 import { readApp, readBusinessApp } from "./app-config.mjs";
 import { buildReport, classifyCheckFailure, classifyHttp, contractFailure, layerFieldList,
-  parcelFieldList, renderSummary, settleLayerChecks, transportFor, withRetry } from "./service-contract-core.mjs";
+  parcelFieldList, pointInRings, probePoints, renderSummary, settleLayerChecks, transportFor,
+  withRetry } from "./service-contract-core.mjs";
 
 const {CFG}=await readApp();
 const {CFG:businessCFG}=await readBusinessApp();
@@ -295,6 +296,180 @@ if(longGeometry) await contract("long-geometry-transport",longGeometryParcelId,a
 });
 else skip("long-geometry-transport",
   "the long-geometry parcel prerequisite failed, so its geometry was never retrieved");
+
+/* ==== ZONING COVERAGE (A3, 10 September 2026) =========================
+   The page stopped reading zoning from the parcel's stored point and started
+   reporting every designation that actually covers the property. Four things it
+   now relies on are properties of the live services rather than of this code,
+   so they are pinned here as contracts: never retried, never softened.
+
+   Each check names the real parcel that motivated it, so a failure says which
+   resident-facing sentence is now wrong. */
+async function parcelRecord(id,fields="parcel_id,parcel_latitude,parcel_longitude"){
+  const recordParams=new URLSearchParams({f:"json",returnGeometry:"true",outSR:"4326",
+    outFields:fields,where:CFG.parcel.idField+"='"+String(id).replaceAll("'","''")+"'"});
+  return (await json(layerUrl(CFG.parcel.url)+"/query?"+recordParams)).features?.[0]||null;
+}
+const zoneLayer=CFG.LAYERS.find(layer=>layer.key==="zone");
+const zoneKeyField=zoneLayer.designationKey;
+const zoneOidField=zoneLayer.oidField||"OBJECTID";
+async function zoneQuery(extra){
+  const zoneParams=new URLSearchParams({f:"json",returnGeometry:"false",inSR:"4326",...extra});
+  const result=await json(layerUrl(zoneLayer.url)+"/query?"+zoneParams);
+  if(!Array.isArray(result.features))
+    throw contractFailure("the zoning layer returned no feature array");
+  return result.features.map(feature=>feature.attributes);
+}
+const zoneKeys=features=>new Set(features
+  .map(attributes=>String(attributes[zoneKeyField]||"").trim()).filter(Boolean));
+const zoneOids=features=>new Set(features.map(attributes=>String(attributes[zoneOidField])));
+
+/* The ordinary case, and the one the page's plainest sentence rests on: one
+   district, containing the whole property. If Within stopped answering here,
+   "All of this property is in the R-1-8 zoning district." would silently become
+   "This property is in ..." for every parcel in the city. */
+const coverageParcelId="16261060200000";
+await contract("zoning-coverage-known-parcel",coverageParcelId,async()=>{
+  const feature=await parcelRecord(coverageParcelId);
+  if(!feature?.geometry) throw contractFailure("the zoning coverage test parcel is no longer published");
+  const geometry=JSON.stringify(feature.geometry);
+  const intersects=await zoneQuery({geometry,geometryType:"esriGeometryPolygon",
+    spatialRel:"esriSpatialRelIntersects",outFields:zoneKeyField+","+zoneOidField});
+  const within=await zoneQuery({geometry,geometryType:"esriGeometryPolygon",
+    spatialRel:"esriSpatialRelWithin",outFields:zoneOidField});
+  const keys=zoneKeys(intersects);
+  if(keys.size!==1)
+    throw contractFailure("this parcel now touches "+keys.size+
+      " zoning designations, not one: "+[...keys].join(", "));
+  if(within.length!==1)
+    throw contractFailure("Within no longer returns exactly one district containing "+
+      "this parcel ("+within.length+"), so the whole-parcel sentence is unfounded");
+  const [containedOid]=[...zoneOids(within)];
+  if(!zoneOids(intersects).has(containedOid))
+    throw contractFailure("the district Within returned is not among the districts "+
+      "Intersects returned, so the object-id join no longer holds");
+  return [...keys][0]+" contains the whole parcel";
+});
+
+/* The boundary case that this whole feature exists for. The zoning map draws a
+   C-2 boundary along this parcel; a stored point can only ever name one of the
+   two, and the edge touch must be reported as an unconfirmed touch rather than
+   as a second district or as nothing at all. Two candidates, one probe-confirmed
+   and none containing the whole parcel is exactly the evidence the page reads as
+   `present` with one unconfirmed candidate. */
+const overlapParcelId="16263780070000";
+await contract("zoning-boundary-overlap",overlapParcelId,async()=>{
+  const feature=await parcelRecord(overlapParcelId);
+  if(!feature?.geometry) throw contractFailure("the boundary-overlap test parcel is no longer published");
+  const geometry=JSON.stringify(feature.geometry);
+  const probes=probePoints(feature.geometry,CFG.coverage,
+    [feature.attributes[CFG.parcel.lonField],feature.attributes[CFG.parcel.latField]]);
+  if(!probes.length)
+    throw contractFailure("no probe point falls inside the boundary-overlap parcel, "+
+      "so this parcel no longer exercises the polygon path");
+  const intersects=await zoneQuery({geometry,geometryType:"esriGeometryPolygon",
+    spatialRel:"esriSpatialRelIntersects",outFields:zoneKeyField+","+zoneOidField});
+  const probed=await zoneQuery({geometry:JSON.stringify({points:probes,
+    spatialReference:{wkid:4326}}),geometryType:"esriGeometryMultipoint",
+    spatialRel:"esriSpatialRelIntersects",outFields:zoneOidField});
+  const within=await zoneQuery({geometry,geometryType:"esriGeometryPolygon",
+    spatialRel:"esriSpatialRelWithin",outFields:zoneOidField});
+  const candidates=zoneKeys(intersects);
+  if(candidates.size!==2)
+    throw contractFailure("this parcel now touches "+candidates.size+
+      " zoning designations, not two: "+[...candidates].join(", "));
+  const keyByOid=new Map(intersects.map(attributes=>
+    [String(attributes[zoneOidField]),String(attributes[zoneKeyField]||"").trim()]));
+  const confirmed=new Set([...zoneOids(probed)].map(oid=>keyByOid.get(oid)).filter(Boolean));
+  if(confirmed.size!==1)
+    throw contractFailure("the probes now confirm "+confirmed.size+
+      " of the two designations, not one, so the unconfirmed-touch sentence no longer applies");
+  if(within.length!==0)
+    throw contractFailure("Within now returns "+within.length+
+      " districts for a parcel the zoning boundary crosses");
+  return [...confirmed][0]+" confirmed, "+
+    [...candidates].filter(key=>!confirmed.has(key))[0]+" an unconfirmed touch";
+});
+
+/* The parcel that used to read "Not in this area". Its stored point falls in a
+   gap in the zoning map while the parcel itself plainly intersects a district.
+   Both halves are asserted: if the point started matching, this parcel would
+   stop proving that the point-based answer was wrong. */
+const gapParcelId="15353000130000";
+await contract("zoning-gap-parcel",gapParcelId,async()=>{
+  const feature=await parcelRecord(gapParcelId);
+  if(!feature?.geometry) throw contractFailure("the zoning-gap test parcel is no longer published");
+  const lonValue=feature.attributes[CFG.parcel.lonField];
+  const latValue=feature.attributes[CFG.parcel.latField];
+  const atPoint=await zoneQuery({geometry:String(lonValue)+","+String(latValue),
+    geometryType:"esriGeometryPoint",spatialRel:"esriSpatialRelIntersects",
+    outFields:zoneKeyField+","+zoneOidField});
+  const overParcel=await zoneQuery({geometry:JSON.stringify(feature.geometry),
+    geometryType:"esriGeometryPolygon",spatialRel:"esriSpatialRelIntersects",
+    outFields:zoneKeyField+","+zoneOidField});
+  if(atPoint.length!==0)
+    throw contractFailure("the stored point of this parcel now matches a zoning "+
+      "district, so it no longer demonstrates the gap the polygon query fixes");
+  const keys=zoneKeys(overParcel);
+  if(keys.size<1)
+    throw contractFailure("the parcel boundary no longer intersects any zoning district, "+
+      "so this parcel would still have no zoning answer");
+  return "point 0, polygon "+keys.size+" ("+[...keys].join(", ")+")";
+});
+
+/* Which way esriSpatialRelWithin points.
+
+   The REST reference does not say, and getting it backwards would invert the
+   page's most confident sentence: "All of this property is in X" would be
+   published for districts that merely sit inside the parcel. A 4 m square inside
+   a known parcel settles it against the live service - the parcel comes back
+   under Within (the geometry sent is within the feature returned) and not under
+   Contains. The square is built from the parcel's own stored point and verified
+   to be inside the boundary before it is used, so a re-drawn parcel reports a
+   contract failure rather than proving nothing. */
+await contract("spatial-relation-direction",coverageParcelId,async()=>{
+  const feature=await parcelRecord(coverageParcelId);
+  if(!feature?.geometry) throw contractFailure("the spatial-relation test parcel is no longer published");
+  const lonValue=Number(feature.attributes[CFG.parcel.lonField]);
+  const latValue=Number(feature.attributes[CFG.parcel.latField]);
+  if(!(Number.isFinite(lonValue)&&Number.isFinite(latValue)))
+    throw contractFailure("the spatial-relation test parcel has no usable stored point");
+  const round=value=>Number(value.toFixed(CFG.coverage.coordDecimals));
+  let square=null;
+  for(const metres of [2,1,0.5]){
+    const halfLat=metres/111320;
+    const halfLon=metres/(111320*Math.cos(latValue*Math.PI/180));
+    const corners=[[round(lonValue-halfLon),round(latValue-halfLat)],
+      [round(lonValue+halfLon),round(latValue-halfLat)],
+      [round(lonValue+halfLon),round(latValue+halfLat)],
+      [round(lonValue-halfLon),round(latValue+halfLat)]];
+    if(corners.every(([x,y])=>pointInRings(feature.geometry.rings,x,y))){
+      square={rings:[[...corners,corners[0]]],spatialReference:{wkid:4326}};
+      break;
+    }
+  }
+  if(!square)
+    throw contractFailure("no small square around the stored point falls inside this "+
+      "parcel any more, so the relation direction cannot be tested here");
+  const parcelRelation=async relation=>{
+    const relationParams=new URLSearchParams({f:"json",returnGeometry:"false",inSR:"4326",
+      geometry:JSON.stringify(square),geometryType:"esriGeometryPolygon",
+      spatialRel:relation,outFields:CFG.parcel.idField});
+    const result=await json(layerUrl(CFG.parcel.url)+"/query?"+relationParams);
+    if(!Array.isArray(result.features))
+      throw contractFailure(relation+" returned no feature array");
+    return result.features.map(f=>String(f.attributes[CFG.parcel.idField]));
+  };
+  const [within,contains]=await Promise.all([
+    parcelRelation("esriSpatialRelWithin"),parcelRelation("esriSpatialRelContains")]);
+  if(!within.includes(coverageParcelId))
+    throw contractFailure("esriSpatialRelWithin no longer returns the parcel a small "+
+      "square inside it sits in, so the whole-parcel query means something else now");
+  if(contains.includes(coverageParcelId))
+    throw contractFailure("esriSpatialRelContains now also returns that parcel, so the "+
+      "two relations no longer distinguish the direction the page depends on");
+  return "Within returns the containing parcel; Contains does not";
+});
 
 const informationalHazardParcels={
   liquefaction:"22062280160000",

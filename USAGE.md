@@ -61,6 +61,16 @@ description list, so labels and values are correctly associated.
 Determinations are spoken as "Yes", "No", or "Unknown", never conveyed by colour alone. Unknown
 means the authoritative source did not contain a definite value and staff should verify it.
 
+### Who provided this data, and when was it checked
+
+Every section ends with a line naming who owns that data and the date GIS staff last checked it —
+for example, "Sources: Millcreek Planning and GIS, checked 9 August 2026 — Base zoning district,
+Future land use, In the City Center Overlay (CCOZ)." When several results in one section come from
+the same source and the same check date, they are named together in one line rather than repeated.
+This is the same date this tool has always shown at the bottom of the page for the site as a whole —
+here it is broken out per section, since different sources are checked at different times. It is
+included in **Copy results as text**.
+
 ### Getting the results out
 
 - **Copy results as text** puts the values, links, warnings, data notes and public disclaimer on your
@@ -294,8 +304,8 @@ explicitly for anything resident-facing.
 | `attachmentLabel` | Link label for attachments |
 | `nameField` | Field holding the organisation's name. Used as **link text**, so a link reads "Rocky Mountain Power" rather than "Provider website" |
 | `linkName` | Same idea, but a fixed string — for layers with no name field (the waste district) |
-| `sourceOwner` | Organisation responsible for the source or local maintenance |
-| `reviewedOn` | Date GIS last checked the source and configured fields (`YYYY-MM-DD`) |
+| `sourceOwner` | Organisation responsible for the source or local maintenance. Shown to residents, on every card, in a "Sources: <owner>, checked <date> — <label>" sentence (10 September 2026) — write it as a public-facing name, not an internal shorthand |
+| `reviewedOn` | Date GIS last checked the source and configured fields (`YYYY-MM-DD`). Also shown to residents as part of the sentence above, spelled out in words ("9 August 2026"); update it whenever you actually re-check a layer, the same discipline as `CFG.release.dataReviewedOn` |
 | `cardinality` | `"one"` when one polygon should match; unexpected overlaps are flagged |
 | `geometryMode: "parcel"` | Intersect the full parcel boundary instead of its stored point |
 | `coverage: true` | Report **every** designation that covers the parcel, not the first match. See "Coverage layers" below |
@@ -306,6 +316,12 @@ explicitly for anything resident-facing.
 | `rankField`, `rankOrder` | For overlapping categorical polygons, display the highest configured category |
 | `kind` | Select specialized behavior, currently `femaFlood` or the hidden `femaLocalCrosscheck` |
 | `distance`, `units` | Add an ArcGIS proximity distance to the spatial query |
+
+**Layers that share an identical `sourceOwner` and `reviewedOn` collapse into one "Sources:"
+sentence** naming every one of their labels, instead of repeating the same source once per layer. If
+you review two layers on different days, even by one day, give them their true, different
+`reviewedOn` values — do not round them to match. Rounding two genuinely different review dates to
+the same value makes them collapse into a sentence that claims a joint check that did not happen.
 
 ### Row shape is the same for every layer
 

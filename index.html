@@ -228,6 +228,11 @@ dd.none{color:var(--ink-soft);font-style:italic}
   font-size:.875rem; color:var(--note-ink); line-height:1.55;
 }
 .note p{margin:0}
+/* A5: a note can now stack the standing group disclaimer above one or more
+   "Sources:" attribution sentences. Only the gap BETWEEN paragraphs, so a
+   note with just one paragraph (the common case before this change) is
+   unaffected. */
+.note p+p{margin-top:.5rem}
 .note strong{color:var(--ink)}
 footer{margin-top:3rem;border-top:2px solid var(--line-soft);background:var(--surface)}
 footer .wrap{padding-block:1.5rem;font-size:.9375rem;color:var(--ink-soft)}
@@ -1677,6 +1682,25 @@ function mapLinkUrl(base,{lon,lat,scale}={}){
   return base+"?lon="+lon.toFixed(6)+"&lat="+lat.toFixed(6)+"&scale="+scale;
 }
 
+/* spokenDate (A5, 10 September 2026): turns a stored review date into words
+   for a resident, e.g. "2026-08-09" -> "9 August 2026". Pure string
+   formatting of the stored ISO value — never new Date() on the visitor's
+   clock, the same reason CFG's own comment near `release` gives: a visitor's
+   timezone can roll new Date("2026-08-09") to the day before or after
+   whichever calendar date a person actually reviewed. Anything that is not a
+   plain YYYY-MM-DD date, or names a month outside 01-12, is returned exactly
+   as given — a malformed reviewedOn should read as visibly wrong rather than
+   silently disappear. */
+function spokenDate(iso){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso));
+  if(!m) return iso;
+  const months=["January","February","March","April","May","June","July",
+    "August","September","October","November","December"];
+  const month=months[Number(m[2])-1];
+  if(!month) return iso;
+  return Number(m[3])+" "+month+" "+m[1];
+}
+
 /* Tiered search. Returns the first tier that finds anything, plus a note
    explaining any broadening so it can be announced to the user, and `more`
    when the service reported it capped the result. */
@@ -2298,6 +2322,30 @@ function flagPair(labelTxt,state,detail){
   return el("div",{class:"pair"},[el("dt",{text:labelTxt}),dd]);
 }
 
+/* Attribution (A5, 10 September 2026): every card names who owns its data and
+   the date a person last checked it, so a resident can see how current each
+   answer is. `items` is a list of {owner, reviewedOn, label} — one per layer
+   (or per parcel-record card) a card is built from. Layers that share an
+   identical owner AND review date collapse into one sentence listing every
+   one of their labels, so a group of several layers under one owner does not
+   repeat the same fact once per layer; a distinct owner/date pair gets its
+   own sentence. Order follows first appearance in `items`, which is
+   CFG.LAYERS order for a group card. CODE.md section 6 and USAGE.md's
+   "sourceOwner"/"reviewedOn" entries describe the underlying fields; this is
+   what turns them into resident-facing text rather than governance-only
+   metadata. */
+function attributionNote(items){
+  const seen=new Map();
+  items.forEach(({owner,reviewedOn,label})=>{
+    if(!owner||!reviewedOn) return;
+    const key=owner+" "+reviewedOn;
+    if(!seen.has(key)) seen.set(key,{owner,reviewedOn,labels:[]});
+    seen.get(key).labels.push(label);
+  });
+  return [...seen.values()].map(({owner,reviewedOn,labels})=>
+    "Sources: "+owner+", checked "+spokenDate(reviewedOn)+" — "+labels.join(", ")+".");
+}
+
 function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
   const P=CFG.parcel;
   body$.textContent="";
@@ -2317,10 +2365,18 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
     dl1.append(ownerPair(rec[P.ownerField], rec[P.careOfField]));
   }
   c1.append(dl1);
-  if(parcelSchemaFailed){
+  {
+    // Attribution (A5): who owns the parcel record and when it was last
+    // checked, alongside the schema-failed note when there is one — the
+    // same "About this data." block a group card uses, so Copy picks both
+    // up through the existing ".note p" rule with no change.
     const d=el("div",{class:"note"});
-    d.append(el("p",{},[el("strong",{text:"About this data. "}),
-      document.createTextNode("Parcel field descriptions were temporarily unavailable, so coded values may not be expanded.")]));
+    if(parcelSchemaFailed){
+      d.append(el("p",{},[el("strong",{text:"About this data. "}),
+        document.createTextNode("Parcel field descriptions were temporarily unavailable, so coded values may not be expanded.")]));
+    }
+    attributionNote([{owner:P.sourceOwner,reviewedOn:P.reviewedOn,label:"Property record"}])
+      .forEach(s=>d.append(el("p",{text:s})));
     c1.append(d);
   }
   const assessorLink=rec[P.assessorLinkField];
@@ -2548,12 +2604,21 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
       cal.append(el("p",{},[el("strong",{text:"What this means. "}),document.createTextNode(n)]));
       card.append(cal);
     });
-    // Standing data-quality disclaimer for the whole group, always shown.
+    // Standing data-quality disclaimer for the whole group, always shown, plus
+    // who owns this group's data and when a person last checked it (A5).
+    // Layers sharing an identical owner and review date collapse into one
+    // sentence listing every one of their labels, so a group of several
+    // layers under one owner does not repeat the same fact once per layer.
     const gn=(CFG.GROUP_NOTES||{})[g];
-    if(gn){
+    const attribution=attributionNote(
+      rows.map(o=>({owner:o.sourceOwner,reviewedOn:o.reviewedOn,label:o.label})));
+    if(gn||attribution.length){
       const d=el("div",{class:"note"});
-      d.append(el("p",{},[
-        el("strong",{text:"About this data. "}), document.createTextNode(gn)]));
+      if(gn){
+        d.append(el("p",{},[
+          el("strong",{text:"About this data. "}), document.createTextNode(gn)]));
+      }
+      attribution.forEach(s=>d.append(el("p",{text:s})));
       card.append(d);
     }
     return card;
@@ -2603,6 +2668,14 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
       rel:"noopener",text:"interactive zoning map"}),
     document.createTextNode(". The map is not required to use this lookup.")
   ]));
+  {
+    // Attribution (A5): these coordinates come from the parcel record too,
+    // so the same CFG.parcel owner/review date apply here as on Property record.
+    const d=el("div",{class:"note"});
+    attributionNote([{owner:P.sourceOwner,reviewedOn:P.reviewedOn,label:"Location"}])
+      .forEach(s=>d.append(el("p",{text:s})));
+    if(d.childNodes.length) c4.append(d);
+  }
   body$.append(c4);
 
   const degraded = overlays.filter(o=>o.failed||o.schemaFailed||o.attachmentsFailed||o.ambiguous||o.verificationMismatch||o.coverageDegraded).length+

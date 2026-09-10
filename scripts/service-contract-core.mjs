@@ -271,12 +271,31 @@ function sanitizeCheck(check){
   return clean;
 }
 
-export function buildReport(checks,{generatedAt}={}){
+/* dataReviewedAgeDays (A5, 10 September 2026): how many whole days separate
+   this run from the date a person last reviewed the GIS layers behind the
+   published page, i.e. CFG.release.dataReviewedOn. Neither `ok` nor
+   `failed`/`contractFailures` is touched by this figure — see
+   docs/decisions/0004-the-data-review-date-stays-human.md for why an aging
+   human-set date is a call the monitor surfaces, and does not fail the run
+   over. `dataReviewedOn` parses as a UTC midnight so the count is not one day
+   off depending on the machine running the check. Either date missing or
+   unparsable yields `null` rather than a wrong number of days. */
+function dataReviewAge(generatedAt,dataReviewedOn){
+  if(!generatedAt||!dataReviewedOn) return null;
+  const generated=Date.parse(generatedAt);
+  const reviewed=Date.parse(dataReviewedOn+"T00:00:00Z");
+  if(!Number.isFinite(generated)||!Number.isFinite(reviewed)) return null;
+  return Math.floor((generated-reviewed)/86400000);
+}
+
+export function buildReport(checks,{generatedAt,dataReviewedOn}={}){
   const clean=checks.map(sanitizeCheck);
   const failed=clean.filter(check=>!check.ok&&!check.skipped);
   return {
     ok:failed.length===0,
     generatedAt:generatedAt||null,
+    dataReviewedOn:dataReviewedOn||null,
+    dataReviewedAgeDays:dataReviewAge(generatedAt,dataReviewedOn),
     total:clean.length,
     passed:clean.filter(check=>check.ok).length,
     skipped:clean.filter(check=>check.skipped).length,
@@ -291,6 +310,25 @@ export function buildReport(checks,{generatedAt}={}){
   };
 }
 
+/* RELEASE.md's sequence step 1 asks a named person to confirm dataReviewedOn
+   is current before every release; this is the automated, non-blocking half
+   of that same fact. 90 days matches RELEASE.md's stated review expectation.
+   Crossing it is a warning here, never a failure — see
+   docs/decisions/0004-the-data-review-date-stays-human.md for why: this
+   monitor proves the configured fields and known parcels still answer, not
+   that a person looked at the GIS layers again, so it cannot certify the
+   review current — only flag when it is due. */
+export const DATA_REVIEW_MAX_AGE_DAYS=90;
+
+export function dataReviewWarning(report){
+  if(typeof report.dataReviewedAgeDays!=="number") return null;
+  if(report.dataReviewedAgeDays<=DATA_REVIEW_MAX_AGE_DAYS) return null;
+  return "dataReviewedOn ("+report.dataReviewedOn+") is "+report.dataReviewedAgeDays+
+    " days old, past the "+DATA_REVIEW_MAX_AGE_DAYS+"-day review expectation in "+
+    "RELEASE.md. Review the GIS layers behind this release and update "+
+    "CFG.release.dataReviewedOn in both pages.";
+}
+
 export function renderSummary(report){
   const lines=["## Live service contract",""];
   if(report.ok){
@@ -298,30 +336,30 @@ export function renderSummary(report){
     if(report.skipped)
       lines.push("","**"+report.skipped+(report.skipped===1?" check":" checks")+
       " skipped** - a prerequisite failed.");
-    return lines.join("\n")+"\n";
+  }else{
+    lines.push("**"+report.failed.length+" of "+report.total+" service contracts failed.**","");
+    const section=(title,rows,explanation)=>{
+      if(!rows.length) return;
+      lines.push("### "+title,"",explanation,"");
+      for(const check of rows)
+        lines.push("- **"+check.key+"** - "+check.failure.message+
+          (check.detail?" (`"+check.detail+"`)":"")+
+          (check.failure.attempts>1?", after "+check.failure.attempts+" attempts":""));
+      lines.push("");
+    };
+    /* Two audiences in one report. Contract drift means the published data changed
+       and the page may now be wrong, which is Millcreek's problem to act on.
+       Transport failure that survived the retries means the service is down, which
+       is not. Anyone woken at 8am needs to know which one they are looking at. */
+    section("Contract drift",report.contractFailures,
+      "What the services publish has changed, so the page may now be wrong. These are "+
+      "never retried: a field that is missing twice is still missing.");
+    section("Service unavailable",report.transportFailures,
+      "Retried on a bounded backoff and still failing. This is the hosting service's "+
+      "problem rather than a change in the data.");
+    if(report.skipped)
+      lines.push("**"+report.skipped+(report.skipped===1?" check":" checks")+
+        " skipped** - a prerequisite failed.","");
   }
-  lines.push("**"+report.failed.length+" of "+report.total+" service contracts failed.**","");
-  const section=(title,rows,explanation)=>{
-    if(!rows.length) return;
-    lines.push("### "+title,"",explanation,"");
-    for(const check of rows)
-      lines.push("- **"+check.key+"** - "+check.failure.message+
-        (check.detail?" (`"+check.detail+"`)":"")+
-        (check.failure.attempts>1?", after "+check.failure.attempts+" attempts":""));
-    lines.push("");
-  };
-  /* Two audiences in one report. Contract drift means the published data changed
-     and the page may now be wrong, which is Millcreek's problem to act on.
-     Transport failure that survived the retries means the service is down, which
-     is not. Anyone woken at 8am needs to know which one they are looking at. */
-  section("Contract drift",report.contractFailures,
-    "What the services publish has changed, so the page may now be wrong. These are "+
-    "never retried: a field that is missing twice is still missing.");
-  section("Service unavailable",report.transportFailures,
-    "Retried on a bounded backoff and still failing. This is the hosting service's "+
-    "problem rather than a change in the data.");
-  if(report.skipped)
-    lines.push("**"+report.skipped+(report.skipped===1?" check":" checks")+
-      " skipped** - a prerequisite failed.","");
   return lines.join("\n")+"\n";
 }

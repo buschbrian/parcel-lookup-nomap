@@ -128,7 +128,11 @@ Settings > Branches, merge, and turn it back on. Prefer the first.
 
 ## Sequence
 
-1. Confirm `dataReviewedOn` is current, or review the layers and update it.
+1. Confirm `dataReviewedOn` is current, or review the layers and update it. The expectation is
+   **90 days**: `npm run check:services` prints how old it is on every run and adds a
+   non-blocking `::warning::` and step-summary line once it passes that, but the review itself
+   stays a person's judgment call, not something CI can perform — see
+   [ADR-0004](docs/decisions/0004-the-data-review-date-stays-human.md).
 2. Bump the version in all three places; add or extend the dated changelog.
 3. Open a pull request. Deterministic CI must be green. Required approvals is **0** today — there is
    one code owner and he is also the only author, so GitHub cannot route an approving review; see

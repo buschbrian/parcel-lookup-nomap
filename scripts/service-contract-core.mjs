@@ -152,11 +152,15 @@ export function parcelFieldList(CFG){
     ...(CFG.PARCEL_FLAGS||[]).map(flag=>flag.field)])];
 }
 export function layerFieldList(layer){
-  return [...new Set([...Object.keys(layer.fields||{}),
+  // The object id only where something reads it: the attachments join, and a
+  // layer with no `fields` of its own, which would otherwise request nothing.
+  // See the page's copy for why this is not asked of every layer.
+  const named=[...new Set([...Object.keys(layer.fields||{}),
     ...(layer.nameField?[layer.nameField]:[]),
     ...(layer.rankField?[layer.rankField]:[]),
-    layer.oidField||"OBJECTID",
     ...(layer.extraFields||[])])];
+  if(!(layer.attachments||named.length===0)) return named;
+  return [...new Set([...named,layer.oidField||"OBJECTID"])];
 }
 
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));

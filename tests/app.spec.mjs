@@ -868,7 +868,7 @@ test("no GET request in any lookup exceeds the configured URL limit",async({page
    anywhere in the page. mockArcGIS() now honours whatever outFields a request
    actually sent (see filterAttributes above), so a rendered-but-unrequested
    field fails the page's own content assertions rather than passing silently. */
-test("every query names its fields explicitly, and every layer query includes its object id field",
+test("every query names its fields explicitly, and asks for an object id only where one is read",
   async({page})=>{
   const requests=await lookupWithGeometry(page,null);
   const queryRequests=requests.filter(request=>new URL(request.url).pathname.endsWith("/query"));
@@ -887,11 +887,29 @@ test("every query names its fields explicitly, and every layer query includes it
     return service!=="Address_Points"&&service!=="Millcreek_Parcels";
   });
   expect(layerRequests.length,"the lookup queries configured layers").toBeGreaterThan(8);
+  /* The object id is asked for only where something reads it, and nowhere else.
+     Asking every layer for it made all 18 depend on the object id field being
+     named correctly, when ArcGIS rejects an entire query that names a field the
+     layer does not have — an undeclared non-default name took that whole layer
+     to "Temporarily unavailable", and nothing that runs on a pull request can
+     check a field name against the live service. These are the layers that
+     genuinely need it: the one whose attachments are joined by it, and the
+     boolean layers that configure no `fields` of their own and would otherwise
+     have no field left to name. Asserted in BOTH directions on purpose — the
+     "must not" half is what keeps the other layers off that dependency. */
+  const OID_REQUIRED=new Set(["Subdivision_Dissovle_3","Zone_TCOZ","WUI",
+    "Sensitive_Land_Areas__Feb24","Fault_Study_Area",
+    "DebrisFlow_WasatchFront_ClipBuffer","AlluvialFans"]);
   for(const request of layerRequests){
-    const oid=oidFieldFor(serviceOf(request));
-    expect(outFieldsOf(request).split(","),
-      "layer query for "+serviceOf(request)+" must request its object id field "+oid+
-      ": "+fullUrlOf(request)).toContain(oid);
+    const service=serviceOf(request);
+    const oid=oidFieldFor(service);
+    const asked=outFieldsOf(request).split(",");
+    if(OID_REQUIRED.has(service))
+      expect(asked,"layer query for "+service+" must request its object id field "+oid+
+        ": "+fullUrlOf(request)).toContain(oid);
+    else
+      expect(asked,"layer query for "+service+" reads no object id, so it must not ask "+
+        "for one: "+fullUrlOf(request)).not.toContain(oid);
   }
 
   // Address suggestion and parcel record queries are exempt from the object

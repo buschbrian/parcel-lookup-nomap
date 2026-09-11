@@ -358,8 +358,8 @@ immediately, and every page carries the lookup's abort signal. Whatever arrived 
 is `incomplete`, which renders as a warning beside the answer rather than in place of it.
 
 `coverageState()` returns `{state, health}` and keeps the two apart on purpose — what the evidence
-shows, and how much of the map could be read. States, in evaluation order: `failed`, `pointOnly-none`
-/ `-one` / `-many` / `-unusable`, `none`, `conflict`, `whole`, `overlap`, `split`, `present`,
+shows, and how much of the map could be read. States, in evaluation order: `failed`, `pointOnly-unknown`
+/ `-none` / `-one` / `-many` / `-unusable`, `none`, `conflict`, `whole`, `overlap`, `split`, `present`,
 `unknown`, `unconfirmedOnly`. Health flags: `probesFailed`, `wholeCheckFailed`, `incomplete`,
 `identityMissing`. Any health flag, or a state of `unconfirmedOnly`, `conflict`, `overlap` or
 `pointOnly-*`, counts the layer as degraded in the closing summary.
@@ -377,6 +377,21 @@ returned with no attributes at all, or a blank/missing designation value. `cover
 resolves to `none` when Q1 is complete **and** genuinely empty; a complete Q1 that returned nothing
 identifiable (`unidentified > 0`) resolves to `unknown` instead, exactly like an incomplete Q1 that
 retained nothing. A CCOZ match with bare `attributes:{}` can therefore never read as a confirmed "No".
+
+**An entry with no `attributes` object is evidence too (COV-001).** `readFeatureRows()` splits a
+`features` array into rows this page can read and a count of rows it cannot, and `coverageQuery()`
+returns that count as `unreadable` alongside the rows; `coverageHits()` adds it to
+`groupByDesignation()`'s `unidentified`. Without it, `{features:[{}]}` was silently dropped down to
+`status:"ok", features:[]` — a non-empty response reported as a complete empty one, which rendered the
+City Center Overlay as a confident "No". Unreadable rows also count toward `resultOffset`, so paging a
+truncated response cannot re-request rows the service already sent. An unreadable Q2 or Q3 row sets
+`identityMissing`, like an object id Q1 never returned.
+
+**The point-only path concludes absence under the same rule (COV-002).** An incomplete point query, or
+one whose matches could not be identified, with nothing retained resolves to `pointOnly-unknown` — "We
+could only check the centre of this property, and we could not read the map there. We do not know what
+covers this property." — instead of `pointOnly-none`, whose sentence asserts that nothing was found
+there. `coverageFlag()` reads it as Unknown, and it counts as degraded like every other `pointOnly-*`.
 
 **A stored coordinate is validated before conversion (A3-R02).** `Number(null)` and `Number("")` are
 both `0`, so a missing latitude or longitude used to pass a naive `Number.isFinite` check and be sent
@@ -397,7 +412,9 @@ layer's equally generic fallback sentence in the same card, both on screen and i
 since base zoning and future land use share the "Zoning" card. `draw()` now emits one labelled fallback
 row (`<dt>` "`<Layer label>` — Result", `<dd>` the state's own first sentence) whenever a coverage
 layer has no `shownKeys`, so a reader — and the clipboard copy — can always tell which layer a fallback
-sentence belongs to.
+sentence belongs to. That row **is** the first sentence, so the paragraphs that follow it start at
+`sentences.slice(1)`; rendering the whole list after the row repeated the sentence immediately below
+itself in the DOM and in the copied text (RENDER-001).
 
 `draw()` emits cards in this order:
 

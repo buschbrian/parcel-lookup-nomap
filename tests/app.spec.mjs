@@ -221,8 +221,13 @@ async function mockArcGIS(page,state={}){
       const role=queryRole(queryParams);
       const roles=roleFeaturesFor(name,features,state);
       const scenario=roles.scenario;
+      /* A fixture entry of `null` is a feature the service returned with no
+         `attributes` object at all — `{features:[{}]}`, the response COV-001 was
+         found on. Every other entry is shaped the usual way. Without this the
+         mock could not express an unreadable match, only an empty one, and the
+         page's handling of the difference could not be tested at all. */
       const shape=list=>list.map(attributes=>
-        ({attributes:filterAttributes(attributes,outFieldsParam,oidField,
+        attributes===null?{}:({attributes:filterAttributes(attributes,outFieldsParam,oidField,
           {synthesizeOid:!state.noOidSynthesis})}));
       // A query the service rejects outright.
       if(scenario.delayMs&&(scenario.delayRole||"intersects")===role)
@@ -946,6 +951,87 @@ test("a zoning match with an object id but no readable designation reports unkno
     PLANNING+".");
   await expect(zoningCard(page)).not.toContainText("No zoning polygon was found");
   await expect(zoningCard(page)).not.toContainText("Not in this area");
+});
+
+/* ===========================================================================
+   COV-001, COV-002, RENDER-001 (Sol stack inspection, 10 September 2026).
+   =========================================================================== */
+
+/* `{features:[{}]}`: a 200 carrying one match with no attributes object. The
+   entry used to be dropped on the way in, so the overlay saw a complete empty
+   result and rendered "No" — the most confident answer this page can give,
+   from a body it could not read. */
+test("a match with no attributes object never becomes a confident No (COV-001)",
+  async({page})=>{
+  await coverageLookup(page,{coverage:{[CCOZ]:{intersects:[null],probe:[null],within:[null]}}});
+  const overlay=page.locator(".pair",{hasText:"City Center Overlay"});
+  await expect(overlay).toContainText("Unknown — verify with staff");
+  await expect(overlay).not.toContainText("No");
+});
+
+test("a zoning response of unreadable matches reports unknown, not a gap (COV-001)",
+  async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[null,null],probe:[],within:[]}}});
+  await expect(zoningCard(page)).toContainText(
+    "We could not read the zoning map for this property. Call Planning and Zoning at "+
+    PLANNING+".");
+  await expect(zoningCard(page)).not.toContainText("No zoning polygon was found");
+  await expect(zoningCard(page)).not.toContainText("Not in this area");
+  // One unreadable layer never blanks the rest of the card.
+  await expect(zoningCard(page)).toContainText("Future land use — Designation");
+});
+
+/* The point-only path reached the same false negative by its own route: with no
+   usable boundary, an unreadable centre response answered "Nothing was found
+   there" before the unreadable check ever ran. */
+test("an unreadable centre-only response does not say nothing was found (COV-002)",
+  async({page})=>{
+  await coverageLookup(page,{omitParcelGeometry:true,
+    coverage:{[ZONE]:{point:[null]},[CCOZ]:{point:[null]}}});
+  await expect(zoningCard(page)).toContainText(
+    "We could only check the centre of this property, and we could not read the "+
+    "zoning map there. We do not know what covers this property. "+
+    "Call Planning and Zoning at "+PLANNING+".");
+  await expect(zoningCard(page)).not.toContainText("Nothing was found there");
+  await expect(zoningCard(page)).not.toContainText("Not in this area");
+  await expect(page.locator(".pair",{hasText:"City Center Overlay"})).toContainText("Unknown");
+});
+
+test("a truncated centre-only response does not say nothing was found either (COV-002)",
+  async({page})=>{
+  const truncated={pages:{point:[{features:[],more:true},{features:[],more:true}]}};
+  // The overlay is truncated the same way: it shares the Zoning card, and its own
+  // centre-only sentence would otherwise supply the words being asserted against.
+  await coverageLookup(page,{omitParcelGeometry:true,
+    coverage:{[ZONE]:truncated,[CCOZ]:truncated}});
+  await expect(zoningCard(page)).toContainText(
+    "We could only check the centre of this property, and we could not read the "+
+    "zoning map there.");
+  await expect(zoningCard(page)).not.toContainText("Nothing was found there");
+});
+
+/* RENDER-001: the labelled fallback row already carries the first sentence, so
+   printing the whole sentence list beneath it said the same thing twice in a
+   row — on screen and in what the resident pastes into an email. */
+test("a fallback outcome sentence is rendered once, not twice (RENDER-001)",async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[],fail:{probe:true}}}});
+  const gap="No zoning polygon was found at this property.";
+  const alsoSaid="We could not confirm which of these covers this property.";
+  const count=(haystack,needle)=>haystack.split(needle).length-1;
+
+  const rendered=await zoningCard(page).evaluate(card=>card.textContent);
+  expect(count(rendered,gap),"the gap sentence appears once in the card").toBe(1);
+  expect(count(rendered,alsoSaid),"and every later sentence still appears").toBe(1);
+  // It is the labelled row that carries it, so the layer still names itself.
+  await expect(page.locator(".pair",{hasText:"Base zoning district — Result"}))
+    .toContainText(gap);
+  expect(await page.locator("#results-body p.meta",{hasText:gap}).count(),
+    "no paragraph repeats the row").toBe(0);
+
+  await page.locator("#copy").click();
+  const copied=await page.evaluate(()=>navigator.clipboard.readText());
+  expect(count(copied,gap),"and once in the copied text").toBe(1);
+  expect(count(copied,alsoSaid)).toBe(1);
 });
 
 test("missing geometry and missing coordinates send no spatial query and say so (A3-R02)",

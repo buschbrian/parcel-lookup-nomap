@@ -1320,6 +1320,27 @@ function groupByDesignation(features,identity){
   return {groups,keyByOid,missing:unidentified,unidentified};
 }
 
+/* What a `features` array actually contained, split into rows this page can read
+   and rows it cannot.
+
+   ArcGIS answers with one object per match and `attributes` is the only part of
+   it this page reads, so an entry that carries no attributes object at all is
+   unreadable — but it is still a match the service found. Dropping it would turn
+   a non-empty response into an empty one, and an empty response is the single
+   piece of evidence that establishes absence, so `{features:[{}]}` would become
+   a confident "nothing here" built on a body nobody could read (COV-001). The
+   unreadable entries are counted instead and travel with the rows, where they
+   join the other unidentified evidence. */
+function readFeatureRows(features){
+  const rows=[];
+  let unreadable=0;
+  for(const feature of features||[]){
+    if(feature&&feature.attributes) rows.push(feature.attributes);
+    else unreadable++;
+  }
+  return {rows,unreadable};
+}
+
 /* What the evidence supports, kept separate from how well the requests went.
 
    Two questions get conflated whenever this is written as one value, and they
@@ -1359,7 +1380,10 @@ function groupByDesignation(features,identity){
    like an incomplete Q1 that retained nothing: `unknown`, never `none` (Astra
    A5-01, A3-R01). A CCOZ Q1 response of bare `attributes:{}` must never read
    as a confirmed "No", and a zoning feature with a designation but no object
-   id must never make the map look empty. */
+   id must never make the map look empty. That rule belongs to the point-only
+   path as much as to the polygon one: unreadable or truncated evidence at the
+   centre of the property is `pointOnly-unknown`, never `pointOnly-none`
+   (COV-002). */
 function coverageState(input){
   const q1=input.q1||"ok", q2=input.q2||"ok", q3=input.q3||"ok";
   const candidates=input.candidates||new Set();
@@ -1379,6 +1403,13 @@ function coverageState(input){
       if(input.storedPoint!=="valid") return "pointOnly-unusable";
       const hits=input.pointHits;
       if(!hits) return "failed";
+      /* The same rule as the polygon path, and it has to be applied before
+         `pointOnly-none`: a point query that was cut short, or that returned
+         matches nothing could identify, has not established that there is
+         nothing at the centre of the property (COV-002). Saying "Nothing was
+         found there" on that evidence is the false negative in a different
+         costume. */
+      if(hits.size===0 && (q1==="incomplete"||unidentified>0)) return "pointOnly-unknown";
       if(hits.size===0) return "pointOnly-none";
       return hits.size===1 ? "pointOnly-one" : "pointOnly-many";
     }
@@ -1463,6 +1494,10 @@ function coverageSentences(input){
     case "pointOnly-none":
       lines.push("We could only check the centre of this property. Nothing was found "+
         "there. We do not know whether the edges of the property are covered.");
+      break;
+    case "pointOnly-unknown":
+      lines.push("We could only check the centre of this property, and we could not read "+
+        "the "+map+" there. We do not know what covers this property."+call);
       break;
     case "pointOnly-one":
       lines.push(centreOnly);
@@ -1849,33 +1884,43 @@ async function load(parcelId, label){
    repeat an earlier page stops it immediately, and every page carries the
    lookup's abort signal so Clear or a new search ends it. Whatever arrived is
    kept and the query is reported `incomplete`, which renders as a warning
-   beside a real answer rather than in place of one. */
+   beside a real answer rather than in place of one.
+
+   An entry the page cannot read is counted in `unreadable` rather than skipped,
+   so a non-empty response can never be reported as a complete empty one
+   (COV-001); the caller adds that count to the other unidentified evidence.
+   It is part of the result set for paging too: `resultOffset` counts every row
+   the service sent, not only the ones that could be read. */
 async function coverageQuery(url,params,oidField,signal){
   const features=[];
   const pages=[];
+  let unreadable=0;
+  const answer=status=>({status,features,unreadable});
   const maxPages=Math.max(1,Math.floor(Number(CFG.coverage&&CFG.coverage.maxPages))||1);
   for(let page=0;page<maxPages;page++){
     let body;
     try{
-      body=await query(url,page?{...params,resultOffset:String(features.length)}:params,signal);
+      body=await query(url,
+        page?{...params,resultOffset:String(features.length+unreadable)}:params,signal);
     }catch(e){
       if(e.kind==="aborted") throw e;
       console.error("[lookup] coverage query unavailable:",url,e.kind||"unknown",e.message||"");
-      return {status:page?"incomplete":"failed",features};
+      return answer(page?"incomplete":"failed");
     }
     if(!body||!Array.isArray(body.features)){
       console.error("[lookup] coverage query returned no feature array:",url);
-      return {status:page?"incomplete":"failed",features};
+      return answer(page?"incomplete":"failed");
     }
     const oids=new Set(body.features.map(f=>String(f&&f.attributes&&f.attributes[oidField])));
     if(pages.some(earlier=>earlier.size===oids.size&&[...oids].every(id=>earlier.has(id))))
-      return {status:"incomplete",features};
+      return answer("incomplete");
     pages.push(oids);
-    for(const feature of body.features)
-      if(feature&&feature.attributes) features.push(feature.attributes);
-    if(!body.exceededTransferLimit) return {status:"ok",features};
+    const read=readFeatureRows(body.features);
+    for(const attributes of read.rows) features.push(attributes);
+    unreadable+=read.unreadable;
+    if(!body.exceededTransferLimit) return answer("ok");
   }
-  return {status:"incomplete",features};
+  return answer("incomplete");
 }
 
 /* A coverage layer's three queries, joined into one answer.
@@ -1952,7 +1997,11 @@ async function coverageHits(L,lon,lat,parcelGeometry,signal){
 
   const grouped=groupByDesignation(q1.features,identity);
   const candidates=new Set(grouped.groups.keys());
-  let identityMissing=grouped.unidentified>0;
+  /* Q1 rows that arrived with no attributes object never reached
+     groupByDesignation, so its count alone would under-report the evidence and
+     an all-unreadable response would look empty (COV-001). */
+  const unidentified=grouped.unidentified+(q1.unreadable||0);
+  let identityMissing=unidentified>0;
   const joined=features=>{
     const keys=new Set();
     for(const attributes of features){
@@ -1963,13 +2012,16 @@ async function coverageHits(L,lon,lat,parcelGeometry,signal){
   };
   const confirmed=usePolygon?joined(q2.features):new Set();
   const wholeKeys=usePolygon?joined(q3.features):new Set();
+  // An unreadable Q2 or Q3 row is a match that cannot be joined to anything, so
+  // it is an identity failure exactly like an object id Q1 never returned.
+  if(usePolygon&&((q2.unreadable||0)>0||(q3.unreadable||0)>0)) identityMissing=true;
   const pointHits=usePolygon?null:(q1.status==="failed"?null:new Set(candidates));
 
   const {state,health}=coverageState({
     candidates,confirmed,whole:wholeKeys,
     q1:q1.status, q2:usePolygon?q2.status:"ok", q3:usePolygon?q3.status:"ok",
     identity:identityMissing?"missing":"ok",
-    unidentified:grouped.unidentified,
+    unidentified,
     polygon:polygonUsable?"usable":"unusable",
     probes:probes.length,
     storedPoint:storedPointValid?"valid":"invalid",
@@ -2280,6 +2332,7 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
           whole:[...o.wholeKeys], covered:o.coveredKeys, unconfirmed:o.unconfirmedKeys,
           phone:CFG.planning.phone
         });
+        let fallbackRow=false;
         if(o.boolean){
           // The overlay's own Yes/No/Unknown; the boolean renderer below never
           // sees a coverage layer, so an edge-only touch cannot become a "Yes".
@@ -2308,11 +2361,17 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
           // future land use both reporting a gap, say — are indistinguishable
           // on screen and in the copied text, and neither names what was
           // actually checked (A3-R03).
-          if(!o.shownKeys.length)
+          if(!o.shownKeys.length){
             dl.append(pair(o.label+" — Result", sentences[0]||"No result was returned."));
+            // That row IS the first sentence, so the paragraphs below start at
+            // the second one. Printing it in both places said the same thing
+            // twice in a row, on screen and in the copied text (RENDER-001).
+            fallbackRow=true;
+          }
         }
         flush();
-        sentences.forEach(sentence=>card.append(el("p",{class:"meta",text:sentence})));
+        (fallbackRow?sentences.slice(1):sentences)
+          .forEach(sentence=>card.append(el("p",{class:"meta",text:sentence})));
         return;
       }
 

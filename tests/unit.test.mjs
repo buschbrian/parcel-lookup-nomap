@@ -27,7 +27,7 @@ function pureApp(){
     "sameSet,matchSummary,esc,likeOperand,outFieldsFor,parcelOutFields,"+
     "pointInRings,probePoints,validCoordinate,coverageIdentity,readFeatureRows,groupByDesignation,"+
     "coverageState,"+
-    "coverageSentences,coverageFlag,parcelFromQuery,addressFromQuery,mapLinkUrl});"
+    "coverageSentences,coverageFlag,parcelFromQuery,addressFromQuery,mapLinkUrl,spokenDate});"
   );
 }
 
@@ -806,6 +806,22 @@ test("CFG.mapLinkScale is a positive number",()=>{
   assert.ok(pureApp().CFG.mapLinkScale>0);
 });
 
+/* A5: spokenDate() turns a stored reviewedOn/dataReviewedOn value into words
+   for a resident. It must be pure string formatting of the ISO value already
+   in CFG — never new Date() on the visitor's clock, which can roll the
+   calendar date backward or forward depending on the visitor's timezone. */
+test("spokenDate formats a stored ISO date in words, and returns anything else unchanged",()=>{
+  const {spokenDate}=pureApp();
+  assert.equal(spokenDate("2026-08-09"),"9 August 2026");
+  assert.equal(spokenDate("2026-01-01"),"1 January 2026");
+  assert.equal(spokenDate("2026-12-31"),"31 December 2026");
+  assert.equal(spokenDate("bad"),"bad");
+  assert.equal(spokenDate(""),"");
+  assert.equal(spokenDate("2026-13-01"),"2026-13-01");   // no month 13
+  assert.equal(spokenDate(undefined),undefined);
+  assert.equal(spokenDate(null),null);
+});
+
 test("hazards use the requested source layers and cross-check FEMA classifications",()=>{
   const {CFG,floodRank,selectHighestFlood,selectHighestCategory,floodClassSet,sameSet}=pureApp();
   assert.deepEqual([...CFG.PARCEL_FLAGS],[]);
@@ -984,6 +1000,32 @@ test("every displayed layer carries source-governance metadata",()=>{
     assert.match(layer.reviewedOn,/^\d{4}-\d{2}-\d{2}$/,layer.key+" review date");
     assert.ok(["one","many"].includes(layer.cardinality),layer.key+" cardinality");
   }
+});
+
+/* ATTR-001: a hidden layer is not displayed, but its data can be. The FEMA card
+   renders "Millcreek flood layer matches live FEMA", a comparison against the
+   hidden flood_local layer, so that layer's owner and review date have to be
+   named too — and can only be named if the visible layer says it depends on it
+   and the hidden layer carries the metadata. */
+test("a hidden layer feeding a visible result is declared and carries its own metadata",()=>{
+  const {CFG}=pureApp();
+  const fema=CFG.LAYERS.find(layer=>layer.kind==="femaFlood");
+  assert.deepEqual([...(fema.dependsOn||[])],["flood_local"],
+    "the derived comparison names the layer it is derived from");
+  for(const key of fema.dependsOn){
+    const dependency=CFG.LAYERS.find(layer=>layer.key===key);
+    assert.ok(dependency,key+" is a configured layer");
+    assert.ok(dependency.sourceOwner,key+" names an owner even though it is hidden");
+    assert.match(dependency.reviewedOn,/^\d{4}-\d{2}-\d{2}$/,key+" review date");
+    assert.ok(dependency.label,key+" has a label to attribute");
+    assert.equal(dependency.group,fema.group,
+      key+" attributes into the same card as the result it feeds");
+  }
+  // Every declared dependency anywhere resolves to a real layer.
+  for(const layer of CFG.LAYERS)
+    for(const key of layer.dependsOn||[])
+      assert.ok(CFG.LAYERS.some(other=>other.key===key),
+        layer.key+" depends on a configured layer ("+key+")");
 });
 
 /* What is deployed is an allowlist, not the repository. Publishing the repository
@@ -1846,4 +1888,70 @@ test("the unattended staging deploy cannot reach production",async()=>{
     "an empty artifact must fail rather than promote nothing to production later");
   assert.doesNotMatch(workflow,/uses:\s*[\w./-]+@v\d/,
     "actions are pinned to immutable reviewed commits, not to moving tags");
+});
+
+/* ===========================================================================
+   A5, 10 September 2026: dataReviewedOn stays human-set (ADR-0004), and the
+   live monitor only warns — never fails — when it looks stale.
+   =========================================================================== */
+
+test("buildReport carries dataReviewedOn and a numeric age, and warns only past 90 days",async()=>{
+  const {buildReport,dataReviewWarning}=await import("../scripts/service-contract-core.mjs");
+  const checks=[{key:"x",ok:true}];
+
+  const fresh=buildReport(checks,
+    {generatedAt:"2026-09-10T00:00:00.000Z",dataReviewedOn:"2026-08-13"});
+  assert.equal(fresh.dataReviewedOn,"2026-08-13");
+  assert.equal(typeof fresh.dataReviewedAgeDays,"number");
+  assert.equal(fresh.dataReviewedAgeDays,28);
+  assert.equal(dataReviewWarning(fresh),null,"28 days old is well under the 90-day expectation");
+  // The age figure must never affect whether the run is considered ok — see
+  // ADR-0004: this monitor proves the contracts hold, not that a person
+  // reviewed the layers again.
+  assert.equal(fresh.ok,true);
+
+  const stale=buildReport(checks,
+    {generatedAt:"2026-12-20T00:00:00.000Z",dataReviewedOn:"2026-08-13"});
+  assert.equal(stale.dataReviewedAgeDays,129);
+  assert.match(dataReviewWarning(stale),/129 days old/);
+  assert.match(dataReviewWarning(stale),/90-day/);
+  assert.equal(stale.ok,true,"an old review date is a warning, never a failed contract");
+
+  // Missing either date yields null rather than a wrong number of days.
+  const noDate=buildReport(checks,{generatedAt:"2026-09-10T00:00:00.000Z"});
+  assert.equal(noDate.dataReviewedAgeDays,null);
+  assert.equal(dataReviewWarning(noDate),null);
+});
+
+test("check-services.mjs derives the data-review age from CFG.release.dataReviewedOn",async()=>{
+  const source=await readFile(new URL("../scripts/check-services.mjs",import.meta.url),"utf8");
+  assert.match(source,/dataReviewedOn:\s*CFG\.release\.dataReviewedOn/,
+    "the live monitor's age check must read the same dataReviewedOn the page publishes, "+
+    "not a value it tracks separately");
+  assert.match(source,/dataReviewWarning/,
+    "check-services.mjs must call the shared warning helper rather than re-deriving it");
+});
+
+// The workflow file has to keep naming dataReviewedOn so the age check cannot
+// be quietly dropped from the job without a reviewer noticing the comment
+// disappear along with it.
+test("the live-service-monitor workflow documents the dataReviewedOn age check",async()=>{
+  const workflow=await readFile(
+    new URL("../.github/workflows/live-service-monitor.yml",import.meta.url),"utf8");
+  assert.match(workflow,/dataReviewedOn/);
+  assert.match(workflow,/90.day/i);
+});
+
+test("every displayed layer's governance metadata is still intact after A5",()=>{
+  // A5 reads sourceOwner/reviewedOn to build resident-facing attribution but
+  // must not touch the values themselves — re-assert the A2-era governance
+  // test's shape here so a regression in this PR's own diff is caught by the
+  // test it is closest to, not only by the pre-existing one far above.
+  const {CFG}=pureApp();
+  for(const layer of CFG.LAYERS.filter(layer=>!layer.hidden)){
+    assert.ok(layer.sourceOwner,layer.key+" source owner");
+    assert.match(layer.reviewedOn,/^\d{4}-\d{2}-\d{2}$/,layer.key+" review date");
+  }
+  assert.ok(CFG.parcel.sourceOwner,"CFG.parcel.sourceOwner");
+  assert.match(CFG.parcel.reviewedOn,/^\d{4}-\d{2}-\d{2}$/,"CFG.parcel.reviewedOn");
 });

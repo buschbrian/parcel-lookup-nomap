@@ -48,6 +48,13 @@ jobs:
       # from transport failure that survived the retries (the service is down,
       # which is not Millcreek's to fix). The tee'd log is kept as backup for a
       # crash before the report is written.
+      #
+      # It also prints how old CFG.release.dataReviewedOn is (RELEASE.md's own
+      # 90-day review expectation), as a ::warning:: annotation and an extra
+      # step-summary line once it passes 90 days — never a failing exit code.
+      # dataReviewedOn itself stays human-set; see
+      # docs/decisions/0004-the-data-review-date-stays-human.md for why this
+      # monitor only flags it as due rather than confirming it.
       - name: Check live service contracts
         shell: bash
         run: |

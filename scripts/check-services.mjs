@@ -1,8 +1,8 @@
 import { writeFile } from "node:fs/promises";
 import { readApp, readBusinessApp } from "./app-config.mjs";
-import { buildReport, classifyCheckFailure, classifyHttp, contractFailure, layerFieldList,
-  parcelFieldList, pointInRings, probePoints, renderSummary, settleLayerChecks, transportFor,
-  withRetry } from "./service-contract-core.mjs";
+import { buildReport, classifyCheckFailure, classifyHttp, contractFailure, dataReviewWarning,
+  layerFieldList, parcelFieldList, pointInRings, probePoints, renderSummary, settleLayerChecks,
+  transportFor, withRetry } from "./service-contract-core.mjs";
 
 const {CFG}=await readApp();
 const {CFG:businessCFG}=await readBusinessApp();
@@ -589,13 +589,33 @@ await contract("public-web-map-parity",CFG.referenceWebMap.itemId,async()=>{
    service-contract-core.mjs — the parcel query above still explicitly requests
    ownerField and careOfField, so owner names pass through this process and must
    never reach the file. */
-const report=buildReport(checks,{generatedAt:new Date().toISOString()});
+const report=buildReport(checks,
+  {generatedAt:new Date().toISOString(),dataReviewedOn:CFG.release.dataReviewedOn});
 await writeFile(new URL("../service-contract-report.json",import.meta.url),
   JSON.stringify(report,null,2)+"\n","utf8");
 const summary=renderSummary(report);
 console.log("\n"+summary);
 if(process.env.GITHUB_STEP_SUMMARY)
   await writeFile(process.env.GITHUB_STEP_SUMMARY,summary,{flag:"a"});
+
+// Data review age (A5). This never fails the run — see
+// docs/decisions/0004-the-data-review-date-stays-human.md — it only tells a
+// human the 90-day expectation in RELEASE.md is due. Printed unconditionally
+// so a release candidate always shows the figure the warning is based on;
+// the GitHub Actions ::warning:: annotation and the extra step-summary line
+// are added only once it actually crosses the threshold.
+if(typeof report.dataReviewedAgeDays==="number"){
+  console.log("dataReviewedOn "+report.dataReviewedOn+" is "+
+    report.dataReviewedAgeDays+" day(s) old.");
+  const warning=dataReviewWarning(report);
+  if(warning){
+    console.log("::warning::"+warning);
+    if(process.env.GITHUB_STEP_SUMMARY)
+      await writeFile(process.env.GITHUB_STEP_SUMMARY,
+        "\n**"+warning+"**\n",{flag:"a"});
+  }
+}
+
 if(!report.ok){
   console.error(report.failed.length+" service contract(s) failed: "+
     report.contractFailures.length+" drift, "+report.transportFailures.length+" transport");

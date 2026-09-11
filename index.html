@@ -608,8 +608,16 @@ const CFG = {
       coverageWholeNoun:"district", coverageMapName:"zoning map",
       coveragePolygonNoun:"zoning polygon", coverageGapTail:"this property has no zoning",
       // Field labels stay short: the layer label is prepended to every row.
-      fields:{ZONE_:"Code", ZONE_DESC:"Category",
-              Zone_Desc1:"Ordinance"} },
+      // ZONE_DESC (the all-caps category, e.g. RESIDENTIAL) is dropped in
+      // favour of Category, which carries the same idea in sentence case.
+      // ZoneName is not shown: verified 10 September 2026, it disagrees with
+      // ZONE_ (e.g. "C" where ZONE_ says "C-2") — see DATA-SOURCES.md. No
+      // nameField is set here, so pair()'s link text for CodebookURL falls
+      // back to the row label ("Base zoning district — Read the code
+      // section"), never the bare URL.
+      fields:{ZONE_:"Code", Category:"Category",
+              Zone_Desc1:"What this district is for",
+              CodeRef:"Code section", CodebookURL:"Read the code section"} },
 
     // NOTE: FCOZ (Zone_FCOZ) and RCOZ (Zone_RCOZ) were removed August 2026 —
     // both are superseded by the Sensitive Land Areas regulation. Do not

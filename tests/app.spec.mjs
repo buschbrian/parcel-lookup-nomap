@@ -23,8 +23,12 @@ function parcel(overrides={}){
    object id alone, so fixtures that all answered to id 1 would make every join
    succeed and every coverage assertion vacuous. */
 const layerFeatures={
-  Zone_Update_2025___Related_Master:[{OBJECTID:101,ZONE_:"R-1-8",ZONE_DESC:"Residential",
-    Zone_Desc1:"https://example.test/zoning"}],
+  Zone_Update_2025___Related_Master:[{OBJECTID:101,ZONE_:"R-1-8",
+    Category:"Single-Household Residential",
+    Zone_Desc1:"R-1-8 zoning is designated for low density, single-household development "+
+      "within Millcreek.",
+    CodeRef:"18.36",
+    CodebookURL:"https://millcreek.municipalcodeonline.com/book?type=planzone#name=18.36_R-1-8_Zone"}],
   FutureLandUse_2024_Millcreek:[{OBJECTID:201,LandUse:"Neighborhood 1",
     GENPLAN_WEBSITE:"https://example.test/plan",
     GENPLAN_DOCUMENT:"https://example.test/document"}],
@@ -635,12 +639,21 @@ test("coverage layers still answer when parcel centroid coordinates are missing"
    evidence the fixture supplies, because the sentence is only correct for that
    evidence: a fixture edited without the assertion is how an overclaim ships.
    =========================================================================== */
-const R18={OBJECTID:101,ZONE_:"R-1-8",ZONE_DESC:"Residential",
-  Zone_Desc1:"https://example.test/zoning"};
-const R18_ADJACENT={OBJECTID:103,ZONE_:"R-1-8",ZONE_DESC:"Residential",
-  Zone_Desc1:"https://example.test/zoning"};
-const C2={OBJECTID:102,ZONE_:"C-2",ZONE_DESC:"Commercial",
-  Zone_Desc1:"https://example.test/commercial"};
+const R18={OBJECTID:101,ZONE_:"R-1-8",Category:"Single-Household Residential",
+  Zone_Desc1:"R-1-8 zoning is designated for low density, single-household development "+
+    "within Millcreek.",
+  CodeRef:"18.36",
+  CodebookURL:"https://millcreek.municipalcodeonline.com/book?type=planzone#name=18.36_R-1-8_Zone"};
+const R18_ADJACENT={OBJECTID:103,ZONE_:"R-1-8",Category:"Single-Household Residential",
+  Zone_Desc1:"R-1-8 zoning is designated for low density, single-household development "+
+    "within Millcreek.",
+  CodeRef:"18.36",
+  CodebookURL:"https://millcreek.municipalcodeonline.com/book?type=planzone#name=18.36_R-1-8_Zone"};
+const C2={OBJECTID:102,ZONE_:"C-2",Category:"Neighborhood Commercial",
+  Zone_Desc1:"C-2 zoning is designated for general commercial development along arterial "+
+    "streets within Millcreek.",
+  CodeRef:"18.40",
+  CodebookURL:"https://millcreek.municipalcodeonline.com/book?type=planzone#name=18.40_C-2_Zone"};
 const CCOZ_FEATURE={OBJECTID_1:701};
 const PLANNING="801-214-2700";
 
@@ -781,12 +794,32 @@ test("an overlay containing the whole parcel says so, and a partial one does not
   await expect(overlay).not.toContainText("all of this property");
 });
 
+/* A4, 10 September 2026: the code-section reference and the link to the
+   codebook, named after what they hold instead of the old mislabelled
+   "Ordinance" row. */
+test("the code section and codebook link render alongside the purpose sentence",
+  async({page})=>{
+  await coverageLookup(page,{coverage:{[ZONE]:{intersects:[R18],probe:[R18],within:[R18]}}});
+  await expect(zoningCard(page)).toContainText("Base zoning district — Code section18.36");
+  await expect(zoningCard(page)).toContainText(
+    "Base zoning district — Category"+R18.Category);
+  await expect(zoningCard(page)).toContainText(
+    "Base zoning district — What this district is for"+R18.Zone_Desc1);
+  const link=zoningCard(page).getByRole("link",{name:"Read the code section"});
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute("href",R18.CodebookURL);
+  // The link text is the row label, never the bare URL (2.4.4 Link Purpose).
+  await expect(link).not.toHaveText(/^https?:\/\//);
+});
+
 test("two adjacent features with the same code are one designation",async({page})=>{
   await coverageLookup(page,{coverage:{[ZONE]:{intersects:[R18,R18_ADJACENT],
     probe:[R18,R18_ADJACENT],within:[]}}});
   await expect(zoningCard(page)).toContainText("This property is in the R-1-8 zoning district.");
   await expect(zoningCard(page)).not.toContainText("more than one zoning district");
-  await expect(page.locator("#results-body dt",{hasText:"Base zoning district — Code"}))
+  // Exact match, not a substring: "Base zoning district — Code section" (the
+  // CodeRef row) would otherwise also match a hasText search for "...— Code".
+  await expect(page.locator("#results-body dt",{hasText:/^Base zoning district — Code$/}))
     .toHaveCount(1);
 });
 

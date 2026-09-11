@@ -299,7 +299,8 @@ explicitly for anything resident-facing.
 | `fields` | Which attributes show, and their labels. Order is preserved |
 | `boolean: true` | Render as Yes/No. Use for layers with no attributes |
 | `note` | Explanation shown when a boolean layer is "Yes" |
-| `hidden: true` | Query it but don't display — used for cross-checks |
+| `hidden: true` | Query it but don't display — used for cross-checks. Still give it a `sourceOwner` and `reviewedOn`: if a visible layer names it in `dependsOn`, residents see its attribution |
+| `dependsOn` | Keys of hidden layers this layer derives a displayed result from (the FEMA layer's cross-check comparison). Their owners and review dates are named in the card's "Sources:" sentences, directly after this layer's, so no displayed result has an unnamed source |
 | `attachments: true` | Also fetch attached files (the recorded plat) |
 | `attachmentLabel` | Link label for attachments |
 | `nameField` | Field holding the organisation's name. Used as **link text**, so a link reads "Rocky Mountain Power" rather than "Provider website" |

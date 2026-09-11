@@ -180,12 +180,21 @@ export function layerFieldList(layer){
 function pointInRings(rings,x,y){
   let inside=false;
   for(const ring of rings||[]){
-    if(!Array.isArray(ring)) continue;
+    /* An unreadable ring or vertex makes the whole answer unusable, not a
+       skippable edge (A3-R04). Skipping one drops two edges from the even-odd
+       count and silently flips the parity, so this would return a confident
+       wrong boolean — and a probe point wrongly judged inside is sent as Q2
+       evidence, which is how a district that merely borders the property would
+       get "confirmed" as covering it. Refusing instead means no probe survives,
+       the caller falls back to the point-only path, and the page says it could
+       only check the centre. That is the same way every other degenerate input
+       here is handled: decline to answer rather than answer wrongly. */
+    if(!Array.isArray(ring)) return false;
     for(let i=0,n=ring.length;i<n;i++){
       const from=ring[i], to=ring[(i+1)%n];
-      if(!from||!to) continue;
+      if(!from||!to) return false;
       const x1=Number(from[0]),y1=Number(from[1]),x2=Number(to[0]),y2=Number(to[1]);
-      if(!(Number.isFinite(x1)&&Number.isFinite(y1)&&Number.isFinite(x2)&&Number.isFinite(y2))) continue;
+      if(!(Number.isFinite(x1)&&Number.isFinite(y1)&&Number.isFinite(x2)&&Number.isFinite(y2))) return false;
       const cross=(x2-x1)*(y-y1)-(y2-y1)*(x-x1);
       if(Math.abs(cross)<=1e-12 &&
          x>=Math.min(x1,x2)-1e-12 && x<=Math.max(x1,x2)+1e-12 &&

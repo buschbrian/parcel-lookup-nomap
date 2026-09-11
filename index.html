@@ -1702,7 +1702,12 @@ function addressFromQuery(search){
    default view. */
 function mapLinkUrl(base,{lon,lat,scale}={}){
   if(!Number.isFinite(lon) || !Number.isFinite(lat)) return base;
-  return base+"?lon="+lon.toFixed(6)+"&lat="+lat.toFixed(6)+"&scale="+scale;
+  // scale gets the same guard as the coordinates rather than being trusted
+  // into the URL: a missing or malformed one would read "&scale=undefined".
+  // It is dropped on its own, so a bad scale still lands the map on the
+  // property at its default zoom instead of costing the point entirely.
+  const point=base+"?lon="+lon.toFixed(6)+"&lat="+lat.toFixed(6);
+  return Number.isFinite(scale)&&scale>0 ? point+"&scale="+scale : point;
 }
 
 /* Tiered search. Returns the first tier that finds anything, plus a note
@@ -1963,7 +1968,13 @@ async function load(parcelId, label){
     // record the way the parcel id is (SECURITY.md) — and only replaceState, never
     // pushState: there is no popstate handler, so a history entry per lookup would
     // do nothing but make Back appear to do nothing.
-    history.replaceState(null, "", location.pathname + "?parcel=" + parcelId);
+    //
+    // Encoded, because on the address path this id comes from the address point
+    // record rather than from parcelFromQuery: an unexpected "&" or space would
+    // otherwise write a link that parcelFromQuery then rejects, quietly breaking
+    // the sharing this exists for.
+    history.replaceState(null, "",
+      location.pathname + "?parcel=" + encodeURIComponent(parcelId));
     finishTask(task);
   }catch(err){
     if(mine!==seq || err.kind==="aborted") return;

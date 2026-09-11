@@ -782,6 +782,13 @@ test("mapLinkUrl appends lon/lat rounded to six decimals plus scale, or returns 
   assert.equal(mapLinkUrl(base,{lon:-111.815,lat:undefined,scale:2000}),base); // missing lat
   assert.equal(mapLinkUrl(base,{lon:NaN,lat:40.699,scale:2000}),base);
   assert.equal(mapLinkUrl(base),base);
+  // A6-R02: scale is guarded like the coordinates rather than interpolated on
+  // trust, which used to write the literal "&scale=undefined". It drops on its
+  // own, so a usable point still lands the map on the property.
+  const point=base+"?lon=-111.815000&lat=40.699000";
+  assert.equal(mapLinkUrl(base,{lon:-111.815,lat:40.699}),point,"no scale given");
+  assert.equal(mapLinkUrl(base,{lon:-111.815,lat:40.699,scale:"2000"}),point,"a string scale");
+  assert.equal(mapLinkUrl(base,{lon:-111.815,lat:40.699,scale:0}),point,"a zero scale");
 });
 
 /* MAP-001: the helper's guard is not the whole rule, because the caller decides

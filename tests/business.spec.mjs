@@ -8,9 +8,19 @@ const geometry={rings:[[
   [-111.816,40.700],[-111.816,40.698]
 ]],spatialReference:{wkid:4326}};
 
+/* The hosted service answers HTTP 404 to a GET whose full URL passes about 2,048
+   bytes — verified live on 10 September 2026 — so the fixture does too. The buffer
+   query carries the parcel boundary and is the one that reaches that length. */
+const SERVICE_URL_LIMIT=2048;
+
 async function mockArcGIS(page,state={}){
+  const requests=state.requests||(state.requests=[]);
   await page.route("**/arcgis/rest/services/**",async route=>{
-    const url=new URL(route.request().url()),path=url.pathname;
+    const request=route.request();
+    requests.push({method:request.method(),url:request.url(),body:request.postData()||""});
+    if(request.method()==="GET"&&Buffer.byteLength(request.url(),"utf8")>SERVICE_URL_LIMIT)
+      return route.fulfill({status:404,body:"URL too long"});
+    const url=new URL(request.url()),path=url.pathname;
     const json=body=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(body)});
     if(!path.endsWith("/query"))return json({fields:[]});
     if(path.includes("/Address_Points/")){
@@ -34,7 +44,7 @@ async function mockArcGIS(page,state={}){
       const known=[address,otherAddress].find(one=>where.includes(one.ParcelID))||address;
       return json({features:[{attributes:{
         parcel_id:known.ParcelID,prop_location:known.FullAdd
-      },geometry}]});
+      },geometry:state.geometry||geometry}]});
     }
     if(path.includes("/Short_Term_Rentals_June_2026/FeatureServer/0/")){
       if(state.countRental)state.countRental();
@@ -52,6 +62,7 @@ async function mockArcGIS(page,state={}){
     }
     return json({features:[]});
   });
+  return requests;
 }
 
 async function loadByKeyboard(page){
@@ -405,4 +416,64 @@ test("the licensing back-link cannot outgrow its container",async({page})=>{
   });
   expect(nav.link).toBeLessThanOrEqual(nav.container);
   expect(nav.doc).toBeLessThanOrEqual(1);
+});
+
+/* An over-long buffer query — 10 September 2026.
+   -----------------------------------------------------------------------
+   This screen's buffer query carries the whole parcel boundary, so it is the
+   licensing page's oversized request. As a GET past about 2,048 bytes the
+   service answers 404, which rendered "Unknown" on the separation question:
+   the one answer a resident cannot act on, for perhaps 12 parcels in 1,000.
+
+   52 vertices is a measurement, not a round number: it encodes to roughly 2,300
+   bytes against the configured buffer layer path, over both the page's
+   CFG.request.maxUrlBytes and the service's own ceiling. */
+function ringOf(vertices){
+  const points=Array.from({length:vertices-1},(unused,index)=>{
+    const angle=(index/(vertices-1))*Math.PI*2;
+    return [Number((-111.815+0.0012345678*Math.cos(angle)).toFixed(9)),
+      Number((40.699+0.0012345678*Math.sin(angle)).toFixed(9))];
+  });
+  return {rings:[[...points,points[0]]],spatialReference:{wkid:4326}};
+}
+
+test("a licensing parcel whose boundary overflows the URL is posted and still answered",
+  async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  const requests=await mockArcGIS(page,{geometry:ringOf(52)});
+  await page.reload();
+  await page.evaluate(()=>{CFG.request.retryDelayMs=1});
+  const limit=await page.evaluate(()=>CFG.request.maxUrlBytes);
+  expect(limit,"the URL limit is configuration, not a constant in the code").toBe(1900);
+  await loadByKeyboard(page);
+
+  const bufferQueries=requests.filter(request=>
+    request.url.includes("/FeatureServer/1/query")||request.body.includes("BUFF_DIST"));
+  expect(bufferQueries.length,"the buffer layer was queried").toBeGreaterThan(0);
+  for(const request of bufferQueries){
+    expect(request.method).toBe("POST");
+    expect(request.body).toContain("geometry=");
+    expect(request.url).not.toContain("geometry=");
+    expect(Buffer.byteLength(request.url+"?"+request.body,"utf8"),
+      "the fixture must exceed the limit to prove anything").toBeGreaterThan(limit);
+  }
+  expect(requests.filter(request=>request.method==="GET"&&
+    Buffer.byteLength(request.url,"utf8")>limit)).toEqual([]);
+
+  // Yes/No, not the Unknown the 404 used to produce.
+  await expect(page.locator(".pair",{hasText:"Appears in the June 2026"})).toContainText("No");
+  await expect(page.locator(".pair",{hasText:"Within 400 feet"})).toContainText("Yes");
+  await expect(page.locator("#results-body")).not.toContainText("did not return a result");
+  await expect(page.locator("#status")).toContainText("Two licensing-map checks completed");
+});
+
+test("a licensing buffer that genuinely fails still says so rather than answering No",
+  async({page})=>{
+  await page.unrouteAll({behavior:"wait"});
+  await mockArcGIS(page,{geometry:ringOf(52),bufferFailure:true});
+  await page.reload();
+  await page.evaluate(()=>{CFG.request.retryDelayMs=1});
+  await loadByKeyboard(page);
+  await expect(page.locator(".pair",{hasText:"Within 400 feet"})).toContainText("Unknown");
+  await expect(page.locator("#results-body")).toContainText("did not return a result");
 });

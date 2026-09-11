@@ -56,6 +56,46 @@ export function classifyHttp(status){
   return {kind:"http",transient:false};
 }
 
+/* The kind a report should show for a thrown error: "contract" for anything
+   marked as one (see contractFailure above) or a failed assertion, otherwise
+   whatever transport classification produced it — classifyHttp's kind, copied
+   onto the error inside check-services.mjs's json() helper — or "unknown" for
+   an error nothing here recognises. A single check and a settled batch of
+   per-item checks (settleLayerChecks below) both need this, so it lives once
+   rather than being re-derived at each call site and risking drift between
+   them. */
+export function classifyCheckFailure(error){
+  if(error?.kind==="contract"||error instanceof assert.AssertionError) return "contract";
+  return error?.kind||"unknown";
+}
+
+/* Settles every item's check before anything is reported, so failures that
+   happen at the same time on different items are each recorded with their
+   own classification. A single fail-fast Promise.all here used to mean
+   whichever rejection arrived first was the only one anybody ever saw — a
+   transport error on one polygon layer could bury a genuine contract failure
+   on another, and which one survived depended on network timing rather than
+   on what actually went wrong (A1-R02).
+
+   Pure and injectable: `run` stands in for the per-item network call, so this
+   is exercised in the unit suite with a fake per-item function and no fetch.
+   Returns the fulfilled values in item order (undefined where an item
+   failed) alongside one failure record per rejection, already shaped for
+   checks.push in check-services.mjs. */
+export async function settleLayerChecks(items,keyFor,run){
+  const outcomes=await Promise.allSettled(items.map(item=>run(item)));
+  const failures=[];
+  const values=outcomes.map((outcome,index)=>{
+    if(outcome.status==="fulfilled") return outcome.value;
+    const error=outcome.reason;
+    failures.push({key:keyFor(items[index]),ok:false,
+      failure:{kind:classifyCheckFailure(error),message:error?.message||String(error),
+        attempts:error?.attempts||1}});
+    return undefined;
+  });
+  return {failures,values};
+}
+
 export function classifyThrown(error){
   // Contract findings and assertion failures first: these outrank any transport
   // code they happen to be carrying.
@@ -70,6 +110,26 @@ export function classifyThrown(error){
     return {kind:"network",transient:true};
   return {kind:"unknown",transient:false};
 }
+
+/* ==== TRANSPORT POLICY — textually identical to the copy in each page's shared
+   request layer; a unit test compares the two ====
+
+   The monitor must reach the services the same way the pages do. When it sent a
+   long parcel boundary as a GET and the page did too, both failed the same way
+   and the monitor at least agreed with reality; if only one of them changed,
+   the monitor would either pass a parcel the page cannot load or fail one it
+   can. So the rule lives here in the same words, and the request helper in
+   check-services.mjs applies it.
+
+   Keep the function below byte-for-byte the same as the pages' copy. The
+   reasoning behind it — why the whole URL is measured, and why the geometry is
+   never rounded to fit — is documented at that copy in index.html. */
+function transportFor(fullUrl, cfg){
+  const limit = Number(cfg?.request?.maxUrlBytes);
+  if(!Number.isFinite(limit) || limit <= 0) return "GET";
+  return new TextEncoder().encode(String(fullUrl)).length > limit ? "POST" : "GET";
+}
+export { transportFor };
 
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 

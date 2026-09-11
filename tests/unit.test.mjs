@@ -52,6 +52,84 @@ test("both pages carry one byte-identical request layer",()=>{
   assert.equal(sharedRegion(licensingScript,"REQUEST LAYER"),sharedRegion(script,"REQUEST LAYER"));
 });
 
+/* The shared block, evaluated on its own against stubbed platform globals.
+
+   transportFor() decides whether a resident's query reaches the service at all,
+   and the decision turns on a single byte, which no browser test can place
+   precisely. It has to live inside the byte-identical region because both pages
+   call it, so it cannot move into the pureApp() region; this extractor reaches
+   into the region instead. A fresh vm context has none of the web globals the
+   block closes over, so they are supplied here. */
+function sharedBlock(){
+  const region=sharedRegion(script,"REQUEST LAYER");
+  return vm.runInNewContext(region+"\n;({transportFor,layerUrl,svcError,explain});",{
+    CFG:{org:"https://services9.arcgis.com/XRrSFvEwSsReIxuA/arcgis/rest/services",
+      request:{timeoutMs:12000,retryDelayMs:1,maxConcurrent:12,maxUrlBytes:1900},
+      contact:{phone:"801-214-2759"}},
+    location:{protocol:"https:"},
+    fetch:async()=>({ok:true,status:200,json:async()=>({})}),
+    AbortController,URL,URLSearchParams,TextEncoder,setTimeout,clearTimeout
+  });
+}
+
+/* Verified 10 September 2026 against the live service: parcel 16273550010000
+   encodes to a ~3,700-byte query, every hosted polygon layer answered HTTP 404
+   to it as a GET, and the identical parameters answered 200 as a POST. About 12
+   of every 1,000 parcels are over the limit, so those residents saw
+   "Temporarily unavailable" on every polygon-queried layer. */
+test("the shared transport rule switches to POST past the configured URL byte limit",()=>{
+  const {transportFor}=sharedBlock();
+  const cfg={request:{maxUrlBytes:1900}};
+  const urlOfBytes=(prefix,bytes)=>prefix+"a".repeat(bytes-Buffer.byteLength(prefix));
+  // Two service paths of different lengths: the limit is on the whole URL, so a
+  // longer path must leave less room for the geometry rather than shifting the
+  // switch point.
+  const shortPath="https://services9.arcgis.com/x/FeatureServer/0/query?geometry=";
+  const longPath="https://services9.arcgis.com/XRrSFvEwSsReIxuA/arcgis/rest/services/"+
+    "Sensitive_Land_Areas__Feb24/FeatureServer/0/query?f=json&returnGeometry=false&geometry=";
+  for(const prefix of [shortPath,longPath]){
+    assert.equal(transportFor(urlOfBytes(prefix,1899),cfg),"GET");
+    assert.equal(transportFor(urlOfBytes(prefix,1900),cfg),"GET","the limit itself still fits");
+    assert.equal(transportFor(urlOfBytes(prefix,1901),cfg),"POST");
+  }
+  // Bytes, not characters. A URL counted in characters would be let through at
+  // 1,900 characters and rejected by the service at 1,901 bytes.
+  const multibyte=urlOfBytes(shortPath,1899).slice(0,-1)+"é";
+  assert.equal(Buffer.byteLength(multibyte),1900);
+  assert.equal(multibyte.length,1899);
+  assert.equal(transportFor(multibyte,cfg),"GET");
+  assert.equal(transportFor(multibyte+"a",cfg),"POST");
+  // No limit configured is the old behaviour, not a page that posts everything.
+  assert.equal(transportFor(urlOfBytes(shortPath,4000),{request:{}}),"GET");
+});
+
+test("both pages configure the URL byte limit the shared layer reads",()=>{
+  for(const cfg of [pureApp().CFG,businessConfig()]){
+    assert.equal(typeof cfg.request.maxUrlBytes,"number");
+    // Under the service's ~2,048-byte ceiling, with room for proxies in between.
+    assert.ok(cfg.request.maxUrlBytes>0&&cfg.request.maxUrlBytes<=2000);
+  }
+  assert.match(sharedRegion(script,"REQUEST LAYER"),
+    /Requires from CFG:[\s\S]*?request\.maxUrlBytes/,
+    "the shared block's Requires-from-CFG list names every key it reads");
+});
+
+/* The monitor has to reach the services the way the pages do. If it sent long
+   geometries as GET while the pages posted them, it would fail parcels that work
+   and, worse, could pass a transport no resident actually gets. */
+test("the service monitor carries the page's transport rule verbatim",async()=>{
+  const core=await readFile(new URL("../scripts/service-contract-core.mjs",import.meta.url),"utf8");
+  const transportSource=(source,where)=>{
+    const start=source.indexOf("function transportFor");
+    assert.ok(start>=0,where+" has no transportFor");
+    const end=source.indexOf("\n}\n",start);
+    assert.ok(end>start,where+" transportFor has no closing brace");
+    return source.slice(start,end+3);
+  };
+  assert.equal(transportSource(core,"service-contract-core.mjs"),
+    transportSource(sharedRegion(script,"REQUEST LAYER"),"the shared request layer"));
+});
+
 test("the shared request layer classifies errors and retries only transient ones",()=>{
   const region=sharedRegion(script,"REQUEST LAYER");
   assert.match(region,/function svcError/);
@@ -178,6 +256,38 @@ test("the live service contract derives parcel fields from configuration",async(
   for(const key of ["ownerField","careOfField","assessorLinkField"])
     assert.match(source,new RegExp("CFG\\.parcel\\."+key),
       "check-services.mjs verifies CFG.parcel."+key);
+});
+
+/* A1-R01 / A1-R02 (2026-09-10): the long-geometry checks' own reasoning turned
+   out to blur transport failure and contract drift back together in two ways -
+   see scripts/service-contract-core.mjs's settleLayerChecks and the tests
+   there for the behavioral coverage. check-services.mjs itself can't be
+   imported in a unit test (it makes live network calls at module load), so
+   this locks down the two control-flow shapes those fixes depend on. */
+test("A1-R02: the long-geometry-parcel check settles every polygon layer instead of racing them",
+  async()=>{
+    const source=await readFile(new URL("../scripts/check-services.mjs",import.meta.url),"utf8");
+    assert.match(source,/settleLayerChecks\(\s*\n?\s*polygonLayers/,
+      "polygon layers are settled individually so one layer's transport failure cannot "+
+      "hide another layer's contract failure, or vice versa");
+    assert.doesNotMatch(source,/Promise\.all\(polygonLayers\.map/,
+      "the old fail-fast race over polygon layers is gone");
+  });
+
+test("A1-R01: the long-geometry-transport check is skipped, not faked as contract drift, "+
+  "when its prerequisite never retrieved a geometry",async()=>{
+  const source=await readFile(new URL("../scripts/check-services.mjs",import.meta.url),"utf8");
+  const start=source.indexOf('await contract("long-geometry-parcel"');
+  const end=source.indexOf("const informationalHazardParcels");
+  assert.ok(start>=0&&end>start,"the long-geometry checks are still where this test expects them");
+  const region=source.slice(start,end);
+  assert.match(region,
+    /if\s*\(\s*longGeometry\s*\)\s*await contract\(\s*"long-geometry-transport"/,
+    "the dependent check runs only once the prerequisite geometry was actually retrieved");
+  assert.match(region,/else\s+skip\(\s*"long-geometry-transport"/,
+    "a missing prerequisite skips the dependent check instead of failing it");
+  assert.doesNotMatch(region,/the long-geometry parcel geometry is unavailable/,
+    "the dependent check no longer fabricates its own contract failure over a missing prerequisite");
 });
 
 test("zoning follows the public map and does not display density",()=>{

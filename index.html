@@ -461,7 +461,16 @@ const CFG = {
   //
   // Lowering this is always safe and never breaks anything — it only makes lookups
   // slower. Raise it only with a fresh measurement.
-  request: { timeoutMs:12000, retryDelayMs:700, suggestDebounceMs:250, maxConcurrent:12 },
+  //
+  // maxUrlBytes is the longest complete request URL — origin, path and query
+  // together — that is still sent as a GET. Above it the same parameters go as a
+  // form-urlencoded POST, because the hosted ArcGIS service answers HTTP 404
+  // once the URL passes about 2,048 bytes and a parcel boundary can easily be
+  // 3,700. 1900 keeps a margin under that limit for the proxies in between.
+  // Lowering it only shifts more queries to POST; raising it past ~2000 brings
+  // the 404 back.
+  request: { timeoutMs:12000, retryDelayMs:700, suggestDebounceMs:250, maxConcurrent:12,
+             maxUrlBytes:1900 },
 
   // Address suggestions come from the City's authoritative address points.
   //
@@ -790,7 +799,7 @@ function say(msg, tone){
    identical copies extract mechanically while divergent ones do not.
 
    Requires from CFG: org, request.timeoutMs, request.retryDelayMs,
-   request.maxConcurrent, contact.phone.
+   request.maxConcurrent, request.maxUrlBytes, contact.phone.
 
    --- REST helper -------------------------------------------------
    Errors are CLASSIFIED (err.kind) rather than collapsed into one
@@ -838,7 +847,7 @@ function acquireSlot(){
 }
 function releaseSlot(){ inFlight--; pump(); }
 
-async function fetchJson(url, signal){
+async function fetchJson(url, signal, init){
   const u = url instanceof URL ? url : new URL(url);
   if(signal?.aborted) throw svcError("aborted","Request was superseded",String(u));
   await acquireSlot();
@@ -853,7 +862,11 @@ async function fetchJson(url, signal){
   let r;
   try{
     if(signal?.aborted) throw svcError("aborted","Request was superseded",String(u));
-    r = await fetch(u, {headers:{Accept:"application/json"}, signal:controller.signal});
+    // `init` carries the POST branch below; the transport contract — timeout,
+    // cancellation, concurrency slot and error classification — is the same either way.
+    const extra = init || {};
+    r = await fetch(u, {...extra, headers:{Accept:"application/json", ...(extra.headers||{})},
+      signal:controller.signal});
     if(r.status===429) throw svcError("busy","Service is rate limiting requests (HTTP 429)",String(u));
     if(r.status>=500)  throw svcError("server","Service error (HTTP "+r.status+")",String(u));
     if(!r.ok)          throw svcError("http","Service returned HTTP "+r.status,String(u));
@@ -890,9 +903,45 @@ async function withRetry(work, signal){
 
 const layerUrl = path => /^https?:\/\//i.test(path) ? path : CFG.org+path;
 
+/* --- Transport selection ----------------------------------------
+   ArcGIS answers the same query as a GET or as a form-urlencoded POST, and the
+   hosted service returns HTTP 404 once the full URL passes about 2,048 bytes.
+   A parcel boundary is the only parameter large enough to do that: parcel
+   16273550010000 encodes to a 3,700-byte query, and about 12 of every 1,000
+   Millcreek parcels are over the limit — for those, every polygon-queried layer
+   reported "Temporarily unavailable" and no resident could tell that from a
+   real "No".
+
+   The measurement is the COMPLETE URL — origin, path and query together —
+   because that is what the server counts. A longer service path leaves less
+   room for the geometry, so measuring the parameters alone would let path and
+   query add up past the limit undetected. It is measured in bytes rather than
+   characters, so a multibyte character costs what it actually costs on the
+   wire.
+
+   What this deliberately does NOT do is shorten the geometry. Rounding
+   coordinates (geometryPrecision, or any simplification) would be a smaller
+   change and a wrong one: precision is what decides whether a parcel touches a
+   flood zone or a 400-foot rental buffer, so moving a boundary to fit a URL
+   would change published answers.
+
+   POST is used only above the limit, so an ordinary lookup keeps its cacheable,
+   loggable GET. Same host, and form-urlencoded is a CORS-safelisted content
+   type, so there is no preflight and no CSP change. */
+function transportFor(fullUrl, cfg){
+  const limit = Number(cfg?.request?.maxUrlBytes);
+  if(!Number.isFinite(limit) || limit <= 0) return "GET";
+  return new TextEncoder().encode(String(fullUrl)).length > limit ? "POST" : "GET";
+}
+
 async function rawQuery(path, params, signal){
-  const u = new URL(layerUrl(path) + "/query");
-  u.search = new URLSearchParams({f:"json", returnGeometry:"false", ...params});
+  const endpoint = layerUrl(path) + "/query";
+  const encoded = new URLSearchParams({f:"json", returnGeometry:"false", ...params}).toString();
+  if(transportFor(endpoint+"?"+encoded, CFG) === "POST")
+    return fetchJson(endpoint, signal, {method:"POST", body:encoded,
+      headers:{"Content-Type":"application/x-www-form-urlencoded"}});
+  const u = new URL(endpoint);
+  u.search = encoded;
   return fetchJson(u,signal);
 }
 

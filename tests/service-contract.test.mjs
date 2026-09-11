@@ -14,8 +14,8 @@ import test from "node:test";
    false alarm that teaches its recipient to ignore it.
 
    Everything below is pure so both cases can be reproduced without a network. */
-import { BACKOFF_MS, buildReport, classifyHttp, classifyThrown, contractFailure,
-  renderSummary, withRetry } from "../scripts/service-contract-core.mjs";
+import { BACKOFF_MS, buildReport, classifyCheckFailure, classifyHttp, classifyThrown,
+  contractFailure, renderSummary, settleLayerChecks, withRetry } from "../scripts/service-contract-core.mjs";
 
 test("transport failures worth retrying are the only ones marked transient",()=>{
   for(const status of [408,425,429,500,502,503,504])
@@ -112,6 +112,83 @@ test("a clean run reports itself as clean",()=>{
   assert.equal(report.ok,true);
   assert.deepEqual(report.failed,[]);
   assert.match(renderSummary(report),/2\s*\/\s*2|all 2/i);
+});
+
+/* A1-R01 and A1-R02 — scripts/check-services.mjs's long-geometry checks.
+   -----------------------------------------------------------------------
+   Both findings were about the same failure mode from opposite directions:
+   losing or mislabeling a real failure when transport and contract trouble
+   happen close together. */
+
+test("A1-R02: settleLayerChecks records every layer's own failure, not just the first to reject",async()=>{
+  // Two layers fail at the same instant, one on transport, one on contract - the
+  // exact scenario a fail-fast Promise.all could not tell apart, because only
+  // whichever rejection arrived first survived to be reported.
+  const layers=[{key:"flood"},{key:"zone"},{key:"parcelboundary"}];
+  const {failures,values}=await settleLayerChecks(layers,
+    layer=>"long-geometry-parcel:"+layer.key,async layer=>{
+      if(layer.key==="flood")
+        throw Object.assign(new Error("flood service returned HTTP 503"),{kind:"server"});
+      if(layer.key==="zone")
+        throw contractFailure("zone returned no feature array for the long-geometry parcel");
+      return 2;
+    });
+  assert.equal(failures.length,2,"both simultaneous failures are recorded, not just one");
+  const byKey=Object.fromEntries(failures.map(failure=>[failure.key,failure]));
+  assert.equal(byKey["long-geometry-parcel:flood"].failure.kind,"server");
+  assert.equal(byKey["long-geometry-parcel:zone"].failure.kind,"contract");
+  assert.deepEqual(values,[undefined,undefined,2],"the layer that answered keeps its value");
+
+  // Fed into the report the way check-services.mjs now feeds them: each as its
+  // own check. A reader deciding whether to wake somebody needs both, correctly
+  // bucketed - the transport one to shrug off, the contract one as real drift.
+  const report=buildReport([...failures,
+    {key:"long-geometry-parcel",ok:true,note:"1 of 3 layers answered"}],
+    {generatedAt:"2026-09-10T00:00:00.000Z"});
+  assert.equal(report.contractFailures.length,1);
+  assert.equal(report.transportFailures.length,1);
+  assert.deepEqual(report.contractFailures.map(check=>check.key),["long-geometry-parcel:zone"]);
+  assert.deepEqual(report.transportFailures.map(check=>check.key),["long-geometry-parcel:flood"]);
+});
+
+test("A1-R02: a layer that never rejects reports no failure at all",async()=>{
+  const layers=[{key:"only"}];
+  const {failures,values}=await settleLayerChecks(layers,layer=>layer.key,async()=>5);
+  assert.deepEqual(failures,[]);
+  assert.deepEqual(values,[5]);
+});
+
+test("classifyCheckFailure prefers a marked contract failure over any transport code it carries",()=>{
+  assert.equal(classifyCheckFailure(contractFailure("drift")),"contract");
+  assert.equal(classifyCheckFailure(new assert.AssertionError({message:"x"})),"contract");
+  assert.equal(classifyCheckFailure(Object.assign(new Error("x"),{kind:"server"})),"server");
+  assert.equal(classifyCheckFailure(new Error("no kind at all")),"unknown");
+});
+
+test("A1-R01: a prerequisite that never retrieved its geometry skips the dependent "+
+  "check instead of being re-reported as contract drift",()=>{
+  // This is the exact shape check-services.mjs now produces when the
+  // long-geometry-parcel fetch exhausts its retries on a transport failure:
+  // longGeometry stays null, and (after the fix) long-geometry-transport is
+  // skipped rather than throwing its own contractFailure over data nothing
+  // ever inspected.
+  const checks=[
+    {key:"long-geometry-parcel",ok:false,detail:"16273550010000",
+      failure:{kind:"server",message:"... returned HTTP 503",attempts:3}},
+    {key:"long-geometry-transport",ok:false,skipped:true,
+      detail:"the long-geometry parcel prerequisite failed, so its geometry was never retrieved"}
+  ];
+  const report=buildReport(checks,{generatedAt:"2026-09-10T00:00:00.000Z"});
+  assert.equal(report.skipped,1);
+  // The one real failure is transport, and only transport - a skip must not
+  // itself land in either bucket, and no second, fabricated "contract" failure
+  // exists to land in contractFailures.
+  assert.equal(report.contractFailures.length,0,
+    "a transport outage on the prerequisite must not also read as contract drift");
+  assert.equal(report.transportFailures.length,1);
+  assert.deepEqual(report.failed.map(check=>check.key),["long-geometry-parcel"]);
+  assert.doesNotMatch(renderSummary(report),/Contract drift/,
+    "a pure transport outage produces no Contract drift section");
 });
 
 test("the report cannot carry resident data",()=>{

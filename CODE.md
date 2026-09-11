@@ -304,7 +304,9 @@ left-padded to the stored 14-digit form.
 record and geometry but treats individual overlay services independently. If centroid coordinates
 are present, `hits()` runs all configured spatial queries in parallel. Layers marked
 `geometryMode: "parcel"` receive the full boundary; others receive the stored point. A layer can
-also define an ArcGIS search distance and units.
+also define an ArcGIS search distance and units. Layers marked `coverage: true` are handled by
+`coverageHits()` before that split — they answer from the boundary and own their own fallback for a
+missing one, described below.
 
 For each layer, `hits()`:
 
@@ -314,6 +316,105 @@ For each layer, `hits()`:
 4. retrieves configured attachments through the same timeout/retry helper;
 5. distinguishes no attachment from an attachment-listing failure;
 6. returns a visible failed-layer record for non-cancellation errors.
+
+### Coverage layers answer from the whole parcel (added 10 September 2026)
+
+Base zoning, future land use and the City Center Overlay carry `coverage: true`. A point is not a
+property: read from the parcel's stored point, zoning answered "Not in this area" for parcels whose
+point falls in a gap in the zoning map, and named one designation for parcels the map splits between
+two. `coverageHits()` asks each coverage layer three questions instead, all with standard ArcGIS
+parameters and no new host:
+
+| | Question | Parameters |
+|:--|:--|:--|
+| Q1 | What does the parcel boundary touch at all? | parcel polygon, `spatialRel=esriSpatialRelIntersects`, explicit `outFields` |
+| Q2 | Which of those cover real area inside it? | multipoint of probe points, `esriSpatialRelIntersects`, `outFields=<oidField>` |
+| Q3 | Does one of them contain the whole parcel? | parcel polygon, `esriSpatialRelWithin`, `outFields=<oidField>` |
+
+`esriSpatialRelWithin` means "the geometry sent is within the feature returned". The REST reference
+does not state the direction, so `check-services.mjs`'s `spatial-relation-direction` contract pins it
+against the live service.
+
+**Probe points** (`probePoints()`) are the centres of a `CFG.coverage.probeGrid` × `probeGrid` grid
+over the parcel's bounding box, offered together with the parcel's stored point, each rounded to
+`coordDecimals` **first** and kept only if the rounded point is strictly inside an outer ring and
+outside every hole (`pointInRings()`, even–odd parity; a point on a ring is rejected). At most
+`maxProbes` are sent. The stored point gets no privilege: an exterior, in-hole or on-boundary stored
+point is dropped like any other failing probe. If no probe survives, or there is no usable boundary,
+the layer runs a real query at the stored point instead and says so.
+
+Probes are **evidence of presence only**. A designation the probes missed is reported as
+unconfirmed, never as absent and never with a size or a proportion — nothing here measures one.
+
+**Identity is the designation, not the feature.** Zoning and future land use group by a field
+(`designationKey`: `ZONE_`, `LandUse`); the overlay has none, so `designationConstant` maps every
+feature to one local key. Q2 and Q3 return the object id and nothing else and join back to Q1 by it;
+grouping happens after the join, so two adjacent polygons with the same code are one answer.
+
+**A response is only an answer if it carries a `features` array.** A body without one is a failed
+query, never an empty result. `exceededTransferLimit` is followed with `resultOffset` under a budget:
+at most `CFG.coverage.maxPages` requests, a page repeating an earlier page's object ids stops it
+immediately, and every page carries the lookup's abort signal. Whatever arrived is kept and the query
+is `incomplete`, which renders as a warning beside the answer rather than in place of it.
+
+`coverageState()` returns `{state, health}` and keeps the two apart on purpose — what the evidence
+shows, and how much of the map could be read. States, in evaluation order: `failed`, `pointOnly-unknown`
+/ `-none` / `-one` / `-many` / `-unusable`, `none`, `conflict`, `whole`, `overlap`, `split`, `present`,
+`unknown`, `unconfirmedOnly`. Health flags: `probesFailed`, `wholeCheckFailed`, `incomplete`,
+`identityMissing`. Any health flag, or a state of `unconfirmedOnly`, `conflict`, `overlap` or
+`pointOnly-*`, counts the layer as degraded in the closing summary.
+
+`coverageSentences()` builds every resident-facing sentence, so each one is unit-testable exactly as
+published. Unconfirmed candidates — `candidates − (confirmed ∪ whole)` — are shown in **every** state:
+nothing Q1 found is ever suppressed. No coverage state can render "Not in this area", and the words
+"most", "small" and "too small" appear in none of these sentences, because the page measures no
+proportion.
+
+**Absence is never inferred from a match this page could not read (10 September 2026 review, A3-R01).**
+`groupByDesignation()` keeps a feature with a readable designation but no object id as a real,
+unconfirmable candidate rather than dropping it, and separately counts `unidentified` — features that
+returned with no attributes at all, or a blank/missing designation value. `coverageState()` only
+resolves to `none` when Q1 is complete **and** genuinely empty; a complete Q1 that returned nothing
+identifiable (`unidentified > 0`) resolves to `unknown` instead, exactly like an incomplete Q1 that
+retained nothing. A CCOZ match with bare `attributes:{}` can therefore never read as a confirmed "No".
+
+**An entry with no `attributes` object is evidence too (COV-001).** `readFeatureRows()` splits a
+`features` array into rows this page can read and a count of rows it cannot, and `coverageQuery()`
+returns that count as `unreadable` alongside the rows; `coverageHits()` adds it to
+`groupByDesignation()`'s `unidentified`. Without it, `{features:[{}]}` was silently dropped down to
+`status:"ok", features:[]` — a non-empty response reported as a complete empty one, which rendered the
+City Center Overlay as a confident "No". Unreadable rows also count toward `resultOffset`, so paging a
+truncated response cannot re-request rows the service already sent. An unreadable Q2 or Q3 row sets
+`identityMissing`, like an object id Q1 never returned.
+
+**The point-only path concludes absence under the same rule (COV-002).** An incomplete point query, or
+one whose matches could not be identified, with nothing retained resolves to `pointOnly-unknown` — "We
+could only check the centre of this property, and we could not read the map there. We do not know what
+covers this property." — instead of `pointOnly-none`, whose sentence asserts that nothing was found
+there. `coverageFlag()` reads it as Unknown, and it counts as degraded like every other `pointOnly-*`.
+
+**A stored coordinate is validated before conversion (A3-R02).** `Number(null)` and `Number("")` are
+both `0`, so a missing latitude or longitude used to pass a naive `Number.isFinite` check and be sent
+as a real point query at `(0, 0)`. `validCoordinate(value, min, max)` rejects `null`, blank strings and
+non-numeric values before any conversion, and checks the result is in range (longitude −180…180,
+latitude −90…90); `coverageHits()` uses it for both the probe-generation point and the point-only
+query, and serialises only the validated number. Missing geometry together with an invalid stored
+point sends no spatial query at all and renders `pointOnly-unusable`.
+
+`draw()` renders one row set per shown designation, then the state's sentence, then any health
+warning. The overlay's Yes / No / Unknown comes from `coverageFlag()`: only a complete query that
+found nothing is No, and an unconfirmed boundary touch is Unknown rather than Yes.
+
+**Every coverage layer identifies itself, even with nothing to show (A3-R03).** A non-boolean coverage
+layer whose state renders no designation (`none`, `unknown`, `pointOnly-none`, `pointOnly-unusable`)
+used to contribute only an unlabelled sentence paragraph — indistinguishable from another coverage
+layer's equally generic fallback sentence in the same card, both on screen and in the copied text,
+since base zoning and future land use share the "Zoning" card. `draw()` now emits one labelled fallback
+row (`<dt>` "`<Layer label>` — Result", `<dd>` the state's own first sentence) whenever a coverage
+layer has no `shownKeys`, so a reader — and the clipboard copy — can always tell which layer a fallback
+sentence belongs to. That row **is** the first sentence, so the paragraphs that follow it start at
+`sentences.slice(1)`; rendering the whole list after the row repeated the sentence immediately below
+itself in the DOM and in the copied text (RENDER-001).
 
 `draw()` emits cards in this order:
 

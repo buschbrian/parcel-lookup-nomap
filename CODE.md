@@ -473,7 +473,17 @@ sentence per distinct pair instead.
 **Where it renders.** Every `renderGroupCard(g)` computes its attribution from `rows` — the same
 overlay list the card's own rows come from, so a layer's attribution appears even when that layer's
 query failed or found nothing, because `sourceOwner`/`reviewedOn` are static `CFG` facts, not query
-results. It is appended as one `p` per sentence inside the card's existing `.note` — after the group's
+results.
+
+**A hidden layer whose data feeds a visible result is attributed too (ATTR-001).** `rows` excludes
+`hidden` layers, but a hidden layer's data can still be on screen: "Millcreek flood layer matches live
+FEMA" is a comparison against the hidden `flood_local` layer, so a resident was shown a flood
+comparison whose second source was never named. A visible layer now declares the hidden layers its
+results are derived from — `dependsOn:["flood_local"]` on the FEMA layer — and `renderGroupCard()`
+appends each declared dependency's `{owner, reviewedOn, label}` directly after its consumer's, so the
+dependency's sentence sits beside the result it produced. A dependency already among the visible rows
+is skipped, and a key named twice is attributed once; declaring a dependency renders no row for it,
+only its attribution. It is appended as one `p` per sentence inside the card's existing `.note` — after the group's
 `GROUP_NOTES` text when the group has one, or as the whole note when it does not (two groups,
 Subdivision and plat and Representation, have no `GROUP_NOTES` entry and previously rendered no note
 at all). The Property record and Location cards are not built from `CFG.LAYERS`, so they call

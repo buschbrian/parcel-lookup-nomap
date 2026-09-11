@@ -1220,6 +1220,45 @@ test("layers sharing an owner and review date collapse into one Sources sentence
     "Base zoning district, Future land use, In the City Center Overlay (CCOZ).");
 });
 
+/* ATTR-001: the Natural hazards card renders "Millcreek flood layer matches live
+   FEMA", a result derived entirely from the hidden flood_local layer. Attribution
+   was built from visible rows, so the resident was shown a flood comparison whose
+   second source — who publishes it, and when anyone last checked it — was never
+   named. Both sources have to appear. */
+test("a hidden layer behind a visible result is named in the attribution (ATTR-001)",
+  async({page})=>{
+  await loadKnownProperty(page);
+  const hazards=page.locator("#results-body .card")
+    .filter({has:page.locator("h3",{hasText:"Natural hazards"})});
+  // The derived result is on screen ...
+  await expect(hazards).toContainText("Millcreek flood layer matches live FEMA");
+  // ... so both of the sources behind it are named, with their own review dates.
+  await expect(hazards).toContainText(
+    "Sources: Federal Emergency Management Agency (National Flood Hazard Layer), "+
+    "checked 9 August 2026 — FEMA flood hazard.");
+  await expect(hazards).toContainText(
+    "Sources: FEMA data published in Millcreek's Planning web map, "+
+    "checked 9 August 2026 — Millcreek flood-layer cross-check.");
+  // Naming it once is enough: the hidden layer is not a row, and the sentence
+  // that names it must not be repeated.
+  const text=await hazards.innerText();
+  expect(text.split("Millcreek flood-layer cross-check").length-1).toBe(1);
+  // And it stays out of the rows themselves — attribution is not a licence to
+  // render a hidden layer's own result.
+  await expect(hazards.locator(".pair dt",{hasText:"Millcreek flood-layer cross-check"}))
+    .toHaveCount(0);
+});
+
+test("the hidden flood layer's attribution reaches the copied text too (ATTR-001)",
+  async({page})=>{
+  await loadKnownProperty(page);
+  await page.locator("#copy").click();
+  const copied=await page.evaluate(()=>navigator.clipboard.readText());
+  expect(copied).toContain(
+    "Sources: FEMA data published in Millcreek's Planning web map, "+
+    "checked 9 August 2026 — Millcreek flood-layer cross-check.");
+});
+
 test("attribution sentences reach the copied text",async({page})=>{
   await loadKnownProperty(page);
   await page.locator("#copy").click();

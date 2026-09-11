@@ -1002,6 +1002,32 @@ test("every displayed layer carries source-governance metadata",()=>{
   }
 });
 
+/* ATTR-001: a hidden layer is not displayed, but its data can be. The FEMA card
+   renders "Millcreek flood layer matches live FEMA", a comparison against the
+   hidden flood_local layer, so that layer's owner and review date have to be
+   named too — and can only be named if the visible layer says it depends on it
+   and the hidden layer carries the metadata. */
+test("a hidden layer feeding a visible result is declared and carries its own metadata",()=>{
+  const {CFG}=pureApp();
+  const fema=CFG.LAYERS.find(layer=>layer.kind==="femaFlood");
+  assert.deepEqual([...(fema.dependsOn||[])],["flood_local"],
+    "the derived comparison names the layer it is derived from");
+  for(const key of fema.dependsOn){
+    const dependency=CFG.LAYERS.find(layer=>layer.key===key);
+    assert.ok(dependency,key+" is a configured layer");
+    assert.ok(dependency.sourceOwner,key+" names an owner even though it is hidden");
+    assert.match(dependency.reviewedOn,/^\d{4}-\d{2}-\d{2}$/,key+" review date");
+    assert.ok(dependency.label,key+" has a label to attribute");
+    assert.equal(dependency.group,fema.group,
+      key+" attributes into the same card as the result it feeds");
+  }
+  // Every declared dependency anywhere resolves to a real layer.
+  for(const layer of CFG.LAYERS)
+    for(const key of layer.dependsOn||[])
+      assert.ok(CFG.LAYERS.some(other=>other.key===key),
+        layer.key+" depends on a configured layer ("+key+")");
+});
+
 /* What is deployed is an allowlist, not the repository. Publishing the repository
    root served every engineering file over HTTP — walkthroughs, migration notes,
    review registers, the service-contract script and its known test parcels — none of

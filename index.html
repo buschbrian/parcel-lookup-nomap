@@ -707,6 +707,12 @@ const CFG = {
       kind:"femaFlood", geometryMode:"parcel", cardinality:"many",
       sourceOwner:"Federal Emergency Management Agency (National Flood Hazard Layer)",
       reviewedOn:"2026-08-09",
+      // This layer renders a result of its own AND one derived from a hidden
+      // layer — "Millcreek flood layer matches live FEMA" is a comparison
+      // against flood_local. Attribution is built from visible rows, so the
+      // hidden layer is named here or its owner and review date go unstated
+      // under a result they produced (ATTR-001).
+      dependsOn:["flood_local"],
       fields:{FLD_ZONE:"Zone", ZONE_SUBTY:"Subtype", SFHA_TF:"Special Flood Hazard Area",
         STATIC_BFE:"Base flood elevation", LEN_UNIT:"Elevation unit", SOURCE_CIT:"FEMA source citation"} },
     // Hidden copy used only to cross-check FEMA's current result. The public
@@ -2610,8 +2616,27 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
     // sentence listing every one of their labels, so a group of several
     // layers under one owner does not repeat the same fact once per layer.
     const gn=(CFG.GROUP_NOTES||{})[g];
-    const attribution=attributionNote(
-      rows.map(o=>({owner:o.sourceOwner,reviewedOn:o.reviewedOn,label:o.label})));
+    /* A hidden layer is not displayed, but its data can still be displayed: the
+       FEMA card's "Millcreek flood layer matches live FEMA" result is a
+       comparison against the hidden flood_local layer, whose owner and review
+       date the resident never saw because attribution was built from visible
+       rows alone (ATTR-001). A visible layer therefore declares the hidden
+       layers it derives a result from, and each one's attribution follows its
+       consumer's. A dependency that is not hidden is already in `rows`, and a
+       dependency named twice is deduplicated, so nothing is said twice. */
+    const named=new Set(rows.map(o=>o.key));
+    const items=[];
+    rows.forEach(o=>{
+      items.push({owner:o.sourceOwner,reviewedOn:o.reviewedOn,label:o.label});
+      (o.dependsOn||[]).forEach(key=>{
+        if(named.has(key)) return;
+        const dep=overlays.find(other=>other.key===key);
+        if(!dep) return;
+        named.add(key);
+        items.push({owner:dep.sourceOwner,reviewedOn:dep.reviewedOn,label:dep.label});
+      });
+    });
+    const attribution=attributionNote(items);
     if(gn||attribution.length){
       const d=el("div",{class:"note"});
       if(gn){

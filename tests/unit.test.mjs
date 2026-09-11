@@ -25,7 +25,8 @@ function pureApp(){
     script.slice(cfgStart,cfgEnd)+"\n"+script.slice(helperStart,helperEnd)+
     "\n;({CFG,parseAddress,decode,floodRank,selectHighestFlood,selectHighestCategory,floodClassSet,"+
     "sameSet,matchSummary,esc,likeOperand,outFieldsFor,parcelOutFields,"+
-    "pointInRings,probePoints,validCoordinate,coverageIdentity,groupByDesignation,coverageState,"+
+    "pointInRings,probePoints,validCoordinate,coverageIdentity,readFeatureRows,groupByDesignation,"+
+    "coverageState,"+
     "coverageSentences,coverageFlag});"
   );
 }
@@ -307,6 +308,49 @@ test("unreadable Q1 matches are counted separately from a genuinely empty respon
   assert.equal(empty.unidentified,0);
 });
 
+/* COV-001: `{features:[{}]}` — a 200 whose entries carry no `attributes` object
+   at all. The row filter used to drop those, so a non-empty response became a
+   complete empty one, `coverageState` read the empty candidate set as an
+   established absence, and the City Center Overlay rendered a confident "No"
+   over a body nobody could read. */
+test("features with no attributes object are counted, never dropped (COV-001)",()=>{
+  const {readFeatureRows,groupByDesignation,coverageIdentity,coverageState,coverageFlag,CFG}=pureApp();
+
+  const blank=readFeatureRows([{}]);
+  assert.equal(blank.rows.length,0,"there is nothing readable to group");
+  assert.equal(blank.unreadable,1,"but the match itself is not forgotten");
+
+  // Mixed: what can be read is kept, what cannot is counted.
+  const mixed=readFeatureRows([{attributes:{OBJECTID:1,ZONE_:"R-1-8"}},{},null,
+    {geometry:{rings:[]}}]);
+  assert.deepEqual([...mixed.rows].map(row=>({...row})),[{OBJECTID:1,ZONE_:"R-1-8"}]);
+  assert.equal(mixed.unreadable,3,"no attributes object, null, and a geometry-only entry");
+
+  // An empty response is still genuinely empty; a missing array is not a match.
+  for(const empty of [readFeatureRows([]),readFeatureRows(undefined)]){
+    assert.equal(empty.rows.length,0);
+    assert.equal(empty.unreadable,0,"an empty response is genuinely empty");
+  }
+
+  // `attributes:{}` is readable — the object is there, it just says nothing —
+  // so it reaches groupByDesignation and is counted there instead. Either way
+  // it is evidence, and either way it must not be counted twice.
+  const present=readFeatureRows([{attributes:{}}]);
+  assert.equal(present.unreadable,0);
+  assert.equal(groupByDesignation(present.rows,
+    coverageIdentity(CFG.LAYERS.find(layer=>layer.key==="zone"))).unidentified,1);
+
+  // End to end through the state machine, the way coverageHits() composes them.
+  const identity=coverageIdentity(CFG.LAYERS.find(layer=>layer.key==="ccoz"));
+  const read=readFeatureRows([{}]);
+  const grouped=groupByDesignation(read.rows,identity);
+  const unidentified=grouped.unidentified+read.unreadable;
+  assert.equal(unidentified,1,"the unreadable entry is the evidence the state needs");
+  const state=coverageState(evidence({candidates:new Set(grouped.groups.keys()),unidentified}));
+  assert.equal(state.state,"unknown","never 'none' from a response that could not be read");
+  assert.equal(coverageFlag(state.state),"unknown","and never a confident No");
+});
+
 test("coverageState never reads unreadable Q1 matches as an established absence (A3-R01)",()=>{
   const {coverageState}=pureApp();
 
@@ -442,6 +486,25 @@ test("the polygon path is preferred, and the point-only path says what it checke
   assert.equal(pointOnly({pointHits:new Set(["R-1-8"])}),"pointOnly-one");
   assert.equal(pointOnly({pointHits:new Set(["R-1-8","C-2"])}),"pointOnly-many");
   assert.equal(pointOnly({storedPoint:"invalid",pointHits:new Set()}),"pointOnly-unusable");
+  /* COV-002: the point-only branch used to answer before the unreadable and
+     incomplete checks ran, so a centre query that could not be read reported
+     "Nothing was found there" — the A3-R01 false negative, reached by the other
+     path. Retaining nothing from evidence that could not be read is unknown,
+     here as everywhere else. */
+  assert.equal(pointOnly({pointHits:new Set(),unidentified:1}),"pointOnly-unknown",
+    "a centre match nothing could identify is not 'nothing found there'");
+  assert.equal(pointOnly({pointHits:new Set(),q1:"incomplete"}),"pointOnly-unknown",
+    "a truncated centre query has not established an absence either");
+  assert.equal(pointOnly({pointHits:new Set(),q1:"incomplete",unidentified:2}),
+    "pointOnly-unknown");
+  // A real match at the centre is still the answer, whatever else came back
+  // unreadable; the identity warning carries that separately.
+  assert.equal(pointOnly({pointHits:new Set(["R-1-8"]),unidentified:1}),"pointOnly-one");
+  // An unusable stored point is still reported as such, not as unknown evidence.
+  assert.equal(pointOnly({storedPoint:"invalid",pointHits:new Set(),unidentified:1}),
+    "pointOnly-unusable");
+  assert.equal(coverageState(evidence({polygon:"unusable",probes:0,pointHits:new Set(),
+    q1:"incomplete"})).health.incomplete,true,"and the truncation is still reported");
   // A usable polygon that generated no probe also falls back to the point.
   assert.equal(coverageState(evidence({polygon:"usable",probes:0,pointHits:new Set(["R-1-8"])}))
     .state,"pointOnly-one");
@@ -481,6 +544,14 @@ test("every coverage state has a sentence, and none of them claims a proportion"
   assert.deepEqual([...say("pointOnly-none")],
     ["We could only check the centre of this property. Nothing was found there. "+
      "We do not know whether the edges of the property are covered."]);
+  assert.deepEqual([...say("pointOnly-unknown")],
+    ["We could only check the centre of this property, and we could not read the "+
+     "zoning map there. We do not know what covers this property. "+
+     "Call Planning and Zoning at 801-214-2700."]);
+  // The sentence a resident must never be given on this evidence.
+  for(const line of say("pointOnly-unknown"))
+    assert.doesNotMatch(line,/Nothing was found/,
+      "an unreadable centre query never asserts that nothing is there");
   assert.deepEqual([...say("pointOnly-unusable")],
     ["We could not check this property's location. Call Planning and Zoning at 801-214-2700."]);
   assert.deepEqual([...say("unknown")],
@@ -509,8 +580,8 @@ test("every coverage state has a sentence, and none of them claims a proportion"
      covers area inside the property; nothing measures how much, so "most",
      "small" and "too small" are not available words here. */
   const everyState=["failed","pointOnly-none","pointOnly-one","pointOnly-many",
-    "pointOnly-unusable","none","conflict","whole","overlap","split","present",
-    "unknown","unconfirmedOnly"];
+    "pointOnly-unusable","pointOnly-unknown","none","conflict","whole","overlap","split",
+    "present","unknown","unconfirmedOnly"];
   for(const state of everyState){
     const lines=say(state,{whole:["R-1-8"],covered:["R-1-8","C-2"],unconfirmed:["C-2"]});
     for(const line of lines){
@@ -530,6 +601,8 @@ test("the optional overlay reads Yes, No or Unknown, and an edge touch is Unknow
     "an edge-only touch is not membership");
   assert.equal(coverageFlag("pointOnly-none"),"unknown","never No on a centre-only miss");
   assert.equal(coverageFlag("pointOnly-unusable"),"unknown");
+  assert.equal(coverageFlag("pointOnly-unknown"),"unknown",
+    "an unreadable centre query is never a Yes and never a No");
   assert.equal(coverageFlag("unknown"),"unknown");
   assert.equal(coverageFlag("failed"),"unknown");
 });

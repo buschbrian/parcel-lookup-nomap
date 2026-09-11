@@ -2430,7 +2430,10 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
     }
     attributionNote([{owner:P.sourceOwner,reviewedOn:P.reviewedOn,label:"Property record"}])
       .forEach(s=>d.append(el("p",{text:s})));
-    c1.append(d);
+    // Guarded like the Location card's copy of this block below: attributionNote
+    // returns nothing when an owner or review date is missing, and with no
+    // schema-failed note either this would append an empty bordered box.
+    if(d.childNodes.length) c1.append(d);
   }
   const assessorLink=rec[P.assessorLinkField];
   if(isUrl(assessorLink)){

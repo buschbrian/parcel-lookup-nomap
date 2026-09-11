@@ -582,6 +582,13 @@ const CFG = {
     url: "https://millcreekut.gov/151/Planning-Zoning"
   },
 
+  // Which LAYERS group's card draw() places first, ahead of Property record.
+  // Zoning leads the report (10 September 2026, PR A7) so a resident hears
+  // what governs the property before the property's own facts. Must name a
+  // group that actually appears in CFG.LAYERS; see draw() for the fallback
+  // if that group renders no card on a given lookup.
+  firstGroup: "Zoning",
+
   // Spatial lookups. `geometryMode:"parcel"` uses the full parcel boundary;
   // other layers use the stored parcel point.
   // group: which heading the result appears under.
@@ -617,7 +624,12 @@ const CFG = {
       // section"), never the bare URL.
       fields:{ZONE_:"Code", Category:"Category",
               Zone_Desc1:"What this district is for",
-              CodeRef:"Code section", CodebookURL:"Read the code section"} },
+              CodeRef:"Code section", CodebookURL:"Read the code section"},
+      // plainMeaning (10 September 2026, PR A7) -> one explanatory sentence,
+      // rendered as a p.meta directly under this layer's own rows so a
+      // screen reader hears what "zoning" means beside the value.
+      plainMeaning:"Zoning is the law now. It sets what you may build on this "+
+        "property and how you may use it today." },
 
     // NOTE: FCOZ (Zone_FCOZ) and RCOZ (Zone_RCOZ) were removed August 2026 —
     // both are superseded by the Sensitive Land Areas regulation. Do not
@@ -635,7 +647,9 @@ const CFG = {
       coveragePolygonNoun:"future land use polygon",
       coverageGapTail:"this property has no future land use designation",
       fields:{LandUse:"Designation", GENPLAN_WEBSITE:"General Plan",
-              GENPLAN_DOCUMENT:"Plan document"} },
+              GENPLAN_DOCUMENT:"Plan document"},
+      plainMeaning:"Future land use is the city's plan for later. It is policy "+
+        "in the General Plan. It does not change what you may build today." },
 
     // oidField -> verified 10 September 2026 against the live service metadata
     // (?f=json): this layer's object id field is not the ArcGIS default.
@@ -2262,13 +2276,13 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
       el("a",{href:assessorLink,rel:"noopener",text:"Salt Lake County Assessor"})
     ]));
   }
-  body$.append(c1);
+  // Not appended yet: CFG.firstGroup's card (Zoning) goes ahead of it, below.
 
   /* ---- Grouped layer results ---- */
   const groups=[...new Set(CFG.LAYERS.filter(L=>!L.hidden).map(L=>L.group))];
-  groups.forEach(g=>{
+  function renderGroupCard(g){
     const rows=overlays.filter(o=>o.group===g && !o.hidden);
-    if(!rows.length) return;
+    if(!rows.length) return null;
     const card=el("div",{class:"card"});
     card.append(el("h3",{text:g}));
     /* A coverage layer explains itself in sentences that sit directly after its
@@ -2380,6 +2394,10 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
         flush();
         (fallbackRow?sentences.slice(1):sentences)
           .forEach(sentence=>card.append(el("p",{class:"meta",text:sentence})));
+        // One plain-language sentence about what this layer *is*, distinct from
+        // the coverage sentences above (which say what the map found). Sits
+        // right after them so a screen reader hears meaning beside the value.
+        if(o.plainMeaning) card.append(el("p",{class:"meta",text:o.plainMeaning}));
         return;
       }
 
@@ -2484,7 +2502,25 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
         el("strong",{text:"About this data. "}), document.createTextNode(gn)]));
       card.append(d);
     }
-    body$.append(card);
+    return card;
+  }
+
+  /* ---- Card order: CFG.firstGroup (Zoning), then Property record ----
+     Zoning leads the report so a resident hears what governs the property
+     before the property's own facts (10 September 2026, PR A7). If Zoning
+     renders no card on a given lookup — every layer in it hidden or failed
+     out of the group entirely — Property record still has to appear
+     somewhere, so it goes first instead of being lost. */
+  const firstCard = groups.includes(CFG.firstGroup) ? renderGroupCard(CFG.firstGroup) : null;
+  if(firstCard){
+    body$.append(firstCard);
+    body$.append(c1);
+  }else{
+    body$.append(c1);
+  }
+  groups.filter(g=>g!==CFG.firstGroup).forEach(g=>{
+    const card=renderGroupCard(g);
+    if(card) body$.append(card);
   });
 
   /* ---- Location + visual equivalent ---- */

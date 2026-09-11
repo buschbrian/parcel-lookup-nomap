@@ -131,6 +131,34 @@ function transportFor(fullUrl, cfg){
 }
 export { transportFor };
 
+/* ==== FIELD LISTS — no query anywhere asks for outFields=* (A2, 10 September
+   2026) ====
+
+   Every layer query requests exactly the fields it renders plus the layer's
+   object id; the parcel record query requests exactly the parcel facts, owner
+   fields and coordinates the page displays. Both pages carry their own inline
+   copy of this formula — a self-contained page cannot import a module — so it
+   lives here once as the reference the monitor uses directly and a unit test
+   compares each page's copy against. A difference here is a field silently
+   absent from a real request, or an owner/mailing field requested somewhere
+   it does not need to be. */
+export function parcelFieldList(CFG){
+  // Spelled out as CFG.parcel.<field> rather than aliased, so a unit test can
+  // assert by literal text that owner, care-of and Assessor-link verification
+  // cannot be quietly dropped from the live contract.
+  return [...new Set([CFG.parcel.idField,CFG.parcel.latField,CFG.parcel.lonField,
+    CFG.parcel.ownerField,CFG.parcel.careOfField,CFG.parcel.assessorLinkField,
+    ...CFG.PARCEL_FACTS.map(([field])=>field),
+    ...(CFG.PARCEL_FLAGS||[]).map(flag=>flag.field)])];
+}
+export function layerFieldList(layer){
+  return [...new Set([...Object.keys(layer.fields||{}),
+    ...(layer.nameField?[layer.nameField]:[]),
+    ...(layer.rankField?[layer.rankField]:[]),
+    layer.oidField||"OBJECTID",
+    ...(layer.extraFields||[])])];
+}
+
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
 /* Run `work`, retrying only transient transport failure, on a bounded schedule.
@@ -156,9 +184,10 @@ export async function withRetry(work,{sleep=wait}={}){
 
 /* One check, reduced to the fields a report may contain.
 
-   The monitor queries parcels with outFields=*, so owner names and mailing
-   details pass through the same process that writes this file, and CI uploads
-   it as an artifact. Copy across an allowlist rather than filtering a denylist:
+   The monitor's parcel query still explicitly requests ownerField and
+   careOfField (see parcelFieldList above), so owner names and mailing details
+   pass through the same process that writes this file, and CI uploads it as
+   an artifact. Copy across an allowlist rather than filtering a denylist:
    anything unrecognised is dropped instead of trusted. */
 function sanitizeCheck(check){
   const clean={key:String(check.key),ok:check.ok===true};

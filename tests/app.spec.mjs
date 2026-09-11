@@ -41,7 +41,9 @@ const layerFeatures={
   ],
   DebrisFlow_WasatchFront_ClipBuffer:[{OBJECTID:31,Hazard:"Debris Flow"}],
   AlluvialFans:[{OBJECTID:41,GEODESCSHORT:"Fan alluvium"}],
-  Millcreek_City_Council_Dist_2022:[{DIST:"1",COUNCILMEMBER:"Example Member",
+  // OBJECTID_12 -> this layer's object id field is not the ArcGIS default;
+  // see OID_FIELD_BY_SERVICE.
+  Millcreek_City_Council_Dist_2022:[{OBJECTID_12:12,DIST:"1",COUNCILMEMBER:"Example Member",
     WEB:"https://example.test/council"}],
   TrashPickupDays:[{PickupDay:"Tuesday",phonenumberfix:"385-468-6325",
     websitelink:"https://example.test/waste"}],
@@ -57,6 +59,34 @@ function serviceName(pathname){
   if(pathname.includes("Millcreek_Wildland_Urban_Interface")) return "WUI";
   const match=pathname.match(/\/services\/([^/]+)\/FeatureServer/i);
   return match?.[1]||"";
+}
+
+/* The two layers whose object id field is not the ArcGIS default "OBJECTID" —
+   verified 10 September 2026 against the live service metadata, same as the
+   `oidField` entries in index.html's CFG.LAYERS. Kept here too so the mock and
+   the assertions below agree on what each layer's query must ask for. */
+const OID_FIELD_BY_SERVICE={Zone_TCOZ:"OBJECTID_1",Millcreek_City_Council_Dist_2022:"OBJECTID_12"};
+const oidFieldFor=name=>OID_FIELD_BY_SERVICE[name]||"OBJECTID";
+
+// What a /query request actually asked for, GET or POST alike.
+function outFieldsOf(request){
+  const params=request.method==="POST"
+    ? new URLSearchParams(request.body)
+    : new URL(request.url).searchParams;
+  return params.get("outFields")||"";
+}
+
+/* The real ArcGIS service only returns what outFields asked for. Filtering the
+   fixture the same way turns "the page rendered a field it never requested"
+   into a failing test instead of a silent pass — outFields=* is exactly what
+   used to hide that. */
+function filterAttributes(attributes,outFieldsParam,oidField){
+  const requested=new Set(String(outFieldsParam||"").split(",").map(field=>field.trim()).filter(Boolean));
+  const filtered={};
+  for(const [field,value] of Object.entries(attributes))
+    if(requested.has(field)) filtered[field]=value;
+  if(requested.has(oidField)&&!(oidField in filtered)) filtered[oidField]=attributes[oidField]??1;
+  return filtered;
 }
 
 /* The hosted ArcGIS service answers HTTP 404 to a GET whose full URL passes about
@@ -78,6 +108,9 @@ async function mockArcGIS(page,state={}){
     const path=url.pathname;
     const name=serviceName(path);
     const json=body=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(body)});
+    // A2: no query anywhere may ask for outFields=*, so the fixture only
+    // returns what was actually requested — see filterAttributes() above.
+    const outFieldsParam=(method==="POST"?new URLSearchParams(body):url.searchParams).get("outFields");
 
     if(path.endsWith("/attachments")){
       if(state.attachmentFailure) return route.fulfill({status:500,body:"temporary failure"});
@@ -92,24 +125,28 @@ async function mockArcGIS(page,state={}){
       if(state.layerFailure&&name===state.layerFailure)
         return route.fulfill({status:500,body:"temporary layer failure"});
       if(name==="Address_Points"){
+        // Address suggestion and parcel record queries are exempt from the
+        // per-layer object id rule (they are asserted separately below), so
+        // "OBJECTID" here only matters if a fixture happens to carry one.
+        const filterAddress=attributes=>filterAttributes(attributes,outFieldsParam,"OBJECTID");
         // ArcGIS caps a result set at resultRecordCount and reports the cap with
         // exceededTransferLimit. Real streets exceed the cap: "Santa Rosa" matches 49.
         if(state.addressOverflow) return json({
-          features:Array.from({length:10},(unused,index)=>({attributes:{...address,
+          features:Array.from({length:10},(unused,index)=>({attributes:filterAddress({...address,
             FullAdd:"33"+index+"0 E SANTA ROSA AVE",
-            ParcelID:"1626457003000"+index}})),
+            ParcelID:"1626457003000"+index})})),
           exceededTransferLimit:true
         });
         if(state.cappedToOneUsableMatch) return json({
-          features:[{attributes:address},
-            ...Array.from({length:9},()=>({attributes:{...address,ParcelID:null}}))],
+          features:[{attributes:filterAddress(address)},
+            ...Array.from({length:9},()=>({attributes:filterAddress({...address,ParcelID:null})}))],
           exceededTransferLimit:true
         });
-        return json({features:[{attributes:address}]});
+        return json({features:[{attributes:filterAddress(address)}]});
       }
       if(name==="Millcreek_Parcels"){
         if(state.delayParcel) await new Promise(resolve=>setTimeout(resolve,state.delayParcel));
-        const feature={attributes:parcel(state.parcel)};
+        const feature={attributes:filterAttributes(parcel(state.parcel),outFieldsParam,"OBJECTID")};
         if(!state.omitParcelGeometry) feature.geometry=state.geometry||{rings:[[
           [-111.816,40.698],[-111.814,40.698],[-111.814,40.700],
           [-111.816,40.700],[-111.816,40.698]
@@ -124,7 +161,9 @@ async function mockArcGIS(page,state={}){
       if(name==="Fault_Study_Area" && state.faultFeatures) features=[...state.faultFeatures];
       if(name==="Water_Services_2021" && state.multipleWater)
         features.push({DWNAME:"Overlapping Provider",phone:"801-555-0100",webpublic:"https://example.test/overlap"});
-      return json({features:features.map(attributes=>({attributes}))});
+      const oidField=oidFieldFor(name);
+      return json({features:features.map(attributes=>
+        ({attributes:filterAttributes(attributes,outFieldsParam,oidField)}))});
     }
 
     if(name==="Millcreek_Parcels"&&state.parcelSchemaFailure)
@@ -721,13 +760,17 @@ test("queued requests are abandoned when the search is superseded",async({page})
    polygon-queried layer read "Temporarily unavailable" — indistinguishable, to
    a resident, from a genuine "No".
 
-   The vertex counts below are measurements against the configured layer paths,
-   not round numbers: at 41 vertices the longest query URL is a few bytes under
-   CFG.request.maxUrlBytes and at 46 the shortest is over it. If a layer path
-   changes length these fixtures stop straddling the boundary, and the byte
-   assertions say so rather than quietly testing nothing. */
-const VERTICES_JUST_UNDER=41;
-const VERTICES_JUST_OVER=46;
+   The vertex counts below are measurements against the configured layer paths
+   AND their explicit outFields (A2, 10 September 2026 — no query may carry
+   outFields=*, so every layer query's field list adds its own fixed number of
+   bytes to every polygon query): at 40 vertices the longest query URL (the
+   "hist" layer, 1,889 bytes) is a few bytes under CFG.request.maxUrlBytes and
+   at 44 the shortest (the "alluvial_fan" layer, 1,967 bytes) is over it. If a
+   layer path or a layer's configured `fields` changes length, these fixtures
+   stop straddling the boundary, and the byte assertions say so rather than
+   quietly testing nothing. */
+const VERTICES_JUST_UNDER=40;
+const VERTICES_JUST_OVER=44;
 
 /* A closed ring of `vertices` points. Coordinates keep full precision on
    purpose: nothing in the request path may round geometry to shorten a URL,
@@ -814,5 +857,60 @@ test("no GET request in any lookup exceeds the configured URL limit",async({page
     const oversized=requests.filter(request=>request.method==="GET"&&
       byteLength(request.url)>limit).map(request=>byteLength(request.url));
     expect(oversized,"GET request URLs over the limit are what the service 404s").toEqual([]);
+  }
+});
+
+/* No query anywhere requests outFields=* (A2, 10 September 2026). Every layer
+   query names exactly the fields it renders plus its object id; the parcel
+   record and address suggestion queries name their own already-explicit
+   lists and are exempt from the object id requirement below — a resident's
+   address point and parcel record are not identified by ArcGIS object id
+   anywhere in the page. mockArcGIS() now honours whatever outFields a request
+   actually sent (see filterAttributes above), so a rendered-but-unrequested
+   field fails the page's own content assertions rather than passing silently. */
+test("every query names its fields explicitly, and every layer query includes its object id field",
+  async({page})=>{
+  const requests=await lookupWithGeometry(page,null);
+  const queryRequests=requests.filter(request=>new URL(request.url).pathname.endsWith("/query"));
+  expect(queryRequests.length,"the lookup issues real /query requests").toBeGreaterThan(10);
+
+  for(const request of queryRequests){
+    const outFields=outFieldsOf(request);
+    expect(outFields,"a /query request must name its fields: "+fullUrlOf(request)).toBeTruthy();
+    expect(outFields.split(","),"no /query request may carry outFields=*: "+fullUrlOf(request))
+      .not.toContain("*");
+  }
+
+  const serviceOf=request=>serviceName(new URL(request.url).pathname);
+  const layerRequests=queryRequests.filter(request=>{
+    const service=serviceOf(request);
+    return service!=="Address_Points"&&service!=="Millcreek_Parcels";
+  });
+  expect(layerRequests.length,"the lookup queries configured layers").toBeGreaterThan(8);
+  for(const request of layerRequests){
+    const oid=oidFieldFor(serviceOf(request));
+    expect(outFieldsOf(request).split(","),
+      "layer query for "+serviceOf(request)+" must request its object id field "+oid+
+      ": "+fullUrlOf(request)).toContain(oid);
+  }
+
+  // Address suggestion and parcel record queries are exempt from the object
+  // id rule above; assert their own already-known explicit field lists here.
+  const addressRequests=queryRequests.filter(request=>serviceOf(request)==="Address_Points");
+  expect(addressRequests.length,"the lookup queries address suggestions").toBeGreaterThan(0);
+  for(const request of addressRequests)
+    expect(outFieldsOf(request)).toBe("FullAdd,ParcelID,City,ZipCode,UnitType,UnitID");
+
+  const parcelRequests=queryRequests.filter(request=>serviceOf(request)==="Millcreek_Parcels");
+  expect(parcelRequests.length,"the lookup queries the parcel record").toBeGreaterThan(0);
+  for(const request of parcelRequests){
+    const fields=outFieldsOf(request).split(",");
+    expect(new Set(fields).size,"the parcel query's field list has no duplicates").toBe(fields.length);
+    expect(fields).toEqual(expect.arrayContaining([
+      "parcel_id","parcel_latitude","parcel_longitude",
+      "own_name","care_of","slc_link",
+      "prop_location","parcel_acres","property_type_code","year_built",
+      "total_sq_ft","num_housing_units","tax_dist","prop_zip"
+    ]));
   }
 });

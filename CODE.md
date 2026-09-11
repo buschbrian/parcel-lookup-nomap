@@ -448,6 +448,42 @@ failure is visible instead of looking like the parcel has no plat.
 
 After rendering, the live region summarizes degraded sources and focus moves to the results heading.
 
+### Deep links open and share a report (added 10 September 2026)
+
+A report can be opened by link and shared by link. `parcelFromQuery(search)` and
+`addressFromQuery(search)` — pure helpers, alongside `mapLinkUrl()` — read `?parcel=` and
+`?address=` from `location.search` at boot, right after the `$("#build")` line: a valid parcel id
+calls `load(id, id)` directly; a valid address fills `#q` and calls `requestSubmit()` on the form,
+so it runs through the same tiered search a resident's own typing would, several-candidates branch
+included, rather than a second code path that could disagree with it. A malformed or absent value
+of either is silently ignored and the page opens exactly as it does with no query string.
+
+**URL state lives outside the shared block, and only `replaceState` is used, never `pushState`.**
+`load()` calls `history.replaceState(null,"",location.pathname+"?parcel="+parcelId)` immediately
+after a successful `draw()` — never on a failed lookup, and never with the typed address, only the
+resolved parcel id. SECURITY.md is why: a typed address plus a shared link is not itself public
+record the way the parcel id is, so nothing about what a visitor typed is written to a URL a
+browser will keep in history. `pushState` is never used because there is no `popstate` handler;
+a history entry per lookup would only make the Back button appear to do nothing. Clearing the form
+calls `history.replaceState(null,"",location.pathname)`, dropping whichever parameter the page
+opened with, so a cleared report does not reload on refresh and a cleared address deep link does
+not re-run its search on the next visit.
+
+The map link (`mapLinkUrl(CFG.fallbackMapUrl,{lon,lat,scale:CFG.mapLinkScale})`) reuses the same
+`lat`/`lon` already in scope in `draw()` from the parcel record, and lands the planning map's own
+`?lon=&lat=&scale=` deep link on the property instead of its default view. It degrades to the bare
+`CFG.fallbackMapUrl` when either coordinate is not a finite number, the same as before this change.
+
+**The caller validates before converting (MAP-001).** `mapLinkUrl()`'s own `Number.isFinite` guard
+cannot catch a missing coordinate that has already been converted: `Number(null)` and `Number("")`
+are both `0`, and `0` is a finite, in-range coordinate. `draw()` used to pass `Number(lon)`,
+`Number(lat)` straight from the parcel record, so a parcel with no stored point produced
+`?lon=0.000000&lat=0.000000&scale=2000` — the planning map opened in the Gulf of Guinea rather than
+at its default view. `draw()` now validates both with `validCoordinate()` (the A3-R02 rule: `null`,
+blank, non-numeric and out-of-range are all rejected before conversion) and calls `mapLinkUrl()` with
+the validated numbers or with no point at all. The "Latitude, longitude" row answers from the same
+validated pair, so it cannot print `0.000000, 0.000000` for a parcel that has no point either.
+
 ---
 
 ## 7. Copy, print and release information

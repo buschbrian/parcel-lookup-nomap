@@ -27,7 +27,7 @@ function pureApp(){
     "sameSet,matchSummary,esc,likeOperand,outFieldsFor,parcelOutFields,"+
     "pointInRings,probePoints,validCoordinate,coverageIdentity,readFeatureRows,groupByDesignation,"+
     "coverageState,"+
-    "coverageSentences,coverageFlag});"
+    "coverageSentences,coverageFlag,parcelFromQuery,addressFromQuery,mapLinkUrl});"
   );
 }
 
@@ -713,6 +713,97 @@ test("both pages expose the suggestion debounce delay as configuration",()=>{
   assert.equal(typeof CFG.request.suggestDebounceMs,"number");
   assert.ok(CFG.request.suggestDebounceMs>0);
   assert.equal(typeof businessConfig().request.suggestDebounceMs,"number");
+});
+
+// Deep links (A6). parcelFromQuery/addressFromQuery gate what a URL a resident
+// did not type can do to the page: anything that is not a usable 9-14 digit
+// parcel id, or a short enough trimmed address, must come back null rather
+// than being passed through to a lookup.
+test("parcelFromQuery accepts a 9-14 digit parcel id, pads it to 14, and rejects everything else",()=>{
+  const {parcelFromQuery}=pureApp();
+  assert.equal(parcelFromQuery("?parcel=16264570030000"),"16264570030000");
+  assert.equal(parcelFromQuery("?parcel=123456789"),"00000123456789");  // 9 digits, the floor
+  assert.equal(parcelFromQuery("?parcel=12345678"),null);                // 8 digits, under the floor
+  assert.equal(parcelFromQuery("?parcel=123456789012345"),null);         // 15 digits, over the ceiling
+  assert.equal(parcelFromQuery("?parcel=abc"),null);
+  assert.equal(parcelFromQuery("?parcel=%3Cscript%3E"),null);
+  assert.equal(parcelFromQuery("?parcel=1626457003000x"),null);          // digits plus a trailing letter
+  assert.equal(parcelFromQuery("?address=16264570030000"),null);         // wrong parameter name
+  assert.equal(parcelFromQuery(""),null);
+});
+
+test("addressFromQuery trims, and rejects text over 120 characters",()=>{
+  const {addressFromQuery}=pureApp();
+  assert.equal(addressFromQuery("?address=3300%20E%20Santa%20Rosa%20Ave"),"3300 E Santa Rosa Ave");
+  assert.equal(addressFromQuery("?address=%20%203300%20Main%20%20"),"3300 Main");
+  assert.equal(addressFromQuery("?address="+encodeURIComponent("A".repeat(120))),"A".repeat(120));
+  assert.equal(addressFromQuery("?address="+encodeURIComponent("A".repeat(121))),null);
+  assert.equal(addressFromQuery("?address="),null);
+  assert.equal(addressFromQuery("?address=%20%20"),null);
+  assert.equal(addressFromQuery(""),null);
+});
+
+test("mapLinkUrl appends lon/lat rounded to six decimals plus scale, or returns the bare base",()=>{
+  const {mapLinkUrl,CFG}=pureApp();
+  const base="https://planning.gis.millcreekut.gov/";
+  assert.equal(mapLinkUrl(base,{lon:-111.8149999,lat:40.6990001,scale:2000}),
+    base+"?lon=-111.815000&lat=40.699000&scale=2000");
+  assert.equal(mapLinkUrl(base,{lon:-111.815,lat:40.699,scale:CFG.mapLinkScale}),
+    base+"?lon=-111.815000&lat=40.699000&scale=2000");
+  assert.equal(mapLinkUrl(base,{lon:null,lat:40.699,scale:2000}),base);      // missing lon
+  assert.equal(mapLinkUrl(base,{lon:-111.815,lat:undefined,scale:2000}),base); // missing lat
+  assert.equal(mapLinkUrl(base,{lon:NaN,lat:40.699,scale:2000}),base);
+  assert.equal(mapLinkUrl(base),base);
+});
+
+/* MAP-001: the helper's guard is not the whole rule, because the caller decides
+   what reaches the guard. `Number(null)` is 0 and 0 is a finite, in-range
+   coordinate, so a parcel with no stored point produced a confident deep link to
+   (0, 0). The helper tests above pass `null` straight in and cannot see that;
+   this one tests the composition draw() actually performs. */
+test("a missing coordinate cannot reach the map link as a false zero (MAP-001)",()=>{
+  const {mapLinkUrl,validCoordinate,CFG}=pureApp();
+  const base="https://planning.gis.millcreekut.gov/";
+
+  // The defect, stated: an unvalidated conversion sails past the helper's guard.
+  assert.equal(mapLinkUrl(base,{lon:Number(null),lat:Number(null),scale:CFG.mapLinkScale}),
+    base+"?lon=0.000000&lat=0.000000&scale=2000",
+    "converting first defeats the helper's own check, which is why the caller validates");
+
+  // What draw() does now: validate, then convert, then link.
+  const link=(lon,lat)=>{
+    const mapLon=validCoordinate(lon,-180,180)?Number(lon):null;
+    const mapLat=validCoordinate(lat,-90,90)?Number(lat):null;
+    return mapLinkUrl(base,mapLon!=null&&mapLat!=null
+      ? {lon:mapLon,lat:mapLat,scale:CFG.mapLinkScale} : {});
+  };
+  for(const [lon,lat,why] of [
+    [null,null,"no stored point at all"],
+    [null,40.699,"one coordinate missing"],
+    [-111.815,null,"the other coordinate missing"],
+    ["","","blank strings"],
+    ["   ",40.699,"whitespace"],
+    ["not-a-number",40.699,"a non-numeric value"],
+    [200,40.699,"longitude out of range"],
+    [-111.815,95,"latitude out of range"],
+    [undefined,undefined,"absent fields"]
+  ]) assert.equal(link(lon,lat),base,why+" opens the map at its default view");
+
+  // Real coordinates still land on the property, numeric or as the strings the
+  // service sometimes returns. Zero is a real coordinate and is kept.
+  assert.equal(link(-111.815,40.699),base+"?lon=-111.815000&lat=40.699000&scale=2000");
+  assert.equal(link("-111.815","40.699"),base+"?lon=-111.815000&lat=40.699000&scale=2000");
+  assert.equal(link(0,0),base+"?lon=0.000000&lat=0.000000&scale=2000",
+    "a parcel genuinely at zero is not the same as a parcel with no point");
+
+  // And the call site itself never converts first again.
+  assert.doesNotMatch(script,/mapLinkUrl\([^)]*Number\((?:lon|lat)\)/,
+    "draw() must not build the map link from an unvalidated conversion");
+});
+
+test("CFG.mapLinkScale is a positive number",()=>{
+  assert.equal(typeof pureApp().CFG.mapLinkScale,"number");
+  assert.ok(pureApp().CFG.mapLinkScale>0);
 });
 
 test("hazards use the requested source layers and cross-check FEMA classifications",()=>{

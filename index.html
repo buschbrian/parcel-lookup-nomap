@@ -2581,13 +2581,25 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
   const c4=el("div",{class:"card"});
   c4.append(el("h3",{text:"Location"}));
   const dl4=el("dl",{});
-  if(lat!=null&&lon!=null){
-    dl4.append(pair("Latitude, longitude", Number(lat).toFixed(6)+", "+Number(lon).toFixed(6)));
+  /* The stored coordinates are validated here, by the same rule the coverage
+     queries use (A3-R02), before anything converts them. `Number(null)` and
+     `Number("")` are both 0, and 0 is a perfectly finite coordinate, so
+     mapLinkUrl's own Number.isFinite guard cannot catch a missing pair coming
+     from this caller: a parcel with no stored point was sent to the planning
+     map at ?lon=0.000000&lat=0.000000, a spot in the Gulf of Guinea, instead of
+     opening the map at its default view (MAP-001). Only validated numbers reach
+     mapLinkUrl, and the row above the link answers from the same pair. */
+  const mapLon=validCoordinate(lon,-180,180)?Number(lon):null;
+  const mapLat=validCoordinate(lat,-90,90)?Number(lat):null;
+  const mapPoint=mapLon!=null&&mapLat!=null;
+  if(mapPoint){
+    dl4.append(pair("Latitude, longitude", mapLat.toFixed(6)+", "+mapLon.toFixed(6)));
   }
   c4.append(dl4);
   c4.append(el("p",{class:"meta"},[
     document.createTextNode("Prefer a visual map? You can also use the "),
-    el("a",{href:mapLinkUrl(CFG.fallbackMapUrl,{lon:Number(lon),lat:Number(lat),scale:CFG.mapLinkScale}),
+    el("a",{href:mapLinkUrl(CFG.fallbackMapUrl,
+        mapPoint?{lon:mapLon,lat:mapLat,scale:CFG.mapLinkScale}:{}),
       rel:"noopener",text:"interactive zoning map"}),
     document.createTextNode(". The map is not required to use this lookup.")
   ]));

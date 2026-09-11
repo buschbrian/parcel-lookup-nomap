@@ -1640,6 +1640,34 @@ test("the map link carries lon, lat and scale for the loaded property",async({pa
   expect(url.searchParams.get("scale")).toBe("2000");
 });
 
+/* MAP-001: a parcel the County stores with no point. The link used to carry
+   ?lon=0.000000&lat=0.000000, sending a resident who wanted to see their
+   property to a spot in the Gulf of Guinea. */
+test("a parcel with no stored coordinates links to the map's default view (MAP-001)",
+  async({page})=>{
+  await coverageLookup(page,{parcel:{parcel_latitude:null,parcel_longitude:null}});
+  const href=await page.getByRole("link",{name:"interactive zoning map"}).getAttribute("href");
+  expect(href).toBe("https://planning.gis.millcreekut.gov/");
+  expect(href).not.toContain("lon=");
+  expect(href).not.toContain("0.000000");
+  // The coordinate row answers from the same validated pair, so it does not
+  // print a false zero either.
+  await expect(page.locator(".pair",{hasText:"Latitude, longitude"})).toHaveCount(0);
+  // The rest of the report is unaffected: a missing point is not a failed page.
+  await expect(page.locator("#results-body")).toContainText("Parcel number");
+});
+
+test("a blank or out-of-range stored coordinate does not become a map link either (MAP-001)",
+  async({page})=>{
+  for(const parcel of [{parcel_latitude:"",parcel_longitude:""},
+    {parcel_latitude:40.699,parcel_longitude:"   "},
+    {parcel_latitude:200,parcel_longitude:-111.815}]){
+    await coverageLookup(page,{parcel});
+    const href=await page.getByRole("link",{name:"interactive zoning map"}).getAttribute("href");
+    expect(href,JSON.stringify(parcel)).toBe("https://planning.gis.millcreekut.gov/");
+  }
+});
+
 test("a parcel deep link produces no detectable axe violations",async({page})=>{
   await page.goto("/index.html?parcel=16264570030000");
   await expect(page.locator("#results")).toBeVisible();

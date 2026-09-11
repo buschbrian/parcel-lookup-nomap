@@ -474,6 +474,16 @@ The map link (`mapLinkUrl(CFG.fallbackMapUrl,{lon,lat,scale:CFG.mapLinkScale})`)
 `?lon=&lat=&scale=` deep link on the property instead of its default view. It degrades to the bare
 `CFG.fallbackMapUrl` when either coordinate is not a finite number, the same as before this change.
 
+**The caller validates before converting (MAP-001).** `mapLinkUrl()`'s own `Number.isFinite` guard
+cannot catch a missing coordinate that has already been converted: `Number(null)` and `Number("")`
+are both `0`, and `0` is a finite, in-range coordinate. `draw()` used to pass `Number(lon)`,
+`Number(lat)` straight from the parcel record, so a parcel with no stored point produced
+`?lon=0.000000&lat=0.000000&scale=2000` — the planning map opened in the Gulf of Guinea rather than
+at its default view. `draw()` now validates both with `validCoordinate()` (the A3-R02 rule: `null`,
+blank, non-numeric and out-of-range are all rejected before conversion) and calls `mapLinkUrl()` with
+the validated numbers or with no point at all. The "Latitude, longitude" row answers from the same
+validated pair, so it cannot print `0.000000, 0.000000` for a parcel that has no point either.
+
 ---
 
 ## 7. Copy, print and release information

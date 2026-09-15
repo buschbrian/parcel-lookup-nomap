@@ -1145,18 +1145,19 @@ test("coverage sentences reach the copied text",async({page})=>{
 });
 
 /* ===========================================================================
-   Zoning first, and one plain-language sentence for zoning and future land use
-   (A7, 10 September 2026).
+   Property record first, then zoning, and one plain-language sentence for
+   zoning and future land use (A7, 10 September 2026; order reversed
+   15 September 2026).
    =========================================================================== */
 
 /* Read the actual heading text off the page rather than assuming it, so this
    test fails honestly if a card's own h3 wording ever drifts. */
-test("Zoning leads the report, then Property record, in the full fixed section order",
+test("Property record leads the report, then Zoning, in the full fixed section order",
   async({page})=>{
   await loadKnownProperty(page);
   const headings=await page.locator("#results-body .card h3").allTextContents();
   expect(headings).toEqual([
-    "Zoning","Property record","Historic designation","Hazard and special designations",
+    "Property record","Zoning","Historic designation","Hazard and special designations",
     "Subdivision and plat","Natural hazards","Informational hazard screening",
     "Representation","Services","Location"
   ]);
@@ -1185,8 +1186,10 @@ test("zoning and future land use each explain what they are, beside their own ro
    rather than repeating the same fact once per layer.
    =========================================================================== */
 
-// "Sources: <owner>, checked <spoken date> — <label>[, <label>...]."
-const SOURCES_SENTENCE=/Sources: [^,]+, checked \d{1,2} [A-Z][a-z]+ \d{4} — [^.]+\./;
+// "Sources: <owner>[, updated <spoken date>], checked <spoken date> — <label>[, ...]."
+// The update date is optional: only a source whose own last-change date is
+// known carries one, so the other cards must still match without it.
+const SOURCES_SENTENCE=/Sources: [^,]+(?:, updated \d{1,2} [A-Z][a-z]+ \d{4})?, checked \d{1,2} [A-Z][a-z]+ \d{4} — [^.]+\./;
 
 test("every rendered card names its data owner and a spoken review date",async({page})=>{
   await loadKnownProperty(page);
@@ -1266,13 +1269,15 @@ test("attribution sentences reach the copied text",async({page})=>{
   expect(copied).toContain(
     "Sources: Millcreek Planning and GIS, checked 9 August 2026 — "+
     "Base zoning district, Future land use, In the City Center Overlay (CCOZ).");
-  // Property record's and Location's attribution use CFG.parcel, not a layer.
+  // Property record's and Location's attribution use CFG.parcel, not a layer,
+  // and CFG.parcel is the one source that declares when it last changed, so
+  // these two are the only cards carrying an update date.
   expect(copied).toContain(
     "Sources: Millcreek GIS; parcel records originate with Salt Lake County, "+
-    "checked 9 August 2026 — Property record.");
+    "updated 3 September 2026, checked 9 August 2026 — Property record.");
   expect(copied).toContain(
     "Sources: Millcreek GIS; parcel records originate with Salt Lake County, "+
-    "checked 9 August 2026 — Location.");
+    "updated 3 September 2026, checked 9 August 2026 — Location.");
 });
 
 /* ---------------------------------------------------------------------------

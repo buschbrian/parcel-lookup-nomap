@@ -31,6 +31,20 @@ function pureApp(){
   );
 }
 
+/* attributionNote() builds resident-facing source lines, but it sits in the
+   rendering region rather than pureApp()'s helper slice, because it is only
+   ever called while drawing a card. Its only dependency is spokenDate(), which
+   pureApp() does export, so the function is lifted out on its own here — the
+   same approach sharedBlock() takes for transportFor(). */
+function attributionFn(){
+  const NL=String.fromCharCode(10);
+  const start=script.indexOf("function attributionNote(");
+  const end=script.indexOf(NL+"}",start);
+  const {spokenDate}=pureApp();
+  return vm.runInNewContext(
+    script.slice(start,end+2)+NL+";attributionNote;",{spokenDate});
+}
+
 function businessConfig(){
   const start=licensingScript.indexOf("const CFG =");
   const end=licensingScript.indexOf("/* ==================================================================\n   No further edits");
@@ -999,7 +1013,7 @@ test("zoning rows are named after what they hold and link the code section",asyn
     "the purpose sentence is no longer mislabelled \"Ordinance\"");
 });
 
-/* A7: zoning leads the report, and zoning/future land use each carry one plain
+/* A7: zoning and future land use each carry one plain
    sentence explaining what they are (distinct from coverageSentences(), which
    says what the map found). */
 test("zoning and future land use each carry a plain-meaning sentence",()=>{
@@ -1989,4 +2003,41 @@ test("every displayed layer's governance metadata is still intact after A5",()=>
   }
   assert.ok(CFG.parcel.sourceOwner,"CFG.parcel.sourceOwner");
   assert.match(CFG.parcel.reviewedOn,/^\d{4}-\d{2}-\d{2}$/,"CFG.parcel.reviewedOn");
+});
+
+/* The county changing the parcel data and Millcreek checking it are two facts.
+   reviewedOn answers "when did we last look"; sourceUpdatedOn answers "when did
+   it last change", read from the layer's editingInfo.dataLastEditDate. A single
+   date cannot answer both, and overwriting one with the other trades a stale
+   claim for a false one. */
+test("the parcel source carries an update date distinct from its review date",()=>{
+  const {CFG}=pureApp();
+  assert.match(CFG.parcel.sourceUpdatedOn,/^\d{4}-\d{2}-\d{2}$/,
+    "CFG.parcel.sourceUpdatedOn");
+  assert.match(CFG.release.dataUpdatedOn,/^\d{4}-\d{2}-\d{2}$/,
+    "CFG.release.dataUpdatedOn");
+  assert.notEqual(CFG.parcel.sourceUpdatedOn,CFG.parcel.reviewedOn,
+    "an update date equal to the review date would mean one of them is guessed");
+  assert.ok(CFG.parcel.sourceUpdatedOn>CFG.parcel.reviewedOn,
+    "the data changed after we last checked it, which is why this is shown");
+});
+
+test("attribution states the update date and the check date, and does not merge sources that differ",()=>{
+  const attributionNote=attributionFn();
+  const [line]=attributionNote([
+    {owner:"Millcreek GIS",reviewedOn:"2026-08-09",updatedOn:"2026-09-03",
+     label:"Property record"}]);
+  assert.match(line,/updated 3 September 2026/);
+  assert.match(line,/checked 9 August 2026/);
+
+  // Same owner and check date, different update dates: two lines, not one.
+  const split=attributionNote([
+    {owner:"Millcreek GIS",reviewedOn:"2026-08-09",updatedOn:"2026-09-03",label:"A"},
+    {owner:"Millcreek GIS",reviewedOn:"2026-08-09",updatedOn:"2026-07-01",label:"B"}]);
+  assert.equal(split.length,2,"different update dates are different attributions");
+
+  // A source with no update date reads exactly as it did before.
+  const [plain]=attributionNote([
+    {owner:"Millcreek GIS",reviewedOn:"2026-08-09",label:"Zoning"}]);
+  assert.equal(plain,"Sources: Millcreek GIS, checked 9 August 2026 — Zoning.");
 });

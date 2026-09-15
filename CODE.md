@@ -129,10 +129,10 @@ specialized: no returned classification renders Unknown rather than No.
 ## 4. DOM and request helpers
 
 Both pages carry the request layer — `svcError`, `RUNNING_FROM_FILE`, `fetchJson`, `withRetry`,
-`acquireSlot`, `releaseSlot`, `pump`, `layerUrl`, `rawQuery`, `query` and `explain` — between
+`acquireSlot`, `releaseSlot`, `pump`, `layerUrl`, `transportFor`, `rawQuery`, `query` and `explain` — between
 `==== SHARED REQUEST LAYER ====` markers, and a unit test compares the two copies **byte for byte**.
 Do not reformat that block or specialise it for one page. It reads `org`, `request.timeoutMs`,
-`request.retryDelayMs`, `request.maxConcurrent` and `contact.phone` from whichever `CFG` it is embedded in, so the licensing
+`request.retryDelayMs`, `request.maxConcurrent`, `request.maxUrlBytes` and `contact.phone` from whichever `CFG` it is embedded in, so the licensing
 page offers Business Licensing's number and the general page offers GIS's.
 
 Holding two copies identical looks like the opposite of removing duplication, and it is deliberate.
@@ -152,19 +152,61 @@ assigned without `innerHTML`.
 ticket and signal. Every input edit, search, lookup and Clear action starts or invalidates a task.
 This prevents a slow response from reopening cleared suggestions or repopulating cleared results.
 
-`fetchJson(url, signal)` provides the common network contract:
+`fetchJson(url, signal, init)` provides the common network contract:
 
 - a bounded timeout from `CFG.request.timeoutMs`;
 - propagation of user/task cancellation;
 - HTTP, rate-limit, server, malformed-JSON and ArcGIS error-body classification;
 - the failing URL in diagnostic detail.
 
+`init` is merged into the fetch options and is how the POST branch below passes a method, a body and
+a content type. It changes nothing else: timeout, cancellation, the concurrency slot and error
+classification are identical for both transports.
+
+### GET or POST is decided on the full URL (added 10 September 2026)
+
+`transportFor(fullUrl, cfg)` returns `"GET"` or `"POST"` by measuring
+`new TextEncoder().encode(fullUrl).length` against `CFG.request.maxUrlBytes` (1900). `rawQuery()`
+encodes the parameters, builds the complete GET URL, and asks it: at or under the limit the request
+goes out as it always did; over it, the identical parameters are posted to the same endpoint as
+`application/x-www-form-urlencoded`.
+
+The hosted ArcGIS service answers **HTTP 404** — not a query error — once the full URL passes about
+2,048 bytes, and a parcel boundary is the only parameter large enough to reach that. Verified
+10 September 2026: parcel 16273550010000 encodes to a 3,700-byte query; GET returned 404 from every
+hosted polygon layer and the identical parameters returned 200 as a POST. Roughly 12 of every 1,000
+Millcreek parcels are over the limit, and for each of them every polygon-queried layer rendered
+"Temporarily unavailable" — which a resident cannot tell apart from a genuine "No".
+
+Three things about this are deliberate.
+
+**The threshold is on the complete URL**, origin and path included, because that is what the server
+counts. A longer service path leaves less room for the geometry, so measuring the parameters alone
+would let path and query add up past the limit undetected.
+
+**It is measured in bytes, not characters.** A URL that fits in 1,900 characters can be more than
+1,900 bytes on the wire.
+
+**The geometry is never shortened.** `geometryPrecision`, coordinate rounding and any other
+simplification are out of bounds here: precision is what decides whether a parcel touches a flood
+zone or a 400-foot rental buffer, so trimming a boundary to fit a URL would change published
+answers. A longer request is the correct answer; a smaller one would be a wrong answer.
+
+POST is used only above the limit, so ordinary lookups keep their cacheable, loggable GETs. The CSP
+is unaffected: same host, and `application/x-www-form-urlencoded` is a CORS-safelisted content type,
+so there is no preflight.
+
+`scripts/service-contract-core.mjs` carries a **textually identical** copy of `transportFor`, and
+`scripts/check-services.mjs` applies the same rule in its `json()` helper, so the live monitor cannot
+pass a parcel the page would fail on. A unit test compares the two copies, the same discipline as the
+byte-identical block itself.
+
 `withRetry()` retries network, timeout, HTTP 429 and server failures once. It never retries rejected
 queries, ordinary HTTP errors or cancelled work. `explain()` turns the classification into public
 language and always includes the staffed route where appropriate.
 
 `layerUrl()` supports both Millcreek-relative and authoritative absolute service URLs. `query()`
-builds ArcGIS `/query` URLs. `schema()` reads aliases and coded-value domains through the same
+builds ArcGIS `/query` requests through `rawQuery()`, which chooses the transport. `schema()` reads aliases and coded-value domains through the same
 classified helper and caches only successful metadata. A schema failure does not erase feature
 values; it marks the layer as degraded and leaves codes undecoded.
 

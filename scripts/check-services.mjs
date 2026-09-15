@@ -1,8 +1,7 @@
-import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { readApp, readBusinessApp } from "./app-config.mjs";
-import { buildReport, classifyHttp, contractFailure, renderSummary,
-  withRetry } from "./service-contract-core.mjs";
+import { buildReport, classifyCheckFailure, classifyHttp, contractFailure, renderSummary,
+  settleLayerChecks, transportFor, withRetry } from "./service-contract-core.mjs";
 
 const {CFG}=await readApp();
 const {CFG:businessCFG}=await readBusinessApp();
@@ -13,10 +12,22 @@ const layerUrl=path=>/^https?:\/\//i.test(path)?path:CFG.org+path;
    about its own data is not. An ArcGIS error body is a rejected query — a
    contract finding, not a bad connection — so it is raised as one and reported
    on the first attempt. See scripts/service-contract-core.mjs. */
+/* Long queries go the same way the pages send them. A parcel boundary can push a
+   query URL past the roughly 2,048 bytes the hosted service accepts, and it
+   answers HTTP 404 above that. The pages now post those; if the monitor kept
+   sending them as GET it would fail parcels the pages load fine, and — worse the
+   other way round — a check that passed as GET would prove nothing about the
+   transport a resident actually gets. transportFor() is the pages' own rule,
+   read from the page's own CFG.request.maxUrlBytes. */
 async function json(url){
   const {value}=await withRetry(async()=>{
-    const response=await fetch(url,
-      {signal:AbortSignal.timeout(timeoutMs),headers:{Accept:"application/json"}});
+    const mark=String(url).indexOf("?");
+    const post=mark>=0&&transportFor(url,CFG)==="POST";
+    const response=await fetch(post?String(url).slice(0,mark):url,
+      {signal:AbortSignal.timeout(timeoutMs),
+        headers:{Accept:"application/json",
+          ...(post?{"Content-Type":"application/x-www-form-urlencoded"}:{})},
+        ...(post?{method:"POST",body:String(url).slice(mark+1)}:{})});
     if(!response.ok){
       const {kind,transient}=classifyHttp(response.status);
       const error=new Error(url+" returned HTTP "+response.status);
@@ -45,10 +56,9 @@ async function contract(key,detail,run){
     console.log("ok",key,detail===undefined?"":detail,note===undefined?"":note);
     return true;
   }catch(error){
-    const kind=error?.kind==="contract"||error instanceof assert.AssertionError
-      ? "contract" : (error?.kind||"unknown");
     checks.push({key,ok:false,detail,
-      failure:{kind,message:error?.message||String(error),attempts:error?.attempts||1}});
+      failure:{kind:classifyCheckFailure(error),message:error?.message||String(error),
+        attempts:error?.attempts||1}});
     console.error("FAIL",key,"-",error?.message||error);
     return false;
   }
@@ -203,6 +213,87 @@ await contract("fault-special-study-area",faultParcelId,async()=>{
     throw contractFailure("known special-study-area parcel no longer intersects the fault study layer");
   return "intersects";
 });
+
+/* A parcel whose boundary does not fit in a URL.
+   -----------------------------------------------------------------------
+   Verified 10 September 2026: parcel 16273550010000 encodes to a ~3,700-byte
+   query, and every hosted polygon layer answered HTTP 404 to it as a GET while
+   the identical parameters answered 200 as a form-urlencoded POST. About 12 of
+   every 1,000 Millcreek parcels are over the limit, and for each of them the
+   page showed "Temporarily unavailable" on every polygon-queried layer.
+
+   This is a contract check, not a smoke test: it must never be retried or
+   softened. An empty feature array is a real answer — it is the parcel not
+   intersecting that layer — so what is required is that every polygon layer
+   answers at all, and that at least one of them returns a feature, which is
+   what a 404 could never do. */
+const longGeometryParcelId="16273550010000";
+const polygonLayers=CFG.LAYERS.filter(layer=>layer.geometryMode==="parcel");
+let longGeometry=null;
+await contract("long-geometry-parcel",longGeometryParcelId,async()=>{
+  const longParams=new URLSearchParams({f:"json",returnGeometry:"true",outSR:"4326",
+    outFields:"parcel_id,prop_location",where:CFG.parcel.idField+"='"+longGeometryParcelId+"'"});
+  const longParcel=await json(layerUrl(CFG.parcel.url)+"/query?"+longParams);
+  longGeometry=longParcel.features?.[0]?.geometry;
+  if(!longGeometry)
+    throw contractFailure("the long-geometry test parcel is no longer published");
+  // A1-R02: settle every polygon layer instead of racing them in one Promise.all.
+  // The old fail-fast race meant that when a transport error on one layer landed
+  // at the same time as a malformed response on another, only whichever rejected
+  // first was ever recorded — the other vanished, and which one survived depended
+  // on timing. settleLayerChecks() waits for all of them, so every layer's own
+  // failure is recorded here, under its own name and classification, before this
+  // check says anything aggregate.
+  const {failures,values}=await settleLayerChecks(polygonLayers,
+    layer=>"long-geometry-parcel:"+layer.key,async layer=>{
+      const longQueryParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:"*",
+        geometry:JSON.stringify(longGeometry),geometryType:"esriGeometryPolygon",inSR:"4326",
+        spatialRel:"esriSpatialRelIntersects"});
+      const result=await json(layerUrl(layer.url)+"/query?"+longQueryParams);
+      if(!Array.isArray(result.features))
+        throw contractFailure(layer.key+" returned no feature array for the long-geometry parcel");
+      return result.features.length;
+    });
+  for(const failure of failures) checks.push({...failure,detail:longGeometryParcelId});
+  if(failures.length)
+    return failures.length+" of "+polygonLayers.length+
+      " polygon layers failed - see the per-layer long-geometry-parcel: results above";
+  if(!values.some(count=>count>0))
+    throw contractFailure("no polygon layer returned a feature for the long-geometry parcel, "+
+      "so an outage and a genuine 'no' cannot be told apart here");
+  return polygonLayers.length+" polygon layers answered, "+
+    values.reduce((total,count)=>total+count,0)+" features";
+});
+
+/* The boundary the check above depends on. If the test parcel's query stopped
+   being long enough to need a POST — a re-drawn boundary, a shorter service
+   path — the check would still pass while proving nothing, so say so instead.
+
+   A1-R01: this only runs once the prerequisite above actually retrieved a
+   geometry. When that fetch instead exhausted its retries on a transport
+   failure, longGeometry stays null and this check used to run anyway, throwing
+   its own contractFailure over data nothing had inspected — turning a service
+   outage into what a reader saw as "Contract drift". The prerequisite's own
+   check already carries the correct (transport) classification for that
+   failure, so a missing geometry here is skipped, not re-reported as drift. */
+if(longGeometry) await contract("long-geometry-transport",longGeometryParcelId,async()=>{
+  const layer=polygonLayers[0];
+  const boundaryParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:"*",
+    geometry:JSON.stringify(longGeometry),geometryType:"esriGeometryPolygon",inSR:"4326",
+    spatialRel:"esriSpatialRelIntersects"});
+  const fullUrl=layerUrl(layer.url)+"/query?"+boundaryParams;
+  const bytes=new TextEncoder().encode(fullUrl).length;
+  if(transportFor(fullUrl,CFG)!=="POST")
+    throw contractFailure("the long-geometry parcel no longer exceeds CFG.request.maxUrlBytes ("+
+      bytes+" bytes vs "+CFG.request.maxUrlBytes+"), so this parcel no longer tests the POST path");
+  const limit=CFG.request.maxUrlBytes;
+  const atLimit="https://example.test/"+"a".repeat(limit-"https://example.test/".length);
+  if(transportFor(atLimit,CFG)!=="GET"||transportFor(atLimit+"a",CFG)!=="POST")
+    throw contractFailure("transportFor no longer switches at exactly CFG.request.maxUrlBytes");
+  return bytes+" bytes, over the "+limit+"-byte limit";
+});
+else skip("long-geometry-transport",
+  "the long-geometry parcel prerequisite failed, so its geometry was never retrieved");
 
 const informationalHazardParcels={
   liquefaction:"22062280160000",

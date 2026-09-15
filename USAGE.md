@@ -404,6 +404,25 @@ The CSP currently allows Millcreek ArcGIS Online and FEMA hazards services. Add 
 Content-Security-Policy: … connect-src https://services9.arcgis.com https://hazards.fema.gov https://newhost.example.gov; …
 ```
 
+### Long parcel boundaries are posted, not shortened
+
+Most requests go to ArcGIS as a normal GET. When the whole request URL would be longer than
+`CFG.request.maxUrlBytes` (1900), the page sends exactly the same parameters as a form POST instead,
+because the hosted service answers HTTP 404 above roughly 2,048 bytes and a parcel boundary is easily
+that long. About 12 of every 1,000 Millcreek parcels are over the limit; before 10 September 2026
+those parcels showed "Temporarily unavailable" on every boundary-queried layer.
+
+Nothing to do when adding a layer — the choice is automatic and applies to both pages. Two things
+not to do:
+
+- **Do not "fix" a long query by rounding the geometry** (`geometryPrecision` or similar). Coordinate
+  precision is what decides whether a parcel touches a flood zone or a 400-foot rental buffer.
+  Shortening the boundary would change the answer the page publishes.
+- **Do not raise `maxUrlBytes` past about 2000.** It exists to stay under the service's own ceiling,
+  with margin for the proxies in between. Lowering it is safe: it only sends more queries as POST.
+
+The CSP does not change for this — same host, and a form POST needs no preflight.
+
 ### What not to change without care
 
 - The `<h1>`/`<h2>`/`<h3>` structure — screen reader users navigate by it.

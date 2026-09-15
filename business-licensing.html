@@ -182,7 +182,11 @@ const CFG = {
   // so the cap is never reached here; it is set because the shared request layer
   // requires it, and a layer added to this screen later should meet the same ceiling.
   // The value and the measurement behind it are documented in index.html.
-  request:{timeoutMs:12000,retryDelayMs:700,suggestDebounceMs:250,maxConcurrent:12},
+  // maxUrlBytes is the longest complete request URL still sent as a GET; above it
+  // the shared layer posts the same parameters, because the hosted service 404s
+  // past about 2,048 bytes. This page reaches that with the buffer query, whose
+  // parcel boundary is the whole point of the screen. Documented in index.html.
+  request:{timeoutMs:12000,retryDelayMs:700,suggestDebounceMs:250,maxConcurrent:12,maxUrlBytes:1900},
   // The shared request layer offers this number when a service fails. It is
   // Business Licensing, not GIS: this page answers licensing questions.
   contact:{phone:"801-214-2759",email:"awendt@millcreekut.gov"},
@@ -229,7 +233,7 @@ function finishTask(task){if(task&&task.mine===sequence)activeKind=null}
    identical copies extract mechanically while divergent ones do not.
 
    Requires from CFG: org, request.timeoutMs, request.retryDelayMs,
-   request.maxConcurrent, contact.phone.
+   request.maxConcurrent, request.maxUrlBytes, contact.phone.
 
    --- REST helper -------------------------------------------------
    Errors are CLASSIFIED (err.kind) rather than collapsed into one
@@ -277,7 +281,7 @@ function acquireSlot(){
 }
 function releaseSlot(){ inFlight--; pump(); }
 
-async function fetchJson(url, signal){
+async function fetchJson(url, signal, init){
   const u = url instanceof URL ? url : new URL(url);
   if(signal?.aborted) throw svcError("aborted","Request was superseded",String(u));
   await acquireSlot();
@@ -292,7 +296,11 @@ async function fetchJson(url, signal){
   let r;
   try{
     if(signal?.aborted) throw svcError("aborted","Request was superseded",String(u));
-    r = await fetch(u, {headers:{Accept:"application/json"}, signal:controller.signal});
+    // `init` carries the POST branch below; the transport contract — timeout,
+    // cancellation, concurrency slot and error classification — is the same either way.
+    const extra = init || {};
+    r = await fetch(u, {...extra, headers:{Accept:"application/json", ...(extra.headers||{})},
+      signal:controller.signal});
     if(r.status===429) throw svcError("busy","Service is rate limiting requests (HTTP 429)",String(u));
     if(r.status>=500)  throw svcError("server","Service error (HTTP "+r.status+")",String(u));
     if(!r.ok)          throw svcError("http","Service returned HTTP "+r.status,String(u));
@@ -329,9 +337,45 @@ async function withRetry(work, signal){
 
 const layerUrl = path => /^https?:\/\//i.test(path) ? path : CFG.org+path;
 
+/* --- Transport selection ----------------------------------------
+   ArcGIS answers the same query as a GET or as a form-urlencoded POST, and the
+   hosted service returns HTTP 404 once the full URL passes about 2,048 bytes.
+   A parcel boundary is the only parameter large enough to do that: parcel
+   16273550010000 encodes to a 3,700-byte query, and about 12 of every 1,000
+   Millcreek parcels are over the limit — for those, every polygon-queried layer
+   reported "Temporarily unavailable" and no resident could tell that from a
+   real "No".
+
+   The measurement is the COMPLETE URL — origin, path and query together —
+   because that is what the server counts. A longer service path leaves less
+   room for the geometry, so measuring the parameters alone would let path and
+   query add up past the limit undetected. It is measured in bytes rather than
+   characters, so a multibyte character costs what it actually costs on the
+   wire.
+
+   What this deliberately does NOT do is shorten the geometry. Rounding
+   coordinates (geometryPrecision, or any simplification) would be a smaller
+   change and a wrong one: precision is what decides whether a parcel touches a
+   flood zone or a 400-foot rental buffer, so moving a boundary to fit a URL
+   would change published answers.
+
+   POST is used only above the limit, so an ordinary lookup keeps its cacheable,
+   loggable GET. Same host, and form-urlencoded is a CORS-safelisted content
+   type, so there is no preflight and no CSP change. */
+function transportFor(fullUrl, cfg){
+  const limit = Number(cfg?.request?.maxUrlBytes);
+  if(!Number.isFinite(limit) || limit <= 0) return "GET";
+  return new TextEncoder().encode(String(fullUrl)).length > limit ? "POST" : "GET";
+}
+
 async function rawQuery(path, params, signal){
-  const u = new URL(layerUrl(path) + "/query");
-  u.search = new URLSearchParams({f:"json", returnGeometry:"false", ...params});
+  const endpoint = layerUrl(path) + "/query";
+  const encoded = new URLSearchParams({f:"json", returnGeometry:"false", ...params}).toString();
+  if(transportFor(endpoint+"?"+encoded, CFG) === "POST")
+    return fetchJson(endpoint, signal, {method:"POST", body:encoded,
+      headers:{"Content-Type":"application/x-www-form-urlencoded"}});
+  const u = new URL(endpoint);
+  u.search = encoded;
   return fetchJson(u,signal);
 }
 

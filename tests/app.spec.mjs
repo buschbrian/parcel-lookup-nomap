@@ -59,9 +59,22 @@ function serviceName(pathname){
   return match?.[1]||"";
 }
 
+/* The hosted ArcGIS service answers HTTP 404 to a GET whose full URL passes about
+   2,048 bytes — verified against the live service on 10 September 2026 — so the
+   fixture does too. Without this the mock would answer a request the real service
+   refuses, and the transport tests below would pass on a broken page. */
+const SERVICE_URL_LIMIT=2048;
+
 async function mockArcGIS(page,state={}){
+  const requests=state.requests||(state.requests=[]);
   await page.route("**/arcgis/rest/services/**",async route=>{
-    const url=new URL(route.request().url());
+    const request=route.request();
+    const method=request.method();
+    const body=request.postData()||"";
+    requests.push({method,url:request.url(),body});
+    if(method==="GET"&&Buffer.byteLength(request.url(),"utf8")>SERVICE_URL_LIMIT)
+      return route.fulfill({status:404,body:"URL too long"});
+    const url=new URL(request.url());
     const path=url.pathname;
     const name=serviceName(path);
     const json=body=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify(body)});
@@ -97,7 +110,7 @@ async function mockArcGIS(page,state={}){
       if(name==="Millcreek_Parcels"){
         if(state.delayParcel) await new Promise(resolve=>setTimeout(resolve,state.delayParcel));
         const feature={attributes:parcel(state.parcel)};
-        if(!state.omitParcelGeometry) feature.geometry={rings:[[
+        if(!state.omitParcelGeometry) feature.geometry=state.geometry||{rings:[[
           [-111.816,40.698],[-111.814,40.698],[-111.814,40.700],
           [-111.816,40.700],[-111.816,40.698]
         ]],spatialReference:{wkid:4326}};
@@ -126,6 +139,7 @@ async function mockArcGIS(page,state={}){
     const names=[...new Set([...Object.keys(sample),...extra])];
     return json({fields:names.map(field=>({name:field,alias:field,domain:null}))});
   });
+  return requests;
 }
 
 async function loadKnownProperty(page){
@@ -695,4 +709,110 @@ test("queued requests are abandoned when the search is superseded",async({page})
   expect(settled,"no queued request may be issued after the search was cleared")
     .toBe(afterClear);
   await expect(page.locator("#results")).toBeHidden();
+});
+
+/* Oversized queries reach the service as POST — 10 September 2026.
+   -----------------------------------------------------------------------
+   Every ArcGIS query went out as a GET with the parcel boundary in the query
+   string, and the hosted service answers HTTP 404 once the full URL passes
+   about 2,048 bytes. Parcel 16273550010000 encodes to a ~3,700-byte query: GET
+   404, the identical parameters as a form-urlencoded POST 200. About 12 of
+   every 1,000 Millcreek parcels are over the limit, and for each of them every
+   polygon-queried layer read "Temporarily unavailable" — indistinguishable, to
+   a resident, from a genuine "No".
+
+   The vertex counts below are measurements against the configured layer paths,
+   not round numbers: at 41 vertices the longest query URL is a few bytes under
+   CFG.request.maxUrlBytes and at 46 the shortest is over it. If a layer path
+   changes length these fixtures stop straddling the boundary, and the byte
+   assertions say so rather than quietly testing nothing. */
+const VERTICES_JUST_UNDER=41;
+const VERTICES_JUST_OVER=46;
+
+/* A closed ring of `vertices` points. Coordinates keep full precision on
+   purpose: nothing in the request path may round geometry to shorten a URL,
+   because precision is what decides whether a parcel touches a flood zone. */
+function ringOf(vertices){
+  const points=Array.from({length:vertices-1},(unused,index)=>{
+    const angle=(index/(vertices-1))*Math.PI*2;
+    return [Number((-111.815+0.0012345678*Math.cos(angle)).toFixed(9)),
+      Number((40.699+0.0012345678*Math.sin(angle)).toFixed(9))];
+  });
+  return {rings:[[...points,points[0]]],spatialReference:{wkid:4326}};
+}
+
+// What the service sees, whichever way it was sent.
+const fullUrlOf=request=>request.method==="POST"?request.url+"?"+request.body:request.url;
+const byteLength=text=>Buffer.byteLength(text,"utf8");
+const polygonQueries=requests=>requests.filter(request=>
+  fullUrlOf(request).includes("geometryType=esriGeometryPolygon"));
+
+async function lookupWithGeometry(page,geometry){
+  await page.unrouteAll({behavior:"wait"});
+  const requests=await mockArcGIS(page,geometry?{geometry}:{});
+  await page.reload();
+  await page.evaluate(()=>{ CFG.request.retryDelayMs=1; });
+  await loadKnownProperty(page);
+  return requests;
+}
+
+test("an ordinary parcel is still sent as GET",async({page})=>{
+  const requests=await lookupWithGeometry(page,null);
+  expect(polygonQueries(requests).length,"the lookup really queried polygon layers")
+    .toBeGreaterThan(3);
+  expect(requests.filter(request=>request.method!=="GET")).toEqual([]);
+});
+
+test("a parcel boundary just under the limit is still sent as GET",async({page})=>{
+  const limit=await page.evaluate(()=>CFG.request.maxUrlBytes);
+  expect(limit,"the URL limit is configuration, not a constant in the code").toBe(1900);
+  const requests=await lookupWithGeometry(page,ringOf(VERTICES_JUST_UNDER));
+  const longest=Math.max(...polygonQueries(requests).map(request=>byteLength(fullUrlOf(request))));
+  expect(longest,"the fixture must sit just under the limit to prove anything")
+    .toBeGreaterThan(limit-150);
+  expect(longest).toBeLessThanOrEqual(limit);
+  expect(requests.filter(request=>request.method!=="GET")).toEqual([]);
+  await expect(page.locator("#results-body")).not.toContainText("Temporarily unavailable");
+});
+
+test("a parcel boundary over the limit is posted, and the answers still render",async({page})=>{
+  const limit=await page.evaluate(()=>CFG.request.maxUrlBytes);
+  const requests=await lookupWithGeometry(page,ringOf(VERTICES_JUST_OVER));
+  const spatial=polygonQueries(requests);
+  expect(spatial.length,"the lookup really queried polygon layers").toBeGreaterThan(3);
+  const shortest=Math.min(...spatial.map(request=>byteLength(fullUrlOf(request))));
+  expect(shortest,"the fixture must sit over the limit to prove anything").toBeGreaterThan(limit);
+  for(const request of spatial){
+    expect(request.method,fullUrlOf(request).slice(0,120)).toBe("POST");
+    expect(request.body).toContain("geometry=");
+    // The geometry moved out of the URL rather than being duplicated into both.
+    expect(request.url).not.toContain("geometry=");
+    expect(request.url.endsWith("/query"),"the POST goes to the same endpoint").toBe(true);
+  }
+  // The defect in one line: this is what the resident used to be told instead.
+  await expect(page.locator("#results-body")).not.toContainText("Temporarily unavailable");
+  await expect(page.locator("#results-body")).toContainText("In the 2026 Wildland-Urban Interface");
+});
+
+test("a 200-vertex parcel posts every polygon query and renders a real answer",async({page})=>{
+  const requests=await lookupWithGeometry(page,ringOf(200));
+  const spatial=polygonQueries(requests);
+  expect(spatial.length).toBeGreaterThan(3);
+  expect(spatial.every(request=>request.method==="POST")).toBe(true);
+  await expect(page.locator("#results-body")).not.toContainText("Temporarily unavailable");
+  // A polygon layer's real answer, carried through the POST branch.
+  await expect(page.locator("#results-body"))
+    .toContainText("In FEMA Special Flood Hazard Area (SFHA)");
+  await expect(page.locator(".pair",{hasText:"In FEMA Special Flood Hazard Area"}))
+    .toContainText("Yes");
+});
+
+test("no GET request in any lookup exceeds the configured URL limit",async({page})=>{
+  const limit=await page.evaluate(()=>CFG.request.maxUrlBytes);
+  for(const geometry of [null,ringOf(VERTICES_JUST_UNDER),ringOf(VERTICES_JUST_OVER),ringOf(200)]){
+    const requests=await lookupWithGeometry(page,geometry);
+    const oversized=requests.filter(request=>request.method==="GET"&&
+      byteLength(request.url)>limit).map(request=>byteLength(request.url));
+    expect(oversized,"GET request URLs over the limit are what the service 404s").toEqual([]);
+  }
 });

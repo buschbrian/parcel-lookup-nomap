@@ -839,6 +839,24 @@ test("zoning follows the public map and does not display density",()=>{
   assert.match(future.url,/FutureLandUse_2024_Millcreek/);
 });
 
+/* A4: the zoning rows are named after what they hold. The all-caps category
+   (ZONE_DESC) is dropped for Category, which says the same thing in sentence
+   case, and the purpose sentence links to the code section instead of being
+   mislabelled "Ordinance". */
+test("zoning rows are named after what they hold and link the code section",async()=>{
+  const {CFG}=pureApp();
+  const zone=CFG.LAYERS.find(layer=>layer.key==="zone");
+  assert.equal(Object.hasOwn(zone.fields,"CodeRef"),true);
+  assert.equal(Object.hasOwn(zone.fields,"CodebookURL"),true);
+  assert.equal(Object.hasOwn(zone.fields,"Res_Max_De"),false);
+  assert.equal(Object.hasOwn(zone.fields,"ZONE_DESC"),false);
+  assert.equal(zone.nameField,undefined,
+    "no nameField on zone — the codebook link text falls back to the row label");
+  const source=await readFile(new URL("../index.html",import.meta.url),"utf8");
+  assert.doesNotMatch(source,/Ordinance/,
+    "the purpose sentence is no longer mislabelled \"Ordinance\"");
+});
+
 test("configured fields retain valid numeric zero values",()=>{
   const {CFG}=pureApp();
   const area=CFG.PARCEL_FACTS.find(([field])=>field==="total_sq_ft");

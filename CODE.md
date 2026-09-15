@@ -416,12 +416,19 @@ sentence belongs to. That row **is** the first sentence, so the paragraphs that 
 `sentences.slice(1)`; rendering the whole list after the row repeated the sentence immediately below
 itself in the DOM and in the copied text (RENDER-001).
 
-`draw()` emits cards in this order:
+`draw()` emits cards in this order (changed 10 September 2026, PR A7 — Zoning used to come after
+Property record):
 
-1. **Property record** — formatted facts, owners and a validated Assessor link.
-2. **Configured groups** — explicit values, booleans, attachments, overlap/schema warnings and
-   standing data notes.
-3. **Location** — centroid coordinates and an optional visual-map link.
+1. **`CFG.firstGroup`'s card** — currently `"Zoning"`. Zoning leads the report so a resident hears
+   what governs the property before the property's own facts. Each of `zone` and `futureland` also
+   renders its `plainMeaning` sentence — what the layer *is* — directly after that layer's own rows
+   and `coverageSentences()` output.
+2. **Property record** — formatted facts, owners and a validated Assessor link. Appended right after
+   `CFG.firstGroup`'s card; if that group renders no card on a given lookup, Property record is
+   appended first instead, so it is never dropped from the page.
+3. **Remaining configured groups**, in `CFG.LAYERS` order — explicit values, booleans, attachments,
+   overlap/schema warnings and standing data notes.
+4. **Location** — centroid coordinates and an optional visual-map link.
 
 FEMA's specialized renderer shows SFHA status, the selected highest zone/subtype and all
 intersecting classifications. Its conservative precedence is not presented as a FEMA risk score.

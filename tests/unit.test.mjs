@@ -857,6 +857,27 @@ test("zoning rows are named after what they hold and link the code section",asyn
     "the purpose sentence is no longer mislabelled \"Ordinance\"");
 });
 
+/* A7: zoning leads the report, and zoning/future land use each carry one plain
+   sentence explaining what they are (distinct from coverageSentences(), which
+   says what the map found). */
+test("zoning and future land use each carry a plain-meaning sentence",()=>{
+  const {CFG}=pureApp();
+  const zone=CFG.LAYERS.find(layer=>layer.key==="zone");
+  const future=CFG.LAYERS.find(layer=>layer.key==="futureland");
+  assert.equal(typeof zone.plainMeaning,"string");
+  assert.ok(zone.plainMeaning.trim().length>0,"zone.plainMeaning is not empty");
+  assert.equal(typeof future.plainMeaning,"string");
+  assert.ok(future.plainMeaning.trim().length>0,"future.plainMeaning is not empty");
+});
+
+test("CFG.firstGroup names a group that CFG.LAYERS actually has",()=>{
+  const {CFG}=pureApp();
+  const groups=new Set(CFG.LAYERS.filter(layer=>!layer.hidden).map(layer=>layer.group));
+  assert.ok(CFG.firstGroup,"CFG.firstGroup is set");
+  assert.ok(groups.has(CFG.firstGroup),
+    "CFG.firstGroup ("+CFG.firstGroup+") must equal an existing CFG.LAYERS group");
+});
+
 test("configured fields retain valid numeric zero values",()=>{
   const {CFG}=pureApp();
   const area=CFG.PARCEL_FACTS.find(([field])=>field==="total_sq_ft");

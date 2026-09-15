@@ -806,11 +806,18 @@ test("the code section and codebook link render alongside the purpose sentence",
     "Base zoning district — Category"+R18.Category);
   await expect(zoningCard(page)).toContainText(
     "Base zoning district — What this district is for"+R18.Zone_Desc1);
-  const link=zoningCard(page).getByRole("link",{name:"Read the code section"});
+  const link=zoningCard(page).getByRole("link",
+    {name:"Read this zoning district in the Millcreek code"});
   await expect(link).toBeVisible();
   await expect(link).toHaveAttribute("href",R18.CodebookURL);
-  // The link text is the row label, never the bare URL (2.4.4 Link Purpose).
+  // Never the bare URL (2.4.4 Link Purpose) ...
   await expect(link).not.toHaveText(/^https?:\/\//);
+  // ... and never a word-for-word copy of its own <dt>, which a screen reader
+  // announces twice while saying nothing about where the link goes. Until
+  // 15 September 2026 the coverage renderer passed pair() no link text at all,
+  // so it fell back to the row label and this test asserted the defect.
+  const dt=await link.evaluate(a=>a.closest("div.pair").querySelector("dt").textContent.trim());
+  expect(await link.textContent()).not.toBe(dt);
 });
 
 test("two adjacent features with the same code are one designation",async({page})=>{

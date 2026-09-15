@@ -640,6 +640,9 @@ const CFG = {
       fields:{ZONE_:"Code", Category:"Category",
               Zone_Desc1:"What this district is for",
               CodeRef:"Code section", CodebookURL:"Read the code section"},
+      // Without this the link repeats its own dt ("Base zoning district — Read
+      // the code section") word for word. 15 September 2026.
+      linkNames:{CodebookURL:"Read this zoning district in the Millcreek code"},
       // plainMeaning (10 September 2026, PR A7) -> one explanatory sentence,
       // rendered as a p.meta directly under this layer's own rows so a
       // screen reader hears what "zoning" means beside the value.
@@ -663,6 +666,12 @@ const CFG = {
       coverageGapTail:"this property has no future land use designation",
       fields:{LandUse:"Designation", GENPLAN_WEBSITE:"General Plan",
               GENPLAN_DOCUMENT:"Plan document"},
+      // Two URLs in one layer, so a single linkName cannot serve both. Verified
+      // 15 September 2026: GENPLAN_WEBSITE returns text/html, GENPLAN_DOCUMENT
+      // returns application/pdf — the wording says which, so nobody opens a
+      // 200-page PDF expecting a web page.
+      linkNames:{GENPLAN_WEBSITE:"Read the General Plan online",
+                 GENPLAN_DOCUMENT:"Open the General Plan document (PDF)"},
       plainMeaning:"Future land use is the city's plan for later. It is policy "+
         "in the General Plan. It does not change what you may build today." },
 
@@ -768,6 +777,11 @@ const CFG = {
     { key:"council", group:"Representation", label:"City Council",
       url:"/Millcreek_City_Council_Dist_2022/FeatureServer/2", oidField:"OBJECTID_12",
       sourceOwner:"Millcreek GIS", reviewedOn:"2026-08-09", cardinality:"one",
+      // nameField -> the member's own name becomes the link text, so the link
+      // reads as the member rather than repeating its dt ("City Council —
+      // Member page"). COUNCILMEMBER is already requested via fields, so this
+      // adds no field to the query. 15 September 2026.
+      nameField:"COUNCILMEMBER",
       fields:{DIST:"District", COUNCILMEMBER:"Member", WEB:"Member page"} },
     // NOTE: Community councils (Community_Council) were removed August 2026 —
     // no longer a City responsibility.
@@ -2516,6 +2530,30 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
       }
       if(o.failed){ dl.append(pair(o.label,"Temporarily unavailable — call "+CFG.contact.phone,"none")); return; }
 
+      /* Link wording, shared by the coverage renderer below and the plain
+         field renderer further down — both emit URL rows, so both need it.
+
+         linkText: the organisation's own name where the layer exposes one, so
+         a link reads "Rocky Mountain Power" rather than "Provider website".
+         Guarded on o.attrs because a coverage layer reaching here can still
+         have none (a map gap renders rows from o.byKey, not from o.attrs).
+
+         NOTE for a future coverage layer: rows in the coverage renderer come
+         from each designation's own `feature`, but linkText reads `o.attrs`.
+         No coverage layer sets nameField today, so the two cannot disagree. If
+         one ever does, read the name from that row's feature instead, or the
+         link will be named after a different designation than the row it sits in.
+
+         linkNames: per-FIELD wording, for a layer exposing more than one URL,
+         which a single per-layer linkName cannot serve. Without either, pair()
+         falls back to the row label — and where that label is a noun
+         ("General Plan") the link repeats its own <dt> word for word: the same
+         phrase announced twice, saying nothing about where it goes. */
+      const linkText = (o.nameField && o.attrs)
+        ? decode(o.sch[o.nameField], o.attrs[o.nameField])
+        : (o.linkName || null);
+      const linkFor = f => (o.linkNames && o.linkNames[f]) || linkText;
+
       /* ---- Coverage layers: zoning, future land use, City Center Overlay ----
          Every designation the map places on this property gets its own row set,
          then the sentence for the state, then any check that did not complete.
@@ -2551,7 +2589,7 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
             for(const [f,lab] of Object.entries(o.fields||{})){
               const v=decode(o.sch[f],feature[f]);
               if(v==null||v==="") continue;
-              dl.append(pair(o.label+" — "+lab, v));
+              dl.append(pair(o.label+" — "+lab, v, null, linkFor(f)));
               printed++;
             }
             // Never a bare `o.label` dt here: one layer contributes at most one
@@ -2594,12 +2632,6 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
       }
       if(!o.attrs){ dl.append(pair(o.label,"Not in this area","none")); return; }
 
-      /* Link wording: the organisation's own name where the layer exposes one,
-         so a link reads "Rocky Mountain Power" rather than "Provider website". */
-      const linkText = o.nameField
-        ? decode(o.sch[o.nameField], o.attrs[o.nameField])
-        : (o.linkName || null);
-
       /* EVERY row is labelled "<Layer label> — <Field label>", not just the
          first. Four utilities each contributing a row called simply "Phone"
          is ambiguous on screen, and worse with a screen reader, where rows are
@@ -2621,7 +2653,7 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
         for(const [f,lab] of Object.entries(o.fields)){
           const v=decode(o.sch[f],o.attrs[f]);
           if(v==null||v==="") continue;
-          dl.append(pair(row(lab), v, null, linkText));
+          dl.append(pair(row(lab), v, null, linkFor(f)));
           printed++;
         }
         if(!printed) dl.append(pair(o.label,"In this area"));
@@ -2633,7 +2665,7 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
           .slice(0,3);
         if(!useful.length){ dl.append(pair(o.label,"Yes — this property is in this area")); return; }
         useful.forEach(([f,v])=>{
-          dl.append(pair(row(o.sch[f]?.alias||f), decode(o.sch[f],v), null, linkText));
+          dl.append(pair(row(o.sch[f]?.alias||f), decode(o.sch[f],v), null, linkFor(f)));
         });
       }
 

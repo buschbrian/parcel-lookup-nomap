@@ -1123,12 +1123,31 @@ const regexEsc = s => String(s).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
    self-contained page cannot import that module, so this is a duplicate by
    necessity, the same discipline as transportFor above. */
 function outFieldsFor(L){
-  return [...new Set([...Object.keys(L.fields||{}),
+  return layerFields(L).join(",");
+}
+/* The object id is requested only where something reads it: the attachments
+   join below, and a layer with no `fields` of its own (the boolean overlay),
+   which would otherwise be left with no field to request at all.
+
+   Asking every layer for it made all 18 depend on the object id field being
+   named correctly, because ArcGIS rejects a whole query that names a field the
+   layer does not have — so one undeclared non-default name took that entire
+   layer to "Temporarily unavailable". Two layers were found to differ (ccoz,
+   council) and the rest rest on the default being right, which nothing in the
+   PR test suite can check. Narrowing this leaves only the layers that actually
+   need the field exposed to that. council's verified override is kept as
+   documentation even though nothing requests it now. */
+function layerFields(L){
+  const named=[...new Set([...Object.keys(L.fields||{}),
     ...(L.nameField?[L.nameField]:[]),
     ...(L.rankField?[L.rankField]:[]),
     ...(L.designationKey?[L.designationKey]:[]),
-    L.oidField||"OBJECTID",
-    ...(L.extraFields||[])])].join(",");
+    ...(L.extraFields||[])])];
+  // A coverage layer joins Q2 and Q3 back to Q1 by object id, so Q1 has to
+  // return one: without it keyByOid stays empty, nothing can ever be joined,
+  // and every district would report as unconfirmed on every parcel.
+  if(!(L.attachments||L.coverage||named.length===0)) return named;
+  return [...new Set([...named,L.oidField||"OBJECTID"])];
 }
 function parcelOutFields(){
   const P=CFG.parcel;
@@ -1231,12 +1250,21 @@ function sameSet(a,b){
 function pointInRings(rings,x,y){
   let inside=false;
   for(const ring of rings||[]){
-    if(!Array.isArray(ring)) continue;
+    /* An unreadable ring or vertex makes the whole answer unusable, not a
+       skippable edge (A3-R04). Skipping one drops two edges from the even-odd
+       count and silently flips the parity, so this would return a confident
+       wrong boolean — and a probe point wrongly judged inside is sent as Q2
+       evidence, which is how a district that merely borders the property would
+       get "confirmed" as covering it. Refusing instead means no probe survives,
+       the caller falls back to the point-only path, and the page says it could
+       only check the centre. That is the same way every other degenerate input
+       here is handled: decline to answer rather than answer wrongly. */
+    if(!Array.isArray(ring)) return false;
     for(let i=0,n=ring.length;i<n;i++){
       const from=ring[i], to=ring[(i+1)%n];
-      if(!from||!to) continue;
+      if(!from||!to) return false;
       const x1=Number(from[0]),y1=Number(from[1]),x2=Number(to[0]),y2=Number(to[1]);
-      if(!(Number.isFinite(x1)&&Number.isFinite(y1)&&Number.isFinite(x2)&&Number.isFinite(y2))) continue;
+      if(!(Number.isFinite(x1)&&Number.isFinite(y1)&&Number.isFinite(x2)&&Number.isFinite(y2))) return false;
       const cross=(x2-x1)*(y-y1)-(y2-y1)*(x-x1);
       if(Math.abs(cross)<=1e-12 &&
          x>=Math.min(x1,x2)-1e-12 && x<=Math.max(x1,x2)+1e-12 &&
@@ -1685,7 +1713,12 @@ function addressFromQuery(search){
    default view. */
 function mapLinkUrl(base,{lon,lat,scale}={}){
   if(!Number.isFinite(lon) || !Number.isFinite(lat)) return base;
-  return base+"?lon="+lon.toFixed(6)+"&lat="+lat.toFixed(6)+"&scale="+scale;
+  // scale gets the same guard as the coordinates rather than being trusted
+  // into the URL: a missing or malformed one would read "&scale=undefined".
+  // It is dropped on its own, so a bad scale still lands the map on the
+  // property at its default zoom instead of costing the point entirely.
+  const point=base+"?lon="+lon.toFixed(6)+"&lat="+lat.toFixed(6);
+  return Number.isFinite(scale)&&scale>0 ? point+"&scale="+scale : point;
 }
 
 /* spokenDate (A5, 10 September 2026): turns a stored review date into words
@@ -1965,7 +1998,13 @@ async function load(parcelId, label){
     // record the way the parcel id is (SECURITY.md) — and only replaceState, never
     // pushState: there is no popstate handler, so a history entry per lookup would
     // do nothing but make Back appear to do nothing.
-    history.replaceState(null, "", location.pathname + "?parcel=" + parcelId);
+    //
+    // Encoded, because on the address path this id comes from the address point
+    // record rather than from parcelFromQuery: an unexpected "&" or space would
+    // otherwise write a link that parcelFromQuery then rejects, quietly breaking
+    // the sharing this exists for.
+    history.replaceState(null, "",
+      location.pathname + "?parcel=" + encodeURIComponent(parcelId));
     finishTask(task);
   }catch(err){
     if(mine!==seq || err.kind==="aborted") return;
@@ -2003,11 +2042,19 @@ async function coverageQuery(url,params,oidField,signal){
   let unreadable=0;
   const answer=status=>({status,features,unreadable});
   const maxPages=Math.max(1,Math.floor(Number(CFG.coverage&&CFG.coverage.maxPages))||1);
+  /* resultOffset means "skip this many rows of the result set", which is only a
+     stable position if the service returns the rows in a stable order — and
+     ArcGIS guarantees no order unless it is asked for one (A3-R05). Without
+     this, a second page could repeat or skip features from the first, and the
+     repeated-page guard below only catches a page whose object ids are exactly
+     the ones already seen, not a reshuffled one. Ordering by object id is the
+     cheapest total order every one of these layers already has. */
+  const ordered={...params,orderByFields:oidField};
   for(let page=0;page<maxPages;page++){
     let body;
     try{
       body=await query(url,
-        page?{...params,resultOffset:String(features.length+unreadable)}:params,signal);
+        page?{...ordered,resultOffset:String(features.length+unreadable)}:ordered,signal);
     }catch(e){
       if(e.kind==="aborted") throw e;
       console.error("[lookup] coverage query unavailable:",url,e.kind||"unknown",e.message||"");
@@ -2383,7 +2430,10 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
     }
     attributionNote([{owner:P.sourceOwner,reviewedOn:P.reviewedOn,label:"Property record"}])
       .forEach(s=>d.append(el("p",{text:s})));
-    c1.append(d);
+    // Guarded like the Location card's copy of this block below: attributionNote
+    // returns nothing when an owner or review date is missing, and with no
+    // schema-failed note either this would append an empty bordered box.
+    if(d.childNodes.length) c1.append(d);
   }
   const assessorLink=rec[P.assessorLinkField];
   if(isUrl(assessorLink)){

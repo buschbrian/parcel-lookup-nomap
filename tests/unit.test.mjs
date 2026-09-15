@@ -217,6 +217,34 @@ test("a point is inside a polygon only when it is inside a ring and outside ever
   assert.equal(pointInRings(SQUARE_WITH_HOLE,4,5),false,"on a hole's edge");
 });
 
+/* A3-R04. An unreadable vertex used to be skipped, which silently dropped two
+   edges from the even-odd count and flipped the parity — the function returned
+   a confident wrong answer instead of declining to give one. The consequence
+   was not academic: a probe point wrongly judged inside is sent as Q2 evidence,
+   and that is how a district merely bordering the property gets "confirmed" as
+   covering it. Refusing the whole geometry leaves no surviving probe, so the
+   caller falls back to the point-only path and the page says it could only
+   check the centre. */
+test("a polygon with an unreadable ring or vertex is refused, not partly counted",()=>{
+  const {pointInRings,probePoints}=pureApp();
+  // (5,5) is plainly inside this square; the damaged edge must not change that
+  // into a confident answer either way.
+  const BAD_VERTEX=[[[0,0],[10,0],[10,"x"],[0,10],[0,0]]];
+  const MISSING_VERTEX=[[[0,0],[10,0],null,[0,10],[0,0]]];
+  const NOT_A_RING=[[[0,0],[10,0],[10,10],[0,10],[0,0]],"nonsense"];
+  assert.equal(pointInRings(BAD_VERTEX,5,5),false,"a non-numeric coordinate refuses the polygon");
+  assert.equal(pointInRings(MISSING_VERTEX,5,5),false,"a missing vertex refuses the polygon");
+  assert.equal(pointInRings(NOT_A_RING,5,5),false,"a ring that is not an array refuses the polygon");
+  // And the caller therefore produces no probes at all, which is the documented
+  // signal to fall back to the point-only path rather than publish silence.
+  const cfg={probeGrid:5,maxProbes:25,coordDecimals:6};
+  // Length, not deepEqual: the array comes from pureApp()'s own vm realm, and
+  // deepStrictEqual treats same-shaped arrays from different realms as unequal
+  // (see the unconfigured-layer test above).
+  assert.equal(probePoints({rings:BAD_VERTEX},cfg,[5,5]).length,0,
+    "no probe survives a polygon that cannot be read");
+});
+
 test("probe points are inside the boundary, rounded first, capped and deterministic",()=>{
   const {probePoints}=pureApp();
   const cfg={probeGrid:5,maxProbes:25,coordDecimals:6};
@@ -754,6 +782,13 @@ test("mapLinkUrl appends lon/lat rounded to six decimals plus scale, or returns 
   assert.equal(mapLinkUrl(base,{lon:-111.815,lat:undefined,scale:2000}),base); // missing lat
   assert.equal(mapLinkUrl(base,{lon:NaN,lat:40.699,scale:2000}),base);
   assert.equal(mapLinkUrl(base),base);
+  // A6-R02: scale is guarded like the coordinates rather than interpolated on
+  // trust, which used to write the literal "&scale=undefined". It drops on its
+  // own, so a usable point still lands the map on the property.
+  const point=base+"?lon=-111.815000&lat=40.699000";
+  assert.equal(mapLinkUrl(base,{lon:-111.815,lat:40.699}),point,"no scale given");
+  assert.equal(mapLinkUrl(base,{lon:-111.815,lat:40.699,scale:"2000"}),point,"a string scale");
+  assert.equal(mapLinkUrl(base,{lon:-111.815,lat:40.699,scale:0}),point,"a zero scale");
 });
 
 /* MAP-001: the helper's guard is not the whole rule, because the caller decides

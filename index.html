@@ -440,7 +440,12 @@ const CFG = {
   release: {
     version: "2026.08.13",
     publishedOn: "2026-08-13",
-    dataReviewedOn: "2026-08-13"
+    dataReviewedOn: "2026-08-13",
+    // When the parcel source itself last changed, read from the layer's
+    // editingInfo.dataLastEditDate (2026-09-03 20:08 UTC = 14:08 local, so the
+    // local date is the same day). Distinct from dataReviewedOn, which is when
+    // Millcreek last checked the sources.
+    dataUpdatedOn: "2026-09-03"
   },
 
   // Public interactive-map reference used for layer-parity checks.
@@ -562,6 +567,10 @@ const CFG = {
     lonField: "parcel_longitude",
     sourceOwner: "Millcreek GIS; parcel records originate with Salt Lake County",
     reviewedOn: "2026-08-09",
+    // When Salt Lake County's parcel data last changed, as opposed to when we
+    // last checked it. Both are true and they are not the same fact, so the
+    // page states them separately rather than overloading reviewedOn.
+    sourceUpdatedOn: "2026-09-03",
     // Owner of record is public record (Salt Lake County Assessor).
     showOwner: true,
     // Named here, not read by name in the rendering code, because
@@ -2389,14 +2398,19 @@ function flagPair(labelTxt,state,detail){
    metadata. */
 function attributionNote(items){
   const seen=new Map();
-  items.forEach(({owner,reviewedOn,label})=>{
+  items.forEach(({owner,reviewedOn,updatedOn,label})=>{
     if(!owner||!reviewedOn) return;
-    const key=owner+" "+reviewedOn;
-    if(!seen.has(key)) seen.set(key,{owner,reviewedOn,labels:[]});
+    /* updatedOn joins the collapse key: two sources that we checked on the same
+       day but which changed on different days are not the same attribution, and
+       merging them would print one date over the other. */
+    const key=owner+" "+reviewedOn+" "+(updatedOn||"");
+    if(!seen.has(key)) seen.set(key,{owner,reviewedOn,updatedOn,labels:[]});
     seen.get(key).labels.push(label);
   });
-  return [...seen.values()].map(({owner,reviewedOn,labels})=>
-    "Sources: "+owner+", checked "+spokenDate(reviewedOn)+" — "+labels.join(", ")+".");
+  return [...seen.values()].map(({owner,reviewedOn,updatedOn,labels})=>
+    "Sources: "+owner+
+    (updatedOn?", updated "+spokenDate(updatedOn):"")+
+    ", checked "+spokenDate(reviewedOn)+" — "+labels.join(", ")+".");
 }
 
 function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
@@ -2428,7 +2442,8 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
       d.append(el("p",{},[el("strong",{text:"About this data. "}),
         document.createTextNode("Parcel field descriptions were temporarily unavailable, so coded values may not be expanded.")]));
     }
-    attributionNote([{owner:P.sourceOwner,reviewedOn:P.reviewedOn,label:"Property record"}])
+    attributionNote([{owner:P.sourceOwner,reviewedOn:P.reviewedOn,
+      updatedOn:P.sourceUpdatedOn,label:"Property record"}])
       .forEach(s=>d.append(el("p",{text:s})));
     // Guarded like the Location card's copy of this block below: attributionNote
     // returns nothing when an owner or review date is missing, and with no
@@ -2746,7 +2761,8 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
     // Attribution (A5): these coordinates come from the parcel record too,
     // so the same CFG.parcel owner/review date apply here as on Property record.
     const d=el("div",{class:"note"});
-    attributionNote([{owner:P.sourceOwner,reviewedOn:P.reviewedOn,label:"Location"}])
+    attributionNote([{owner:P.sourceOwner,reviewedOn:P.reviewedOn,
+      updatedOn:P.sourceUpdatedOn,label:"Location"}])
       .forEach(s=>d.append(el("p",{text:s})));
     if(d.childNodes.length) c4.append(d);
   }
@@ -2793,6 +2809,7 @@ $("#copy").addEventListener("click", async ()=>{
   lines.push("");
   lines.push("Source: Millcreek, Utah property lookup, release "+CFG.release.version+
     "; data sources reviewed "+CFG.release.dataReviewedOn+
+    "; parcel data updated "+CFG.release.dataUpdatedOn+
     "; copied "+new Date().toLocaleString("en-US"));
   const txt=lines.join("\n");
   try{

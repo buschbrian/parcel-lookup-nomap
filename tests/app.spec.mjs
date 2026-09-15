@@ -1186,8 +1186,10 @@ test("zoning and future land use each explain what they are, beside their own ro
    rather than repeating the same fact once per layer.
    =========================================================================== */
 
-// "Sources: <owner>, checked <spoken date> — <label>[, <label>...]."
-const SOURCES_SENTENCE=/Sources: [^,]+, checked \d{1,2} [A-Z][a-z]+ \d{4} — [^.]+\./;
+// "Sources: <owner>[, updated <spoken date>], checked <spoken date> — <label>[, ...]."
+// The update date is optional: only a source whose own last-change date is
+// known carries one, so the other cards must still match without it.
+const SOURCES_SENTENCE=/Sources: [^,]+(?:, updated \d{1,2} [A-Z][a-z]+ \d{4})?, checked \d{1,2} [A-Z][a-z]+ \d{4} — [^.]+\./;
 
 test("every rendered card names its data owner and a spoken review date",async({page})=>{
   await loadKnownProperty(page);
@@ -1267,13 +1269,15 @@ test("attribution sentences reach the copied text",async({page})=>{
   expect(copied).toContain(
     "Sources: Millcreek Planning and GIS, checked 9 August 2026 — "+
     "Base zoning district, Future land use, In the City Center Overlay (CCOZ).");
-  // Property record's and Location's attribution use CFG.parcel, not a layer.
+  // Property record's and Location's attribution use CFG.parcel, not a layer,
+  // and CFG.parcel is the one source that declares when it last changed, so
+  // these two are the only cards carrying an update date.
   expect(copied).toContain(
     "Sources: Millcreek GIS; parcel records originate with Salt Lake County, "+
-    "checked 9 August 2026 — Property record.");
+    "updated 3 September 2026, checked 9 August 2026 — Property record.");
   expect(copied).toContain(
     "Sources: Millcreek GIS; parcel records originate with Salt Lake County, "+
-    "checked 9 August 2026 — Location.");
+    "updated 3 September 2026, checked 9 August 2026 — Location.");
 });
 
 /* ---------------------------------------------------------------------------

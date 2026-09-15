@@ -1,8 +1,15 @@
 # Office prompts — 2026-09-15
 
+> **Status, 2026-09-15 afternoon: prompt 6 is done.** #30-#42 are all merged and
+> this repository has no open PRs. The prompts below are kept as written, so the
+> "#38 needs a commit first" and "until PR #39 merges" notes now read as history
+> rather than instructions. What actually happened, and where this review's
+> process advice was wrong, is recorded under "What actually happened" in the
+> evidence file. Still to do: cut `release/<date>` (the version is untouched at
+> `2026.08.13`), then promote.
+
 Copy-paste prompts for work in this repository on 2026-09-15. Evidence:
-`docs/reviews/2026-09-15-a-stack-merge-readiness.md` (until PR #39 merges,
-read it with `git show origin/docs/2026-09-15-a-stack-review:<path>`).
+`docs/reviews/2026-09-15-a-stack-merge-readiness.md` (PR #39, merged).
 
 This repository is public. Nothing pasted into a session here is committed
 unless it belongs in the code or its documentation.

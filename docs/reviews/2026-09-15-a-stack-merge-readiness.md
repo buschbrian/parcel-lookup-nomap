@@ -72,3 +72,69 @@ Not blocking the merge; needed before promoting to production.
 - [ ] A9 "Development activity at this property" has no PR; it follows C0–C5 in
   `millcreek-minutes-pipeline`.
 - [ ] Remove the `wt-lookup-*` worktrees once the stack is merged.
+
+## What actually happened — 2026-09-15 afternoon
+
+The stack merged in the predicted order and the verdict held: no conflicts, no
+surprises in the code. Everything below is a correction to this document's
+*process* advice, not to its per-PR verdicts.
+
+| PR | Merge commit |
+|---|---|
+| #30 A1 | `82ba6e2` |
+| #31 A2 | `9396f2e` |
+| #32 A3+A8 | `aac0965` |
+| #33 A4 | `2a4751f` |
+| #34 A7 | `5fdf0fa` |
+| #35 A6 | `208d360` |
+| #36 A5 | `3c8ec9f` |
+| #39 this review | `bf472a2` |
+| #38 vite 8.3.0 | `f3c95d1` |
+| #40 A-stack review fixes | `5ab0198` |
+| #41 footer privacy policy | `89131a1` |
+| #42 Property record first, source-updated date | `b78b919` |
+| #37 @playwright/test | `312e4b0` |
+
+`main`'s tree after #36 was byte-identical to `225df10`, as this review
+predicted.
+
+### Corrections
+
+**Retargeting is not automatic here.** This document said GitHub retargets the
+next PR when its base branch is deleted, and recommended `--delete-branch`. The
+repository has `deleteBranchOnMerge: false`, the merges were run without that
+flag, and nothing retargeted itself. Each child needed an explicit
+`gh pr edit <n> --base main` before it could merge. A sequential loop doing
+retarget-then-merge tripped once with "Cannot change the base branch of a closed
+pull request" immediately after a parent merged; re-running from the PR it
+stopped at worked.
+
+**The stack was never CI-verified against `main` until the end.** Retargeting
+does not re-trigger CI, so `gh pr checks --watch` returned instantly on results
+computed against each PR's *old* base, and #33–#36 merged six seconds apart.
+Branch protection was satisfied by those passing runs, and the content was
+equivalent because each parent was already in `main` — but the first genuine
+verification was #36's own merge run on `main`, which passed.
+
+**#38 needed a rebase, not only the literal.** The branch was 19 commits behind
+`main` — it predated the whole A stack. Building it directly is *not* the
+before-and-after comparison this document asks for: its output differs from
+`main`'s by the A stack (54 kB smaller, missing resident-facing strings), which
+reads exactly like Vite dropping content. Held the source fixed at `main` and
+varied only the Vite version: `dist/` is byte-identical under 8.2.2 and 8.3.0,
+verified with `cmp`. Then `@dependabot rebase`, then the literal. The line
+number moved from `tests/unit.test.mjs:467` to `:1289` after the rebase.
+
+**Four review fixes were missing from the stack entirely (#40).** Fixes written
+on `work-a5` on 2026-09-11 — after #30–#36 were opened — were never part of any
+PR, so merging the stack alone would have shipped the release without them.
+They touch `index.html` and `scripts/service-contract-core.mjs`, not only tests.
+Their original commits are preserved on `rescue/work-a5-2026-09-15`; they landed
+as content in #40 because replaying them onto #36's head conflicts (each was
+written against a later state than the PR it belonged to).
+
+### Still open after this
+
+The release itself: `release/<date>` has not been cut. The version is still
+`2026.08.13` in all three places. The changelog for today is the release step's
+job, per `RELEASE.md`.

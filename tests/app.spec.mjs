@@ -1145,18 +1145,19 @@ test("coverage sentences reach the copied text",async({page})=>{
 });
 
 /* ===========================================================================
-   Zoning first, and one plain-language sentence for zoning and future land use
-   (A7, 10 September 2026).
+   Property record first, then zoning, and one plain-language sentence for
+   zoning and future land use (A7, 10 September 2026; order reversed
+   15 September 2026).
    =========================================================================== */
 
 /* Read the actual heading text off the page rather than assuming it, so this
    test fails honestly if a card's own h3 wording ever drifts. */
-test("Zoning leads the report, then Property record, in the full fixed section order",
+test("Property record leads the report, then Zoning, in the full fixed section order",
   async({page})=>{
   await loadKnownProperty(page);
   const headings=await page.locator("#results-body .card h3").allTextContents();
   expect(headings).toEqual([
-    "Zoning","Property record","Historic designation","Hazard and special designations",
+    "Property record","Zoning","Historic designation","Hazard and special designations",
     "Subdivision and plat","Natural hazards","Informational hazard screening",
     "Representation","Services","Location"
   ]);

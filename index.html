@@ -587,11 +587,11 @@ const CFG = {
     url: "https://millcreekut.gov/151/Planning-Zoning"
   },
 
-  // Which LAYERS group's card draw() places first, ahead of Property record.
-  // Zoning leads the report (10 September 2026, PR A7) so a resident hears
-  // what governs the property before the property's own facts. Must name a
-  // group that actually appears in CFG.LAYERS; see draw() for the fallback
-  // if that group renders no card on a given lookup.
+  // Which LAYERS group's card draw() places first, directly after Property
+  // record. Property record leads the report (15 September 2026); Zoning
+  // follows it, so a resident sees the record for the address they looked up
+  // and then what governs it. Must name a group that actually appears in
+  // CFG.LAYERS; see draw() for what happens if it renders no card.
   firstGroup: "Zoning",
 
   // Spatial lookups. `geometryMode:"parcel"` uses the full parcel boundary;
@@ -2442,7 +2442,8 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
       el("a",{href:assessorLink,rel:"noopener",text:"Salt Lake County Assessor"})
     ]));
   }
-  // Not appended yet: CFG.firstGroup's card (Zoning) goes ahead of it, below.
+  // Not appended yet: this card leads the report, and CFG.firstGroup's card
+  // (Zoning) follows it, below.
 
   /* ---- Grouped layer results ---- */
   const groups=[...new Set(CFG.LAYERS.filter(L=>!L.hidden).map(L=>L.group))];
@@ -2699,19 +2700,17 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
     return card;
   }
 
-  /* ---- Card order: CFG.firstGroup (Zoning), then Property record ----
-     Zoning leads the report so a resident hears what governs the property
-     before the property's own facts (10 September 2026, PR A7). If Zoning
-     renders no card on a given lookup — every layer in it hidden or failed
-     out of the group entirely — Property record still has to appear
-     somewhere, so it goes first instead of being lost. */
+  /* ---- Card order: Property record, then CFG.firstGroup (Zoning) ----
+     The property's own facts lead the report: a resident who looked up an
+     address sees the record for that address first, and what governs it
+     second (15 September 2026). This reverses the order A7 shipped on
+     10 September. CFG.firstGroup still decides which LAYERS group follows
+     Property record; if that group renders no card on a given lookup, the
+     remaining groups simply follow in their normal order. Property record is
+     no longer order-dependent, so it can never be lost. */
+  body$.append(c1);
   const firstCard = groups.includes(CFG.firstGroup) ? renderGroupCard(CFG.firstGroup) : null;
-  if(firstCard){
-    body$.append(firstCard);
-    body$.append(c1);
-  }else{
-    body$.append(c1);
-  }
+  if(firstCard) body$.append(firstCard);
   groups.filter(g=>g!==CFG.firstGroup).forEach(g=>{
     const card=renderGroupCard(g);
     if(card) body$.append(card);

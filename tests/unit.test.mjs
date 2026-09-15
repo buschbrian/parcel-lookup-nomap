@@ -999,7 +999,7 @@ test("zoning rows are named after what they hold and link the code section",asyn
     "the purpose sentence is no longer mislabelled \"Ordinance\"");
 });
 
-/* A7: zoning leads the report, and zoning/future land use each carry one plain
+/* A7: zoning and future land use each carry one plain
    sentence explaining what they are (distinct from coverageSentences(), which
    says what the map found). */
 test("zoning and future land use each carry a plain-meaning sentence",()=>{

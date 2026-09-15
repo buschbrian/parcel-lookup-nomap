@@ -201,6 +201,25 @@ so there is no preflight.
 pass a parcel the page would fail on. A unit test compares the two copies, the same discipline as the
 byte-identical block itself.
 
+### Every query names its fields (added 10 September 2026)
+
+No query anywhere sends `outFields=*`. `outFieldsFor(L)` returns the unique union of a layer's
+`fields`, `nameField`, `rankField`, `oidField` (defaulting to `"OBJECTID"`) and `extraFields`;
+`hits()` sends exactly that list instead of asking for every attribute a layer happens to have.
+`parcelOutFields()` does the same for the parcel record — `CFG.parcel`'s named fields plus every
+`PARCEL_FACTS` and `PARCEL_FLAGS` field — so `load()`'s parcel query carries only what the page
+actually renders. Two layers' object id is not the ArcGIS default: `ccoz` is `OBJECTID_1` and
+`council` is `OBJECTID_12`, verified against the live service metadata and configured as
+`oidField`. Getting one of those wrong is not silent — `npm run check:services` verifies every
+layer's `oidField` exists in the live schema.
+
+Beyond the obvious (owner and mailing fields no longer transit on every layer query, only on the
+parcel query that actually shows them), this shrinks a query's contribution from other,
+unnecessary fields — though the parcel boundary is still what decides GET vs. POST above.
+`scripts/service-contract-core.mjs` carries the same `layerFieldList`/`parcelFieldList` formula for
+the live monitor; a self-contained page cannot import it, so `outFieldsFor`/`parcelOutFields` are a
+duplicate by necessity, and a unit test compares the page's output against the shared module's.
+
 `withRetry()` retries network, timeout, HTTP 429 and server failures once. It never retries rejected
 queries, ordinary HTTP errors or cancelled work. `explain()` turns the classification into public
 language and always includes the staffed route where appropriate.

@@ -580,8 +580,10 @@ const CFG = {
       fields:{LandUse:"Designation", GENPLAN_WEBSITE:"General Plan",
               GENPLAN_DOCUMENT:"Plan document"} },
 
+    // oidField -> verified 10 September 2026 against the live service metadata
+    // (?f=json): this layer's object id field is not the ArcGIS default.
     { key:"ccoz", group:"Zoning", label:"In the City Center Overlay (CCOZ)",
-      url:"/Zone_TCOZ/FeatureServer/0", boolean:true,
+      url:"/Zone_TCOZ/FeatureServer/0", boolean:true, oidField:"OBJECTID_1",
       sourceOwner:"Millcreek Planning and GIS", reviewedOn:"2026-08-09", cardinality:"one",
       note:"City Center Overlay standards apply, which affect permitted uses, "+
            "building height, setbacks and site design." },
@@ -660,8 +662,10 @@ const CFG = {
       sourceOwner:"Geologic mapping published by Millcreek; external steward not identified in the item",
       reviewedOn:"2026-08-09" },
 
+    // oidField -> verified 10 September 2026 against the live service metadata
+    // (?f=json): this layer's object id field is not the ArcGIS default.
     { key:"council", group:"Representation", label:"City Council",
-      url:"/Millcreek_City_Council_Dist_2022/FeatureServer/2",
+      url:"/Millcreek_City_Council_Dist_2022/FeatureServer/2", oidField:"OBJECTID_12",
       sourceOwner:"Millcreek GIS", reviewedOn:"2026-08-09", cardinality:"one",
       fields:{DIST:"District", COUNCILMEMBER:"Member", WEB:"Member page"} },
     // NOTE: Community councils (Community_Council) were removed August 2026 —
@@ -1005,6 +1009,32 @@ const likeOperand = s => String(s)
   .replace(/\\/g,"\\\\").replace(/[%_]/g,"\\$&").replace(/'/g,"''");
 const regexEsc = s => String(s).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
 
+/* No query anywhere requests outFields=* (added 10 September 2026). Every
+   layer query asks for exactly the fields it renders plus the layer's object
+   id; the parcel record query asks for exactly the parcel facts, owner
+   fields and coordinates the page displays. Beyond shrinking the query
+   strings A1 had to start posting, this stops owner and mailing fields
+   transiting on every layer query — only the parcel record query still
+   carries them, because the owner block is the only place they are shown.
+
+   scripts/service-contract-core.mjs carries the same formula for the live
+   monitor, and a unit test compares this copy's output against it — a
+   self-contained page cannot import that module, so this is a duplicate by
+   necessity, the same discipline as transportFor above. */
+function outFieldsFor(L){
+  return [...new Set([...Object.keys(L.fields||{}),
+    ...(L.nameField?[L.nameField]:[]),
+    ...(L.rankField?[L.rankField]:[]),
+    L.oidField||"OBJECTID",
+    ...(L.extraFields||[])])].join(",");
+}
+function parcelOutFields(){
+  const P=CFG.parcel;
+  return [...new Set([P.idField,P.latField,P.lonField,P.ownerField,P.careOfField,P.assessorLinkField,
+    ...CFG.PARCEL_FACTS.map(([field])=>field),
+    ...(CFG.PARCEL_FLAGS||[]).map(flag=>flag.field)])].join(",");
+}
+
 /* Conservative display precedence for multiple FEMA classifications touching
    one parcel. This is not a FEMA risk score; it only chooses which subtype the
    lookup presents first while preserving every intersecting classification in
@@ -1345,7 +1375,7 @@ async function load(parcelId, label){
     const P=CFG.parcel;
     const [schemaResult,queryResult] = await Promise.allSettled([
       schema(P.url,signal),
-      query(P.url,{ where:`${P.idField}='${esc(parcelId)}'`, outFields:"*",
+      query(P.url,{ where:`${P.idField}='${esc(parcelId)}'`, outFields:parcelOutFields(),
         returnGeometry:"true", outSR:"4326" },signal)
     ]);
     if(queryResult.status==="rejected") throw queryResult.reason;
@@ -1394,7 +1424,7 @@ async function hits(lon,lat,parcelGeometry,task){
         ...(L.distance?{distance:String(L.distance),units:L.units||"esriSRUnit_Meter"}:{})
       };
       const [queryResult,schemaResult] = await Promise.allSettled([
-        query(L.url,{...geo,outFields:"*"},signal),
+        query(L.url,{...geo,outFields:outFieldsFor(L)},signal),
         schema(L.url,signal)
       ]);
       if(queryResult.status==="rejected") throw queryResult.reason;
@@ -1418,13 +1448,14 @@ async function hits(lon,lat,parcelGeometry,task){
       out.ambiguous = (L.cardinality||"one")==="one" && feats.length>1;
 
       // Recorded plat (or any other attachment) on the matched feature.
-      if(L.attachments && out.attrs && out.attrs.OBJECTID!=null){
+      const oid = out.attrs && out.attrs[L.oidField||"OBJECTID"];
+      if(L.attachments && oid!=null){
         try{
           const a = await withRetry(()=>fetchJson(
-            layerUrl(L.url)+"/"+out.attrs.OBJECTID+"/attachments?f=json",signal),signal);
+            layerUrl(L.url)+"/"+oid+"/attachments?f=json",signal),signal);
           out.files = (a.attachmentInfos||[]).map(x=>({
             id:x.id, name:x.name, type:x.contentType, size:x.size,
-            url:layerUrl(L.url)+"/"+out.attrs.OBJECTID+"/attachments/"+x.id
+            url:layerUrl(L.url)+"/"+oid+"/attachments/"+x.id
           }));
         }catch(e){
           if(e.kind==="aborted") throw e;

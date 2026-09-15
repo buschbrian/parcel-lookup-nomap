@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { readApp, readBusinessApp } from "./app-config.mjs";
-import { buildReport, classifyCheckFailure, classifyHttp, contractFailure, renderSummary,
-  settleLayerChecks, transportFor, withRetry } from "./service-contract-core.mjs";
+import { buildReport, classifyCheckFailure, classifyHttp, contractFailure, layerFieldList,
+  parcelFieldList, renderSummary, settleLayerChecks, transportFor, withRetry } from "./service-contract-core.mjs";
 
 const {CFG}=await readApp();
 const {CFG:businessCFG}=await readBusinessApp();
@@ -74,12 +74,8 @@ const specs=[
   // Owner, care-of and the Assessor link are named in CFG rather than read by name in
   // the page, so they are verified here too. Without them a County rename would drop
   // the owner block and the valuation link from every result and pass every check.
-  {key:"parcel",url:CFG.parcel.url,fields:[CFG.parcel.idField,CFG.parcel.latField,CFG.parcel.lonField,
-    CFG.parcel.ownerField,CFG.parcel.careOfField,CFG.parcel.assessorLinkField,
-    ...CFG.PARCEL_FACTS.map(([field])=>field),...CFG.PARCEL_FLAGS.map(flag=>flag.field)]},
-  ...CFG.LAYERS.map(layer=>({key:layer.key,url:layer.url,
-    fields:[...Object.keys(layer.fields||{}),...(layer.nameField?[layer.nameField]:[]),
-      ...(layer.attachments?["OBJECTID"]:[])]})),
+  {key:"parcel",url:CFG.parcel.url,fields:parcelFieldList(CFG)},
+  ...CFG.LAYERS.map(layer=>({key:layer.key,url:layer.url,fields:layerFieldList(layer)})),
   {key:"business-rental",url:businessCFG.rental.url,fields:[businessCFG.rental.idField]},
   {key:"business-buffer",url:businessCFG.buffer.url,
     fields:[businessCFG.buffer.originField,businessCFG.buffer.distanceField]}
@@ -109,7 +105,8 @@ await contract("known-address",CFG.address.url,async()=>{
 });
 let record=null,parcelGeometry=null,lon=null,lat=null;
 if(parcelId) await contract("known-parcel",CFG.parcel.url,async()=>{
-  const parcelParams=new URLSearchParams({f:"json",returnGeometry:"true",outSR:"4326",outFields:"*",
+  const parcelParams=new URLSearchParams({f:"json",returnGeometry:"true",outSR:"4326",
+    outFields:parcelFieldList(CFG).join(","),
     where:CFG.parcel.idField+"='"+String(parcelId).replaceAll("'","''")+"'"});
   const parcelResult=await json(CFG.org+CFG.parcel.url+"/query?"+parcelParams);
   record=parcelResult.features?.[0]?.attributes;
@@ -128,7 +125,9 @@ const spatialResults=new Map(await Promise.all(CFG.LAYERS.map(async layer=>{
  let features=[];
  await contract(layer.key+" spatial",layer.url,async()=>{
   const useParcel=layer.geometryMode==="parcel"&&parcelGeometry;
-  const spatialParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:"*",
+  const oidField=layer.oidField||"OBJECTID";
+  const spatialParams=new URLSearchParams({f:"json",returnGeometry:"false",
+    outFields:layerFieldList(layer).join(","),
     geometry:useParcel?JSON.stringify(parcelGeometry):String(lon)+","+String(lat),
     geometryType:useParcel?"esriGeometryPolygon":"esriGeometryPoint",inSR:"4326",
     spatialRel:"esriSpatialRelIntersects",
@@ -139,8 +138,8 @@ const spatialResults=new Map(await Promise.all(CFG.LAYERS.map(async layer=>{
   if((layer.cardinality||"one")==="one"&&result.features.length>1)
     throw contractFailure(layer.key+" unexpectedly returned multiple polygons");
   features=result.features.map(feature=>feature.attributes);
-  if(layer.attachments&&result.features[0]?.attributes?.OBJECTID!=null){
-    const objectId=result.features[0].attributes.OBJECTID;
+  if(layer.attachments&&result.features[0]?.attributes?.[oidField]!=null){
+    const objectId=result.features[0].attributes[oidField];
     const attachments=await json(layerUrl(layer.url)+"/"+objectId+"/attachments?f=json");
     if(!Array.isArray(attachments.attachmentInfos))
       throw contractFailure(layer.key+" attachment listing is unavailable");
@@ -181,7 +180,8 @@ await contract("hazard-parcel-congruence",hazardParcelId,async()=>{
   const floodLayers=[CFG.LAYERS.find(layer=>layer.key==="flood"),
     CFG.LAYERS.find(layer=>layer.key==="flood_local")];
   const [hazardFema,hazardCity]=await Promise.all(floodLayers.map(async layer=>{
-    const queryParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:"*",
+    const queryParams=new URLSearchParams({f:"json",returnGeometry:"false",
+      outFields:layerFieldList(layer).join(","),
       geometry:JSON.stringify(hazardGeometry),geometryType:"esriGeometryPolygon",inSR:"4326",
       spatialRel:"esriSpatialRelIntersects"});
     return (await json(layerUrl(layer.url)+"/query?"+queryParams)).features.map(f=>f.attributes);
@@ -246,7 +246,7 @@ await contract("long-geometry-parcel",longGeometryParcelId,async()=>{
   // check says anything aggregate.
   const {failures,values}=await settleLayerChecks(polygonLayers,
     layer=>"long-geometry-parcel:"+layer.key,async layer=>{
-      const longQueryParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:"*",
+      const longQueryParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:layerFieldList(layer).join(","),
         geometry:JSON.stringify(longGeometry),geometryType:"esriGeometryPolygon",inSR:"4326",
         spatialRel:"esriSpatialRelIntersects"});
       const result=await json(layerUrl(layer.url)+"/query?"+longQueryParams);
@@ -278,7 +278,8 @@ await contract("long-geometry-parcel",longGeometryParcelId,async()=>{
    failure, so a missing geometry here is skipped, not re-reported as drift. */
 if(longGeometry) await contract("long-geometry-transport",longGeometryParcelId,async()=>{
   const layer=polygonLayers[0];
-  const boundaryParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:"*",
+  const boundaryParams=new URLSearchParams({f:"json",returnGeometry:"false",
+    outFields:layerFieldList(layer).join(","),
     geometry:JSON.stringify(longGeometry),geometryType:"esriGeometryPolygon",inSR:"4326",
     spatialRel:"esriSpatialRelIntersects"});
   const fullUrl=layerUrl(layer.url)+"/query?"+boundaryParams;
@@ -309,7 +310,8 @@ for(const [layerKey,positiveParcelId] of Object.entries(informationalHazardParce
     if(!positiveGeometry)
       throw contractFailure(layerKey+" known-positive parcel geometry is unavailable");
     const layer=CFG.LAYERS.find(candidate=>candidate.key===layerKey);
-    const positiveQueryParams=new URLSearchParams({f:"json",returnGeometry:"false",outFields:"*",
+    const positiveQueryParams=new URLSearchParams({f:"json",returnGeometry:"false",
+      outFields:layerFieldList(layer).join(","),
       geometry:JSON.stringify(positiveGeometry),geometryType:"esriGeometryPolygon",inSR:"4326",
       spatialRel:"esriSpatialRelIntersects"});
     const positiveResult=await json(layerUrl(layer.url)+"/query?"+positiveQueryParams);
@@ -409,8 +411,9 @@ await contract("public-web-map-parity",CFG.referenceWebMap.itemId,async()=>{
 /* One report, naming every contract that failed and why. Written whether the run
    passed or failed: a clean report is the evidence a release candidate needs, and
    the workflow uploads it either way. Sanitized by construction in
-   service-contract-core.mjs — the parcel queries above use outFields=*, so owner
-   names pass through this process and must never reach the file. */
+   service-contract-core.mjs — the parcel query above still explicitly requests
+   ownerField and careOfField, so owner names pass through this process and must
+   never reach the file. */
 const report=buildReport(checks,{generatedAt:new Date().toISOString()});
 await writeFile(new URL("../service-contract-report.json",import.meta.url),
   JSON.stringify(report,null,2)+"\n","utf8");

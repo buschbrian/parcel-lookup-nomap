@@ -151,7 +151,7 @@ meter is the real record of who serves you.** For anything binding, contact Plan
 
 ### If something does not work
 
-Phone **801-214-2754** or email **<gis@millcreekut.gov>**. Staff will provide the information in an
+Phone **801-214-2754** or email **<bbusch@millcreekut.gov>**. Staff will provide the information in an
 accessible format, normally **within 5 business days**, or sooner for a permit or hearing deadline.
 Please also report the problem so it can be fixed.
 
@@ -182,7 +182,7 @@ accessibility request and it must be logged — date received, what was asked, w
 date resolved. The log is the record that demonstrates the City responds, and it matters if the
 City is ever asked to show it.
 
-Route to GIS at **<gis@millcreekut.gov>**. The published commitment is **5 business days**.
+Route to GIS at **<bbusch@millcreekut.gov>**. The published commitment is **5 business days**.
 
 ### Questions to hand off, not answer
 
@@ -224,7 +224,7 @@ previous deploy is one click away in Netlify.
 contact: {
   phone: "801-214-2754",
   phoneHref: "+18012142754",
-  email: "gis@millcreekut.gov",
+  email: "bbusch@millcreekut.gov",
   sla: "within 5 business days"
 },
 

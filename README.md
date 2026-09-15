@@ -128,7 +128,7 @@ to a broken page.
 Report anything that prevents you getting the information you need:
 
 - Phone **801-214-2754**
-- Email **<gis@millcreekut.gov>**
+- Email **<bbusch@millcreekut.gov>**
 - Commitment: an accessible format **within 5 business days**
 
 Bugs and enhancements: open an issue in this repository.

@@ -38,7 +38,7 @@ We do not operate a bounty programme.
 - The upstream ArcGIS and FEMA services. We do not operate them, but we do depend on them, and we
   want to know — report to the operator as well.
 - The accuracy of the underlying GIS data. That is a data question rather than a security one; send
-  it to <gis@millcreekut.gov> and it will reach the right people faster.
+  it to <bbusch@millcreekut.gov> and it will reach the right people faster.
 - Findings that require an attacker to already control the resident's browser or machine.
 
 ## What we have already decided

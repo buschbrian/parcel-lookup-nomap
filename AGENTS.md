@@ -27,6 +27,7 @@ independent screen-reader use. **Live in production** at
 | The NVDA manual screen-reader script | `docs/manual-screen-reader-test.md` |
 | Why something used to work differently | `docs/changes/` (dated, historical) |
 | A not-yet-built idea | `docs/ideas/` |
+| What a review of open work found | `docs/reviews/` (dated) |
 
 ## Run and verify
 

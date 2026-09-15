@@ -66,6 +66,15 @@ means the authoritative source did not contain a definite value and staff should
 - **Copy results as text** puts the values, links, warnings, data notes and public disclaimer on your
   clipboard as plain text.
 - **Print results** produces a clean printout, disclaimer included.
+- **The page address itself is a link to this report.** After a lookup finishes, the address bar
+  updates to end with the parcel number — copy it from there, or from your browser's share button,
+  to send someone straight to this property's results. Only the parcel number is ever put in the
+  address; if you searched by street address, what you typed is not. Selecting **Clear** removes it
+  again, so refreshing a cleared page does not reload the old report.
+- You can also open a report this way directly — the Planning web map's own "Property information"
+  link for a parcel sends you here already loaded.
+- **The interactive zoning map link, in Location, opens zoomed to your property** rather than the
+  map's default city-wide view, once your report has coordinates for it.
 
 ### Reading the answers
 

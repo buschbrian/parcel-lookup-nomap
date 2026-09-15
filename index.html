@@ -841,7 +841,12 @@ const CFG = {
   // Field names never shown from generic layers.
   JUNK: /^(objectid|fid|globalid|shape|shape_|se_anno|created|creator|editor|edit|last_edit|mod_date|creationda|effective_|zone_code|cozone|applicatio|zone_desc2|notes|document_n|reg_plan_c|res_max_de)/i,
 
-  fallbackMapUrl: "https://planning.gis.millcreekut.gov/"
+  fallbackMapUrl: "https://planning.gis.millcreekut.gov/",
+  // Scale for the "interactive zoning map" deep link (A6), derived from the
+  // map's own address-result box: it zooms to roughly ±180 ft around a point,
+  // and 1:2000 approximates that framing so the link lands on the property
+  // rather than opening zoomed out to the neighborhood.
+  mapLinkScale: 2000
 };
 
 /* ==================================================================
@@ -1633,6 +1638,45 @@ function matchSummary(count, more){
     "“3300 E Santa Rosa Ave”.";
 }
 
+/* Deep links (A6). A shared link opens the report directly instead of making a
+   visitor retype what someone else already found: the planning map's Property
+   information popup can send either a 14-digit parcel id or a typed address as
+   a query parameter. Both extractors are conservative on purpose — a malformed
+   value returns null and the page opens exactly as it does with no query
+   string at all, rather than guessing or erroring.
+
+   Read without URLSearchParams: that constructor is a browser/Node global, not
+   part of the language itself, and this function lives in the pure region a
+   unit test evaluates in a bare vm sandbox. A hand-rolled reader also means
+   the rule stays identical wherever location.search's string form is read. */
+function queryParam(search, name){
+  const match = new RegExp("(?:^|[?&])"+name+"=([^&]*)").exec(search || "");
+  if(!match) return null;
+  try{ return decodeURIComponent(match[1].replace(/\+/g,"%20")); }
+  catch{ return null; }        // malformed percent-encoding: treat as absent
+}
+function parcelFromQuery(search){
+  const raw=queryParam(search,"parcel");
+  if(raw==null || !/^\d{9,14}$/.test(raw)) return null;
+  return raw.padStart(14,"0");           // same left-pad rule as the submit handler
+}
+function addressFromQuery(search){
+  const raw=queryParam(search,"address");
+  if(raw==null) return null;
+  const trimmed=raw.trim();
+  if(!trimmed || trimmed.length>120) return null;
+  return trimmed;
+}
+/* The planning map at CFG.fallbackMapUrl accepts its own `?lon=&lat=&scale=`
+   deep link (WGS-84, six decimals) and ignores a malformed pair rather than
+   erroring, so there is nothing to validate here beyond "are these usable
+   numbers" — anything else and the bare base URL still opens the map at its
+   default view. */
+function mapLinkUrl(base,{lon,lat,scale}={}){
+  if(!Number.isFinite(lon) || !Number.isFinite(lat)) return base;
+  return base+"?lon="+lon.toFixed(6)+"&lat="+lat.toFixed(6)+"&scale="+scale;
+}
+
 /* Tiered search. Returns the first tier that finds anything, plus a note
    explaining any broadening so it can be announced to the user, and `more`
    when the service reported it capped the result. */
@@ -1847,6 +1891,10 @@ $("#clear").addEventListener("click", ()=>{
   clearTimeout(timer); timer=null;
   q$.value=""; chosen=null; closeList(); say("");
   results$.hidden=true; body$.textContent="";
+  // Drop any ?parcel= or ?address= this page opened with (A6), so a cleared
+  // report does not reload on refresh and a cleared address deep link does not
+  // re-run its search.
+  history.replaceState(null, "", location.pathname);
   q$.focus();
 });
 
@@ -1882,6 +1930,12 @@ async function load(parcelId, label){
     const overlays = await hits(lon,lat,parcelFeature.geometry,task);
     if(mine!==seq) return;
     draw(rec,pSchema,overlays,label,lat,lon,schemaResult.status==="rejected");
+    // A successful report can be reopened or shared by its own URL (A6). Only the
+    // parcel id is ever written — a typed address plus a shared link is not public
+    // record the way the parcel id is (SECURITY.md) — and only replaceState, never
+    // pushState: there is no popstate handler, so a history entry per lookup would
+    // do nothing but make Back appear to do nothing.
+    history.replaceState(null, "", location.pathname + "?parcel=" + parcelId);
     finishTask(task);
   }catch(err){
     if(mine!==seq || err.kind==="aborted") return;
@@ -2527,13 +2581,26 @@ function draw(rec,sch,overlays,label,lat,lon,parcelSchemaFailed=false){
   const c4=el("div",{class:"card"});
   c4.append(el("h3",{text:"Location"}));
   const dl4=el("dl",{});
-  if(lat!=null&&lon!=null){
-    dl4.append(pair("Latitude, longitude", Number(lat).toFixed(6)+", "+Number(lon).toFixed(6)));
+  /* The stored coordinates are validated here, by the same rule the coverage
+     queries use (A3-R02), before anything converts them. `Number(null)` and
+     `Number("")` are both 0, and 0 is a perfectly finite coordinate, so
+     mapLinkUrl's own Number.isFinite guard cannot catch a missing pair coming
+     from this caller: a parcel with no stored point was sent to the planning
+     map at ?lon=0.000000&lat=0.000000, a spot in the Gulf of Guinea, instead of
+     opening the map at its default view (MAP-001). Only validated numbers reach
+     mapLinkUrl, and the row above the link answers from the same pair. */
+  const mapLon=validCoordinate(lon,-180,180)?Number(lon):null;
+  const mapLat=validCoordinate(lat,-90,90)?Number(lat):null;
+  const mapPoint=mapLon!=null&&mapLat!=null;
+  if(mapPoint){
+    dl4.append(pair("Latitude, longitude", mapLat.toFixed(6)+", "+mapLon.toFixed(6)));
   }
   c4.append(dl4);
   c4.append(el("p",{class:"meta"},[
     document.createTextNode("Prefer a visual map? You can also use the "),
-    el("a",{href:CFG.fallbackMapUrl,rel:"noopener",text:"interactive zoning map"}),
+    el("a",{href:mapLinkUrl(CFG.fallbackMapUrl,
+        mapPoint?{lon:mapLon,lat:mapLat,scale:CFG.mapLinkScale}:{}),
+      rel:"noopener",text:"interactive zoning map"}),
     document.createTextNode(". The map is not required to use this lookup.")
   ]));
   body$.append(c4);
@@ -2605,6 +2672,22 @@ if(RUNNING_FROM_FILE){
 $("#build").textContent="Property lookup release "+CFG.release.version+
   " — published "+CFG.release.publishedOn+"; data sources last reviewed "+
   CFG.release.dataReviewedOn+". WCAG 2.1 AA target. Report a problem to "+CFG.contact.email+".";
+
+/* Deep links (A6). A parcel id opens the report with no typing at all; a typed
+   address runs the identical tiered search a resident's own typing would run,
+   several-candidates branch included, by submitting the same form the same
+   way. A malformed or absent value is ignored and the page opens normally —
+   see parcelFromQuery()/addressFromQuery() above for what counts as usable. */
+const deepLinkParcel = parcelFromQuery(location.search);
+if(deepLinkParcel!=null){
+  load(deepLinkParcel, deepLinkParcel);
+}else{
+  const deepLinkAddress = addressFromQuery(location.search);
+  if(deepLinkAddress!=null){
+    q$.value = deepLinkAddress;
+    $("#lookup").requestSubmit();
+  }
+}
 </script>
 </body>
 </html>

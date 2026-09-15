@@ -1286,7 +1286,7 @@ test("the release toolchain is pinned consistently",async()=>{
      one line — the point is that the line exists. Whoever changes it should have
      compared the built bytes before and after; a Vite major that alters the output
      is a change to the served pages, not a housekeeping update. */
-  assert.equal(packageJson.devDependencies?.vite,"8.2.2","Vite is pinned exactly");
+  assert.equal(packageJson.devDependencies?.vite,"8.3.0","Vite is pinned exactly");
   assert.doesNotMatch(packageJson.devDependencies.vite,/[\^~><*]|\s-\s/,
     "the Vite pin is an exact version, not a range");
   assert.equal(lock.packages?.[""]?.devDependencies?.vite,packageJson.devDependencies.vite,

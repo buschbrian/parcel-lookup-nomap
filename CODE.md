@@ -100,7 +100,9 @@ Everything above the `No further edits needed below this line` marker is the mai
 
 Every displayed layer carries:
 
-- `sourceOwner` and `reviewedOn` for governance;
+- `sourceOwner` and `reviewedOn` for governance, and — since 10 September 2026 (section 6, "Every
+  card names its data owner and review date") — for a resident-facing "Sources:" sentence on every
+  rendered card;
 - `cardinality`, normally `"one"`, so an unexpected overlap becomes a warning;
 - an explicit `fields` map for resident-facing output;
 - optional `boolean`, `note`, `geometryMode`, `kind`, distance, link or attachment settings.
@@ -447,6 +449,48 @@ scanned files as not screen-reader accessible and gives the staffed description 
 failure is visible instead of looking like the parcel has no plat.
 
 After rendering, the live region summarizes degraded sources and focus moves to the results heading.
+
+### Every card names its data owner and review date (added 10 September 2026)
+
+`sourceOwner` and `reviewedOn` (section 3) were, until this change, governance-only: read by
+`npm run check:services` and by the "every displayed layer carries source-governance metadata" unit
+test, never rendered. `attributionNote(items)` — `items` is a list of `{owner, reviewedOn, label}` —
+turns them into resident-facing sentences: `"Sources: <owner>, checked <spokenDate(reviewedOn)> —
+<layer label>, <layer label>."` `spokenDate(iso)` is the pure formatter behind the date half of that
+sentence (`"2026-08-09"` → `"9 August 2026"`); it never calls `new Date()` on the visitor's clock, the
+same reason `CFG.release`'s own comment gives for its dates — a visitor's timezone can roll a parsed
+date backward or forward from the calendar date a person actually reviewed. Anything that is not a
+plain `YYYY-MM-DD` string comes back unchanged rather than silently blank.
+
+**Layers sharing an identical owner and review date collapse into one sentence.** `attributionNote()`
+groups its input by the exact `owner`+`reviewedOn` pair and lists every contributing label in one
+sentence per distinct pair, in first-appearance order. Zoning's three layers (`zone`, `futureland`,
+`ccoz`) all carry the same `sourceOwner`/`reviewedOn` today, so the Zoning card renders exactly one
+sentence naming all three labels, not three sentences saying the same thing. A group whose layers do
+not share an owner or date — Natural hazards' FEMA and UGS/County sources, for example — renders one
+sentence per distinct pair instead.
+
+**Where it renders.** Every `renderGroupCard(g)` computes its attribution from `rows` — the same
+overlay list the card's own rows come from, so a layer's attribution appears even when that layer's
+query failed or found nothing, because `sourceOwner`/`reviewedOn` are static `CFG` facts, not query
+results.
+
+**A hidden layer whose data feeds a visible result is attributed too (ATTR-001).** `rows` excludes
+`hidden` layers, but a hidden layer's data can still be on screen: "Millcreek flood layer matches live
+FEMA" is a comparison against the hidden `flood_local` layer, so a resident was shown a flood
+comparison whose second source was never named. A visible layer now declares the hidden layers its
+results are derived from — `dependsOn:["flood_local"]` on the FEMA layer — and `renderGroupCard()`
+appends each declared dependency's `{owner, reviewedOn, label}` directly after its consumer's, so the
+dependency's sentence sits beside the result it produced. A dependency already among the visible rows
+is skipped, and a key named twice is attributed once; declaring a dependency renders no row for it,
+only its attribution. It is appended as one `p` per sentence inside the card's existing `.note` — after the group's
+`GROUP_NOTES` text when the group has one, or as the whole note when it does not (two groups,
+Subdivision and plat and Representation, have no `GROUP_NOTES` entry and previously rendered no note
+at all). The Property record and Location cards are not built from `CFG.LAYERS`, so they call
+`attributionNote()` directly with `CFG.parcel.sourceOwner`/`reviewedOn` — Location's coordinates come
+from the parcel record too, so it uses the same pair, labelled `"Location"` rather than `"Property
+record"`. Rendering inside the existing `.note` means `plainText()`'s existing `.note p` selector
+(section 7) picks the sentences up for Copy results with no change.
 
 ### Deep links open and share a report (added 10 September 2026)
 

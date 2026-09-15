@@ -1176,6 +1176,105 @@ test("zoning and future land use each explain what they are, beside their own ro
   expect(copied).toContain("Future land use is the city's plan for later.");
 });
 
+/* ===========================================================================
+   Attribution: who owns this data, and when was it last checked (A5,
+   10 September 2026). Every rendered card — every configured group, plus the
+   Property record and Location cards that are not built from CFG.LAYERS at
+   all — names an owner and a spoken-word review date. Layers sharing an
+   identical owner and review date collapse into one "Sources:" sentence
+   rather than repeating the same fact once per layer.
+   =========================================================================== */
+
+// "Sources: <owner>, checked <spoken date> — <label>[, <label>...]."
+const SOURCES_SENTENCE=/Sources: [^,]+, checked \d{1,2} [A-Z][a-z]+ \d{4} — [^.]+\./;
+
+test("every rendered card names its data owner and a spoken review date",async({page})=>{
+  await loadKnownProperty(page);
+  const cards=page.locator("#results-body .card");
+  const count=await cards.count();
+  expect(count).toBeGreaterThan(0);
+  for(let i=0;i<count;i++){
+    const card=cards.nth(i);
+    const heading=await card.locator("h3").innerText();
+    await expect(card,heading+" card names its data owner and review date")
+      .toContainText(SOURCES_SENTENCE);
+  }
+  // Property record and Location are not built from CFG.LAYERS at all — call
+  // them out by name so a future refactor that drops their attribution does
+  // not hide behind the loop above passing on every other card.
+  const headings=await page.locator("#results-body .card h3").allTextContents();
+  expect(headings).toContain("Property record");
+  expect(headings).toContain("Location");
+});
+
+/* Zoning's three layers (zone, futureland, ccoz) are all configured with the
+   identical sourceOwner and reviewedOn, so the collapse rule must produce
+   exactly one sentence naming all three labels — not one sentence per layer. */
+test("layers sharing an owner and review date collapse into one Sources sentence",async({page})=>{
+  await loadKnownProperty(page);
+  const text=await zoningCard(page).innerText();
+  const matches=text.match(/Sources:/g)||[];
+  expect(matches.length).toBe(1);
+  expect(text).toContain(
+    "Sources: Millcreek Planning and GIS, checked 9 August 2026 — "+
+    "Base zoning district, Future land use, In the City Center Overlay (CCOZ).");
+});
+
+/* ATTR-001: the Natural hazards card renders "Millcreek flood layer matches live
+   FEMA", a result derived entirely from the hidden flood_local layer. Attribution
+   was built from visible rows, so the resident was shown a flood comparison whose
+   second source — who publishes it, and when anyone last checked it — was never
+   named. Both sources have to appear. */
+test("a hidden layer behind a visible result is named in the attribution (ATTR-001)",
+  async({page})=>{
+  await loadKnownProperty(page);
+  const hazards=page.locator("#results-body .card")
+    .filter({has:page.locator("h3",{hasText:"Natural hazards"})});
+  // The derived result is on screen ...
+  await expect(hazards).toContainText("Millcreek flood layer matches live FEMA");
+  // ... so both of the sources behind it are named, with their own review dates.
+  await expect(hazards).toContainText(
+    "Sources: Federal Emergency Management Agency (National Flood Hazard Layer), "+
+    "checked 9 August 2026 — FEMA flood hazard.");
+  await expect(hazards).toContainText(
+    "Sources: FEMA data published in Millcreek's Planning web map, "+
+    "checked 9 August 2026 — Millcreek flood-layer cross-check.");
+  // Naming it once is enough: the hidden layer is not a row, and the sentence
+  // that names it must not be repeated.
+  const text=await hazards.innerText();
+  expect(text.split("Millcreek flood-layer cross-check").length-1).toBe(1);
+  // And it stays out of the rows themselves — attribution is not a licence to
+  // render a hidden layer's own result.
+  await expect(hazards.locator(".pair dt",{hasText:"Millcreek flood-layer cross-check"}))
+    .toHaveCount(0);
+});
+
+test("the hidden flood layer's attribution reaches the copied text too (ATTR-001)",
+  async({page})=>{
+  await loadKnownProperty(page);
+  await page.locator("#copy").click();
+  const copied=await page.evaluate(()=>navigator.clipboard.readText());
+  expect(copied).toContain(
+    "Sources: FEMA data published in Millcreek's Planning web map, "+
+    "checked 9 August 2026 — Millcreek flood-layer cross-check.");
+});
+
+test("attribution sentences reach the copied text",async({page})=>{
+  await loadKnownProperty(page);
+  await page.locator("#copy").click();
+  const copied=await page.evaluate(()=>navigator.clipboard.readText());
+  expect(copied).toContain(
+    "Sources: Millcreek Planning and GIS, checked 9 August 2026 — "+
+    "Base zoning district, Future land use, In the City Center Overlay (CCOZ).");
+  // Property record's and Location's attribution use CFG.parcel, not a layer.
+  expect(copied).toContain(
+    "Sources: Millcreek GIS; parcel records originate with Salt Lake County, "+
+    "checked 9 August 2026 — Property record.");
+  expect(copied).toContain(
+    "Sources: Millcreek GIS; parcel records originate with Salt Lake County, "+
+    "checked 9 August 2026 — Location.");
+});
+
 /* ---------------------------------------------------------------------------
    Reflow and focus-visibility regressions.
 

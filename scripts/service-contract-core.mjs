@@ -155,9 +155,76 @@ export function layerFieldList(layer){
   return [...new Set([...Object.keys(layer.fields||{}),
     ...(layer.nameField?[layer.nameField]:[]),
     ...(layer.rankField?[layer.rankField]:[]),
+    ...(layer.designationKey?[layer.designationKey]:[]),
     layer.oidField||"OBJECTID",
     ...(layer.extraFields||[])])];
 }
+
+/* ==== PROBE GEOMETRY - textually identical to the copies in the page's pure
+   helper region; a unit test compares them ====
+
+   The zoning coverage contracts below have to build the same probe points the
+   page builds. If the monitor probed differently it would confirm designations
+   the page cannot confirm, or miss ones it does - and either way the contract
+   would be checking something no resident receives. The reasoning behind both
+   functions - why even-odd parity is exactly "inside an outer ring and outside
+   every hole", why a point on a ring is rejected, and why the rounding happens
+   before the test - is documented at the page's copy in index.html.
+
+   Keep both functions byte-for-byte the same as that copy. */
+function pointInRings(rings,x,y){
+  let inside=false;
+  for(const ring of rings||[]){
+    if(!Array.isArray(ring)) continue;
+    for(let i=0,n=ring.length;i<n;i++){
+      const from=ring[i], to=ring[(i+1)%n];
+      if(!from||!to) continue;
+      const x1=Number(from[0]),y1=Number(from[1]),x2=Number(to[0]),y2=Number(to[1]);
+      if(!(Number.isFinite(x1)&&Number.isFinite(y1)&&Number.isFinite(x2)&&Number.isFinite(y2))) continue;
+      const cross=(x2-x1)*(y-y1)-(y2-y1)*(x-x1);
+      if(Math.abs(cross)<=1e-12 &&
+         x>=Math.min(x1,x2)-1e-12 && x<=Math.max(x1,x2)+1e-12 &&
+         y>=Math.min(y1,y2)-1e-12 && y<=Math.max(y1,y2)+1e-12) return false;
+      if((y1>y)!==(y2>y) && x < x1+(y-y1)*(x2-x1)/(y2-y1)) inside=!inside;
+    }
+  }
+  return inside;
+}
+
+function probePoints(geometry,cfg,storedPoint){
+  const rings=(geometry&&geometry.rings)||[];
+  const grid=Math.max(1,Math.floor(Number(cfg&&cfg.probeGrid))||5);
+  const cap=Math.max(1,Math.floor(Number(cfg&&cfg.maxProbes))||25);
+  const decimals=Number(cfg&&cfg.coordDecimals);
+  const places=Number.isFinite(decimals)?decimals:6;
+  const round=value=>Number(Number(value).toFixed(places));
+  let xmin=Infinity,ymin=Infinity,xmax=-Infinity,ymax=-Infinity;
+  for(const ring of rings) for(const vertex of ring||[]){
+    const x=Number(vertex&&vertex[0]), y=Number(vertex&&vertex[1]);
+    if(!(Number.isFinite(x)&&Number.isFinite(y))) continue;
+    if(x<xmin) xmin=x; if(x>xmax) xmax=x;
+    if(y<ymin) ymin=y; if(y>ymax) ymax=y;
+  }
+  if(!(Number.isFinite(xmin)&&Number.isFinite(ymin)&&
+       Number.isFinite(xmax)&&Number.isFinite(ymax))) return [];
+  const points=[], seen=new Set();
+  const offer=(x,y)=>{
+    if(points.length>=cap) return;
+    const px=round(x), py=round(y);
+    if(!(Number.isFinite(px)&&Number.isFinite(py))) return;
+    const id=px+","+py;
+    if(seen.has(id)) return;
+    seen.add(id);
+    if(pointInRings(rings,px,py)) points.push([px,py]);
+  };
+  if(storedPoint) offer(storedPoint[0],storedPoint[1]);
+  for(let row=0;row<grid;row++)
+    for(let column=0;column<grid;column++)
+      offer(xmin+(xmax-xmin)*(column+0.5)/grid, ymin+(ymax-ymin)*(row+0.5)/grid);
+  return points;
+}
+
+export { pointInRings, probePoints };
 
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 

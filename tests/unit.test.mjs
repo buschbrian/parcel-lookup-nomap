@@ -1465,16 +1465,17 @@ test("current documentation does not advertise removed features or stale deploym
 
 /* Deployed-content verification — ADR-0001 / production readiness Task 4.
 
-   `check:deployment` is the only automated proof that what Netlify serves is what
-   the build produced. It has never gated anything, because Netlify's Pretty URLs
-   post-processing rewrites two links and the check asserted exact bytes and then
-   aborted on the first failure, never reaching the header and allowlist gates.
+   `check:deployment` is the only automated proof that what the host serves is what
+   the build produced. On Azure Static Web Apps the contract is exact bytes and
+   nothing else: Azure does not post-process HTML, so any difference at all is drift.
 
-   The rules below are the contract: exact bytes pass, the two rewrites recorded in
-   CHANGES-2026-08-13.md §7 pass, and everything else fails with a located
-   difference. The comparison is pure so it can be tested without a deployment. */
-import { PRETTY_URL_REWRITES, compareDeployedHtml, missingHeaderDirectives,
-  stripHostingInjection, stripPreviewDrawer,
+   This suite used to pin three tolerated Netlify transformations — two Pretty URLs
+   link rewrites, the deploy-preview drawer, and the production marketing injection.
+   All three were removed with Netlify on 2026-09-16 (ADR-0005). The tests below now
+   assert the stricter contract: each of those former allowances must FAIL, because
+   a host that transforms served bytes is exactly what this gate exists to catch.
+   The comparison is pure so it can be tested without a deployment. */
+import { compareDeployedHtml, missingHeaderDirectives,
   unpublishedPathFailure } from "../scripts/deployment-content.mjs";
 
 const builtFixture=[
@@ -1483,91 +1484,50 @@ const builtFixture=[
   "<a href=\"/index.html\">back</a>","</body>","</html>"
 ].join("\n");
 
-test("a deployment that matches the built bytes exactly needs no allowance",()=>{
+test("a deployment that matches the built bytes exactly passes with no allowance",()=>{
   const result=compareDeployedHtml(builtFixture,builtFixture,"index.html");
   assert.equal(result.match,true);
-  assert.deepEqual(result.rewritesApplied,[]);
+  assert.deepEqual(result.rewritesApplied,[],
+    "Azure serves the artifact verbatim, so nothing may ever be reported as tolerated");
 });
 
-test("both documented Pretty URLs rewrites are accepted and named",()=>{
+test("the retired Pretty URLs rewrites are now drift, not allowances",()=>{
+  // Netlify rewrote both of these links. Azure does not, so if they ever appear
+  // again something is post-processing the pages and the gate must say so.
   const deployed=builtFixture
     .replace("href=\"/business-licensing.html\"","href='/business-licensing'")
     .replace("href=\"/index.html\"","href='/'");
   const result=compareDeployedHtml(deployed,builtFixture,"index.html");
-  assert.equal(result.match,true,result.message);
-  assert.equal(result.rewritesApplied.length,PRETTY_URL_REWRITES.length,
-    "both rewrite forms are reported, not just the one that happened to match");
+  assert.equal(result.match,false,"a link rewrite is drift once the allowance is gone");
+  assert.ok(result.message.includes("does not match the built bytes"));
 });
 
-/* Found by pointing the repaired check at a real deploy preview: Netlify injects
-   its preview drawer before </body>, so without this allowance no deploy preview
-   could ever pass the content gate — the gate would be useless exactly where a
-   release candidate is verified. */
-const previewFixture=builtFixture.replace("</body>",
-  "<div data-netlify-deploy-id=\"6a8c9aa\" data-netlify-site-id=\"dc0e170\" "+
-  "data-vcs=\"github\" style=\"position:fixed\">\n  \n  "+
-  "<script async src=\"/.netlify/scripts/cdp\"></script>\n</div>\n</body>");
-
-test("a deploy preview passes the content gate and says what was tolerated",()=>{
-  const result=compareDeployedHtml(previewFixture,builtFixture,"index.html");
-  assert.equal(result.match,true,result.message);
-  assert.ok(result.rewritesApplied.some(name=>/deploy-preview drawer/.test(name)),
-    "the tolerated injection is named in the output, not silently removed");
-});
-
-test("the preview allowance removes the drawer and nothing else",()=>{
-  const sabotaged=previewFixture.replace("<body>","<body><script>alert(1)</script>");
-  const result=compareDeployedHtml(sabotaged,builtFixture,"index.html");
-  assert.equal(result.match,false,"content injected outside the drawer is still drift");
-  assert.equal(stripPreviewDrawer(builtFixture).stripped,null,
-    "a page without a drawer is returned untouched");
-});
-
-test("a probe answered by a preview's catch-all is not a published file",()=>{
-  // The reference page carries the drawer too, because the same deployment served
-  // it. Comparing a stripped probe against an unstripped reference reported all
-  // twenty allowlist probes as published files on the first real preview run.
-  assert.equal(unpublishedPathFailure("/README.md",200,previewFixture,previewFixture),null);
-});
-
-/* Tolerated under protest: Netlify injects this into production pages and offers no
-   way off it below a paid plan. The allowance is narrow on purpose — all three parts,
-   in order — so it cannot widen into cover for real drift. */
-const injectionFixture=builtFixture.replace("<html lang=\"en-US\">",
-  "<html lang=\"en-US\">\n<!-- This site is hosted on Netlify. Anyone can build and deploy a site\n"+
-  "     like this one for free: https://netlify.new/?utm_campaign=ai-legible -->\n"+
-  "<meta name=\"hosting-provider\" content=\"Netlify\">\n"+
-  "<meta name=\"netlify-deploy\" content=\"https://netlify.new/?utm_campaign=ai-legible\">");
-
-test("the production hosting injection is tolerated and named on every passing run",()=>{
-  const result=compareDeployedHtml(injectionFixture,builtFixture,"index.html");
-  assert.equal(result.match,true,result.message);
-  assert.ok(result.rewritesApplied.some(name=>/hosting-provider/.test(name)),
-    "a tolerated injection must be reported, so nobody forgets the allowance is there");
-});
-
-test("the hosting allowance needs all three parts and covers nothing else",()=>{
-  // Two of the three: the comment and one meta tag. Not the documented injection,
-  // so not covered — an allowance that matched partially could cover real drift.
-  const partial=injectionFixture.replace(
-    "\n<meta name=\"netlify-deploy\" content=\"https://netlify.new/?utm_campaign=ai-legible\">","");
-  assert.equal(compareDeployedHtml(partial,builtFixture,"index.html").match,false,
-    "a partial match is drift, not the known injection");
-
-  const withDrift=injectionFixture.replace("<body>","<body><script>alert(1)</script>");
-  assert.equal(compareDeployedHtml(withDrift,builtFixture,"index.html").match,false,
-    "content injected elsewhere is still caught while the allowance applies");
-
-  assert.equal(stripHostingInjection(builtFixture).stripped,null,
-    "a page without the injection is returned untouched");
-});
-
-test("an undocumented rewrite of the same link is drift, not an allowance",()=>{
-  // Same href, different transformation: extension kept, quotes changed. Nothing
-  // in the record says Netlify does this, so it must not be waved through.
-  const deployed=builtFixture.replace("href=\"/business-licensing.html\"",
-    "href='/business-licensing.html'");
+test("the retired deploy-preview drawer is now drift",()=>{
+  const deployed=builtFixture.replace("</body>",
+    "<div data-netlify-deploy-id=\"6a8c9aa\" data-netlify-site-id=\"dc0e170\" "+
+    "data-vcs=\"github\" style=\"position:fixed\">\n  \n  "+
+    "<script async src=\"/.netlify/scripts/cdp\"></script>\n</div>\n</body>");
   assert.equal(compareDeployedHtml(deployed,builtFixture,"index.html").match,false);
+});
+
+test("the retired hosting marketing injection is now drift",()=>{
+  // The injection that was tolerated under protest from 26 August 2026. Nothing
+  // should ever inject into a municipally hosted page; if it does, this fails loudly.
+  const deployed=builtFixture.replace("<html lang=\"en-US\">",
+    "<html lang=\"en-US\">\n<!-- This site is hosted on Netlify. -->\n"+
+    "<meta name=\"hosting-provider\" content=\"Netlify\">");
+  assert.equal(compareDeployedHtml(deployed,builtFixture,"index.html").match,false,
+    "an injected marketing tag is drift on a host that does not post-process");
+});
+
+test("a probe answered by the catch-all is not a published file",()=>{
+  assert.equal(unpublishedPathFailure("/README.md",200,builtFixture,builtFixture),null);
+});
+
+test("a genuinely published repository file is still caught",()=>{
+  const failure=unpublishedPathFailure("/README.md",200,"# Millcreek Property Lookup",builtFixture);
+  assert.ok(failure,"a path returning its own content is exposing a repository file");
+  assert.match(failure,/README\.md/);
 });
 
 test("unexpected drift is reported with the page and the first differing line",()=>{
@@ -1587,16 +1547,6 @@ test("truncated deployments are drift rather than a silent match",()=>{
   assert.equal(result.firstDifference.line,5);
 });
 
-test("the built pages still contain the links the rewrite allowances describe",async()=>{
-  // If a link is renamed, its allowance becomes dead permission to accept a rewrite
-  // that can no longer occur. Fail here rather than let the allowance rot.
-  for(const rewrite of PRETTY_URL_REWRITES){
-    const pages=[html,licensingHtml].filter(page=>page.includes(rewrite.from));
-    assert.ok(pages.length>0,
-      "no page contains "+rewrite.from+", so its Pretty URLs allowance is now dead");
-  }
-});
-
 test("every missing security directive is reported, not only the first",()=>{
   const headers=new Map([["referrer-policy","strict-origin-when-cross-origin"],
     ["strict-transport-security","max-age=600"]]);
@@ -1612,11 +1562,10 @@ test("every missing security directive is reported, not only the first",()=>{
 
 test("a repository path is unpublished when it 404s or answers with the app",()=>{
   const app=builtFixture;
-  const served=app.replace("href=\"/index.html\"","href='/'");
   assert.equal(unpublishedPathFailure("/README.md",404,"Not Found",app),null,
     "a 404 proves the file is not published");
-  assert.equal(unpublishedPathFailure("/README.md",200,served,app),null,
-    "the catch-all rewrite answers with the app, post-processing included");
+  assert.equal(unpublishedPathFailure("/README.md",200,app,app),null,
+    "Azure's navigation fallback answers with the app verbatim, which is not a published file");
   assert.match(unpublishedPathFailure("/README.md",200,"# Millcreek Property Lookup",app),
     /README\.md/,"repository content served at 200 is the failure this gate exists for");
 });

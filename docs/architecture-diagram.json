@@ -38,7 +38,7 @@
       "Every push to main builds, tests and stages one immutable artifact",
       "promote-production.yml re-uploads that artifact — it never rebuilds",
       "A required reviewer is the only path to production, by design",
-      "Netlify still serves the old URL in parallel, as the rollback"
+      "Rollback is a re-promotion of the last good staging run, not a second host"
     ] },
     { "dot": "emerald", "title": "Runtime data", "items": [
       "Both pages are static HTML + JS, with no backend of their own",

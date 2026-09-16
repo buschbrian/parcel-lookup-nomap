@@ -19,17 +19,17 @@ that appears.
 property:
 
 ```text
-3300 E Santa Rosa Ave
-3300 East Santa Rosa Avenue
-3300 EAST SANTA ROSA
-3300 e. santa rosa ave.
-3300 E Santa Rosa Ave, Millcreek, UT 84109
+1344 E Chambers Ave
+1344 East Chambers Avenue
+1344 EAST CHAMBERS
+1344 e. chambers ave.
+1344 E Chambers Ave, Millcreek, UT 84106
 ```
 
 Grid addresses work spelled out too — `2760 South 2100 East` finds `2760 S 2100 E`.
 
 **If you cannot find your property,** try just the house number and the street name and leave off
-the direction and the street type — `3300 Santa Rosa`. If that still fails, call **801-214-2754**
+the direction and the street type — `1344 Chambers`. If that still fails, call **801-214-2754**
 and staff will look it up for you.
 
 You can also search by **parcel number**, the 14-digit number on your tax notice. Around 66 parcels
@@ -215,8 +215,9 @@ above the line:
    ================================================================== */
 ```
 
-Edit, commit, push. Netlify redeploys automatically. If something breaks, revert the commit — the
-previous deploy is one click away in Netlify.
+Edit, commit, push. `deploy-staging.yml` builds and stages the change automatically; production is a
+separate, human-approved promotion — see `docs/azure-hosting.md`. If something breaks, roll back by
+promoting the last known-good staging run, which needs the same approval as any other promotion.
 
 ### Contact details and the service commitment
 
@@ -366,7 +367,7 @@ layer. The ordering is an application display rule, not a FEMA risk score. Run t
 ArcGIS Python environment with:
 
 ```bash
-python scripts/fema_highest_hazard.py 16264570030000
+python scripts/fema_highest_hazard.py 16283040280000
 ```
 
 ### Standing disclaimers
@@ -415,7 +416,7 @@ npx playwright install chromium
 npm test
 ```
 
-- [ ] Search `3300 East Santa Rosa Avenue`. Results load, no blank rows.
+- [ ] Search `1344 East Chambers Avenue`. Results load, no blank rows.
 - [ ] **Tab through with a keyboard only.** Every control reachable, focus always visible.
 - [ ] Arrow keys move through the address list; <kbd>Esc</kbd> closes it.
 - [ ] Any new boolean layer shows Yes **or** No, never blank.
@@ -432,9 +433,10 @@ npm test
 - [ ] Print preview still includes the disclaimer.
 - [ ] Copied text includes warnings, data notes, links and the public disclaimer.
 
-Then run `npm run check:services` against the public ArcGIS schemas. After Netlify deploys the
-commit, run `npm run build && npm run check:deployment` to compare the live HTML and security headers
-with the built artifact. The check refuses to run without `dist/`.
+Then run `npm run check:services` against the public ArcGIS schemas. After the commit is promoted to
+production, run `npm run build && npm run check:deployment` to compare the live HTML and security
+headers with the built artifact. The check refuses to run without `dist/`, and since Netlify was
+retired it requires an exact byte match with no tolerated host transformation.
 
 > `check:deployment` was red from 13 to 26 August 2026 for a hosting reason, not a deployment fault —
 > Netlify's Pretty URLs post-processing rewrote two links in the deployed pages, and the check aborted

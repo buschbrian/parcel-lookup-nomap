@@ -56,7 +56,7 @@ review the service as part of the City's wider compliance program.
 
 ## What it does
 
-Enter an address (`3300 East Santa Rosa Avenue`) or a 14-digit parcel number, and get:
+Enter an address (`1344 East Chambers Avenue`) or a 14-digit parcel number, and get:
 
 - **Property record** — address, parcel number, acreage, property type, year built, building area,
   housing units, tax district, owner of record
@@ -115,7 +115,9 @@ fixed in both pages and covered by regression tests. See `docs/changes/CHANGES-2
 issues, so **no public conformance claim should be made until it is complete.** The remaining checks
 are written up as a runnable script at
 [`docs/manual-screen-reader-test.md`](docs/manual-screen-reader-test.md) — about an hour with NVDA,
-and it needs no prior accessibility expertise.
+and it needs no prior accessibility expertise. Anyone running it for the first time should start
+with [`docs/accessibility-testing-workbook.md`](docs/accessibility-testing-workbook.md), which
+covers NVDA setup, how to record a finding, and what sign-off commits the city to.
 
 If JavaScript is unavailable the lookup cannot run, but the staffed fallback — phone, email,
 response-time commitment — is static HTML and still renders. The service degrades to a human, not
@@ -262,7 +264,7 @@ GIS staff can reproduce the FEMA full-parcel selection in ArcGIS Pro, an ArcGIS 
 anywhere with ArcGIS API for Python installed:
 
 ```bash
-python scripts/fema_highest_hazard.py 16264570030000
+python scripts/fema_highest_hazard.py 16283040280000
 ```
 
 The JSON output includes the selected highest classification, every FEMA classification touching
@@ -313,12 +315,10 @@ index.html                 The general property lookup, self-contained. A Vite e
 business-licensing.html    The short-term-rental and 400-foot buffer lookup. Also an entry.
 public/                    Static passthrough. Copied verbatim into dist/, never processed.
   assets/                    Municipal brand assets stored locally for reliable rendering.
-  _headers                   Netlify response headers, including the CSP.
-  staticwebapp.config.json   Azure response headers, routes and cache rules. Must agree
-                             with _headers; a unit test compares them.
+  staticwebapp.config.json   Azure response headers, routes and cache rules — the single
+                             source of both. A unit test asserts what it must declare.
 dist/                      Build output and the deployed artifact. Generated, git-ignored.
 vite.config.mjs            MPA build configuration; both HTML files are entry points.
-netlify.toml               Netlify build and redirect configuration.
 scripts/                   Service-contract and deployment checks, and the FEMA parcel script.
 tests/                     Unit, Python, browser and axe suites, plus the live smoke run.
 docs/                      ADRs, hosting runbook, brand note, manual screen-reader script.
@@ -353,19 +353,17 @@ What ships is an allowlist enforced by the build: only the entry pages, their as
 everything in `public/` reach `dist/`. Committing a document elsewhere does not put it on the
 public site, and `npm run check:deployment` proves that against a running deployment.
 
-**Response headers are declared twice, on purpose.** `public/_headers` is read by Netlify and
-`public/staticwebapp.config.json` by Azure, and each host silently ignores the other's file. A unit
-test compares them header by header and route by route, because otherwise a CSP edit would ship to
-one host and not the other with nothing failing.
+**Response headers have one source.** `public/staticwebapp.config.json` declares every response
+header, route and cache rule, and a unit test asserts what it must contain — HSTS with at least a
+year of `max-age` and `includeSubDomains`, a CSP whose `connect-src` reaches only Millcreek ArcGIS
+and FEMA, and `must-revalidate` on both documents. Editing a header anywhere else has no effect.
 
-> **Hosting note, 2 September 2026.** Production moved to Azure Static Web Apps at
-> `lookup.gis.millcreekut.gov`. The previous Netlify deployment is still serving in parallel as the
-> rollback until the changeover settles, which is why both host configurations are still present and
-> still tested. Netlify's production pages carried an injected marketing comment and two tracking
-> meta tags that no setting could remove on that account; `scripts/deployment-content.mjs` tolerates
-> that difference narrowly and reports it on every passing run. Azure serves the built bytes exactly,
-> so on production the allowance is inert. It comes out with the rest of the Netlify configuration
-> when that deployment is retired.
+> **Hosting note, 16 September 2026.** Production is Azure Static Web Apps at
+> `lookup.gis.millcreekut.gov`, and Netlify has been retired — see
+> [ADR-0005](docs/decisions/0005-retire-netlify.md). Azure serves the built artifact byte-for-byte,
+> so `check:deployment` now requires an exact match with no tolerated host transformation of any
+> kind. The Netlify-era allowances, including the injected marketing comment that no setting on that
+> account could remove, are gone with it.
 
 ### Documentation
 
@@ -381,3 +379,4 @@ one host and not the other with nothing failing.
 | [docs/azure-hosting.md](docs/azure-hosting.md) | Hosting resources, cutover and rollback |
 | [docs/decisions/](docs/decisions/) | Architecture decision records |
 | [docs/manual-screen-reader-test.md](docs/manual-screen-reader-test.md) | The runnable NVDA script |
+| [docs/accessibility-testing-workbook.md](docs/accessibility-testing-workbook.md) | How to run that script with no prior experience, and how to write one for another app |

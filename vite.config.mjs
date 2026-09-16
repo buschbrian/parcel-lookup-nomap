@@ -17,7 +17,7 @@ const here=path=>fileURLToPath(new URL(path,import.meta.url));
      business-licensing.html    entry point, processed by Vite
      public/                    static passthrough, copied verbatim to dist/
        assets/millcreek-logo.png   -> /assets/millcreek-logo.png
-       _headers                    -> /_headers   (Netlify reads it from dist/)
+       staticwebapp.config.json    -> Azure reads it from dist/ (and denies serving it)
      dist/                      build output, the deployed artifact
 
    `public/` MUST NOT contain the entry HTML: Vite copies publicDir verbatim

@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
-const address={FullAdd:"3300 E SANTA ROSA AVE",ParcelID:"16264570030000",City:"MILLCREEK",ZipCode:"84109",UnitType:null,UnitID:null};
-const otherAddress={FullAdd:"1234 E ELM ST",ParcelID:"16264570049999",City:"MILLCREEK",ZipCode:"84109",UnitType:null,UnitID:null};
+const address={FullAdd:"1344 E CHAMBERS AVE",ParcelID:"16283040280000",City:"MILLCREEK",ZipCode:"84106",UnitType:null,UnitID:null};
+const otherAddress={FullAdd:"1234 E ELM ST",ParcelID:"16264570049999",City:"MILLCREEK",ZipCode:"84106",UnitType:null,UnitID:null};
 const geometry={rings:[[
   [-111.816,40.698],[-111.814,40.698],[-111.814,40.700],
   [-111.816,40.700],[-111.816,40.698]
@@ -27,8 +27,8 @@ async function mockArcGIS(page,state={}){
       // exceededTransferLimit is how ArcGIS reports that it capped the result set.
       if(state.addressOverflow) return json({
         features:Array.from({length:10},(unused,index)=>({attributes:{...address,
-          FullAdd:"33"+index+"0 E SANTA ROSA AVE",
-          ParcelID:"1626457003000"+index}})),
+          FullAdd:"13"+index+"4 E CHAMBERS AVE",
+          ParcelID:"1628304028000"+index}})),
         exceededTransferLimit:true
       });
       const where=url.searchParams.get("where")||"";
@@ -66,7 +66,7 @@ async function mockArcGIS(page,state={}){
 }
 
 async function loadByKeyboard(page){
-  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.locator("#q").fill("1344 East Chambers Avenue");
   await expect(page.locator("#sugg")).toBeVisible();
   await page.locator("#q").press("ArrowDown");
   await page.locator("#q").press("Enter");
@@ -113,17 +113,17 @@ test("a parcel's own buffer is excluded from the another-rental answer",async({p
 });
 
 test("a pointer click on a licensing address suggestion loads the screen",async({page})=>{
-  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.locator("#q").fill("1344 East Chambers Avenue");
   await expect(page.locator("#sugg li")).toHaveCount(1);
   await page.locator("#sugg li").click();
-  await expect(page.locator("#r-head")).toContainText("3300 E SANTA ROSA AVE");
+  await expect(page.locator("#r-head")).toContainText("1344 E CHAMBERS AVE");
 });
 
 test("a capped licensing address list is announced as partial",async({page})=>{
   await page.unrouteAll({behavior:"wait"});
   await mockArcGIS(page,{addressOverflow:true});
   await page.reload();
-  await page.locator("#q").fill("Santa Rosa");
+  await page.locator("#q").fill("Chambers");
   await expect(page.locator("#sugg li")).toHaveCount(10);
   await expect(page.locator("#status")).toContainText("Showing the first 10 matches");
   await expect(page.locator("#status")).toContainText("narrow the list");
@@ -131,7 +131,7 @@ test("a capped licensing address list is announced as partial",async({page})=>{
 
 test("the licensing debounce delay honours its configuration",async({page})=>{
   await page.evaluate(()=>{CFG.request.suggestDebounceMs=60_000});
-  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.locator("#q").fill("1344 East Chambers Avenue");
   await page.waitForTimeout(750);
   await expect(page.locator("#sugg")).toBeHidden();
   await expect(page.locator("#q")).toHaveAttribute("aria-expanded","false");
@@ -187,17 +187,17 @@ test("editing the address after picking one does not screen the previous parcel"
   await page.unrouteAll({behavior:"wait"});
   await mockArcGIS(page,{twoAddresses:true});
   await page.reload();
-  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.locator("#q").fill("1344 East Chambers Avenue");
   await expect(page.locator("#sugg li")).toHaveCount(1);
   await page.locator("#sugg li").first().click();
-  await expect(page.locator("#r-head")).toContainText("3300 E SANTA ROSA AVE");
+  await expect(page.locator("#r-head")).toContainText("1344 E CHAMBERS AVE");
 
   // Hold the debounce open so the pending search cannot clear the stale selection.
   await page.evaluate(()=>{CFG.request.suggestDebounceMs=60_000});
   await page.locator("#q").fill("1234 East Elm Street");
   await page.locator("#lookup button[type=submit]").click();
   await expect(page.locator("#r-head")).toContainText("1234 E ELM ST");
-  await expect(page.locator("#r-head")).not.toContainText("SANTA ROSA");
+  await expect(page.locator("#r-head")).not.toContainText("CHAMBERS");
 });
 
 /* These two dispatch the input event and the superseding action inside one
@@ -214,7 +214,7 @@ test("a suggestion pending when an address is chosen by keyboard does not abort 
   await page.unrouteAll({behavior:"wait"});
   await mockArcGIS(page,{delayParcel:1500});
   await page.reload();
-  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.locator("#q").fill("1344 East Chambers Avenue");
   await expect(page.locator("#sugg li")).toHaveCount(1);
   await page.evaluate(()=>{
     CFG.request.suggestDebounceMs=50;
@@ -237,7 +237,7 @@ test("a suggestion pending when the form is submitted does not abort the screen"
   await page.evaluate(()=>{
     CFG.request.suggestDebounceMs=50;
     const q=document.querySelector("#q");
-    q.value="3300 East Santa Rosa Avenue";
+    q.value="1344 East Chambers Avenue";
     q.dispatchEvent(new Event("input",{bubbles:true}));
     document.querySelector("#lookup").requestSubmit();
   });
@@ -309,7 +309,7 @@ test("address suggestions without parcel IDs are discarded",async({page})=>{
   await page.unrouteAll({behavior:"wait"});
   await mockArcGIS(page,{addressWithoutParcelId:true});
   await page.reload();
-  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.locator("#q").fill("1344 East Chambers Avenue");
   await expect(page.locator("#sugg")).toBeHidden();
   await expect(page.locator("#status")).toContainText("No addresses match");
 });

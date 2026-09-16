@@ -22,8 +22,19 @@ as the file changes.
 5. **A partial answer is better than a blank page.** Independent layer failures are contained and
    reported while successful results render normally.
 
-The self-contained-page choice requires `'unsafe-inline'` in the CSP. `public/_headers` records that accepted
-tradeoff. If production is ever split into external CSS and JavaScript, remove both allowances.
+The self-contained-page choice requires `'unsafe-inline'` in the CSP, for both `script-src` and
+`style-src`: both lookup pages are deliberately self-contained HTML documents with inline `<style>`
+and `<script>`, so GIS staff can edit each config block without a build step. That accepted tradeoff
+is declared in `public/staticwebapp.config.json` and asserted by the unit suite. If production is
+ever split into external CSS and JavaScript, remove both allowances.
+
+**One caution about HSTS, which that file also declares.** `includeSubDomains` binds subdomains of
+the host that sends it, and nothing above it. From `lookup.gis.millcreekut.gov` it reaches only that
+name's own children, of which there are none — it does **not** reach `gis.millcreekut.gov`, and it
+does not reach the `millcreekut.gov` apex. Serving this config from the apex would force HTTPS on
+every City subdomain, so confirm that with whoever owns the domain before doing it. `preload` takes
+effect only if the domain is submitted to hstspreload.org; sending the token enrols nothing by
+itself.
 
 ---
 
@@ -567,12 +578,13 @@ historic designation types, and parity between adopted local sources and the pub
 map. CI runs it on a schedule or manual dispatch, not as a pull-request dependency.
 
 `npm run check:deployment` is a post-deploy gate. It requires the live HTML of both pages to match
-the built `dist/` artifact — tolerating only the host transformations declared in
-`scripts/deployment-content.mjs` — checks CSP, permissions, referrer, HSTS, MIME-sniffing and cache
-headers, and probes repository paths to confirm the publish directory is not exposing them. It
-refuses to run without `dist/`, because comparing against source would prove nothing about what
-Netlify actually publishes. Every header it asserts is declared in `public/_headers`, so a failure
-points at something in this repository rather than at a hosting default. It asserts HSTS directives,
+the built `dist/` artifact **exactly** — Azure Static Web Apps does not post-process HTML, so there
+are no tolerated transformations at all since Netlify was retired (ADR-0005) — checks CSP,
+permissions, referrer, HSTS, MIME-sniffing and cache headers, and probes repository paths to confirm
+the publish directory is not exposing them. It refuses to run without `dist/`, because comparing
+against source would prove nothing about what the host actually publishes. Every header it asserts
+is declared in `public/staticwebapp.config.json`, so a failure points at something in this
+repository rather than at a hosting default. It asserts HSTS directives,
 not merely the presence of `max-age`, because a shortened window or a dropped `includeSubDomains` is
 a downgrade worth failing on.
 

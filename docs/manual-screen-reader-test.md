@@ -15,6 +15,11 @@ enough context to act on it.
 **Time required:** about 60 minutes for both pages.
 **Skill required:** none beyond following the steps. You do not need to be a screen-reader user.
 
+**New to this?** Read
+[`accessibility-testing-workbook.md`](accessibility-testing-workbook.md) first — it covers
+installing NVDA, the handful of keys you need, how to record a finding, and what sign-off commits
+the city to. This file is the app-specific script; that one is the general method.
+
 ---
 
 ## Setup
@@ -24,8 +29,8 @@ enough context to act on it.
 | Screen reader | **NVDA** (free, Windows) — <https://www.nvaccess.org/download/> |
 | Browser | Firefox or Chrome |
 | Pages | `/index.html` and `/business-licensing.html` on the deployed site |
-| Test address | `3300 East Santa Rosa Avenue` |
-| Test parcel | `16264570030000` |
+| Test address | `1344 East Chambers Avenue` |
+| Test parcel | `16283040280000` |
 | A "Yes" case for CCOZ | `3398 S HIGHLAND DR` |
 
 ### Essential NVDA keys
@@ -57,7 +62,7 @@ Close NVDA for this part. Use <kbd>Tab</kbd> only — **do not touch the mouse.*
 |:--|:--|:--|
 | A1 | Load `/index.html`. Press <kbd>Tab</kbd> once. | A "Skip to main content" link **becomes visible** in the top-left. It is hidden until focused. |
 | A2 | Press <kbd>Enter</kbd> on it. | Focus moves to the main region and **an outline is visible around it.** |
-| A3 | <kbd>Tab</kbd> to the address box and type `3300 East Santa Rosa Avenue`. | A list of matches appears below. |
+| A3 | <kbd>Tab</kbd> to the address box and type `1344 East Chambers Avenue`. | A list of matches appears below. |
 | A4 | Press <kbd>Down</kbd>. | One option is highlighted. The highlight is clearly distinguishable, not colour-only. |
 | A5 | Press <kbd>Down</kbd> repeatedly past the last option. | Selection **wraps** to the first. |
 | A6 | Press <kbd>Esc</kbd>. | The list closes. Focus stays in the address box. |
@@ -80,12 +85,12 @@ Start NVDA. Load `/index.html`.
 | B2 | <kbd>Insert</kbd>+<kbd>F7</kbd> → Landmarks. | banner, main, content info. No unlabelled or repeated regions. |
 | B3 | Press <kbd>F</kbd> to reach the address field. | Announced as a **combobox** with the name "Street address or parcel number". Not "edit", not "blank". |
 | B4 | Listen for the hint. | The example and "type at least 3 characters" guidance is read, either with the field or on request. |
-| B5 | Type `3300 East Santa`. | The **number of matches is announced** without you asking. |
+| B5 | Type `1344 East Cham`. | The **number of matches is announced** without you asking. |
 | B6 | Press <kbd>Down</kbd>. | The **highlighted address is spoken**, and it is the one visually highlighted. |
 | B7 | Press <kbd>Down</kbd> again. | The **new** address is spoken each time. Not silence, not the same one repeated. |
-| B8 | Type `santa rosa` (no house number). | You hear that the search was **broadened** — words to the effect of "Showing addresses on that street" — *and* the count. |
+| B8 | Type `chambers` (no house number). | You hear that the search was **broadened** — words to the effect of "Showing addresses on that street" — *and* the count. |
 | B9 | Type `zzzz nowhere`. | A **spoken** failure message including the advice to try house number + street, and a phone number. Not silence. |
-| B10 | Type `16264570030000`. | You hear that it looks like a parcel number and to choose "Look up property". |
+| B10 | Type `16283040280000`. | You hear that it looks like a parcel number and to choose "Look up property". |
 | B11 | Press <kbd>Esc</kbd> with the list open. | Collapse is conveyed. Focus stays in the field. |
 
 > **B5–B8 are the most important steps in this script.** They are the whole reason the live region
@@ -95,15 +100,15 @@ Start NVDA. Load `/index.html`.
 
 ## Part C — Screen reader, the results (20 min)
 
-Look up `3300 East Santa Rosa Avenue` and let it load.
+Look up `1344 East Chambers Avenue` and let it load.
 
 | # | Step | Expected |
 |:--|:--|:--|
-| C1 | Listen immediately after it loads. | "Results ready" (or similar) is spoken, and you land on the **"Results for 3300 E SANTA ROSA AVE"** heading. You are not left at the top of the page hunting. |
+| C1 | Listen immediately after it loads. | "Results ready" (or similar) is spoken, and you land on the **"Results for 1344 E CHAMBERS AVE"** heading. You are not left at the top of the page hunting. |
 | C2 | Press <kbd>H</kbd> repeatedly. | You move through Zoning → Property record → Historic designation → Hazard and special designations → Subdivision and plat → Natural hazards → Informational hazard screening → Representation → Services → Location. ← Zoning leads the report since 10 Sep 2026 (PR A7) |
-| C3 | In Property record, read down with <kbd>Insert</kbd>+<kbd>Down</kbd>. | Each label is followed by its value: "Property address, 3300 E SANTA ROSA AVE", "Parcel number, 1 6 2 6 4…". **Labels and values must not run together into one stream you cannot separate.** |
+| C3 | In Property record, read down with <kbd>Insert</kbd>+<kbd>Down</kbd>. | Each label is followed by its value: "Property address, 1344 E CHAMBERS AVE", "Parcel number, 1 6 2 8 3…". **Labels and values must not run together into one stream you cannot separate.** |
 | C4 | **Listen to how the parcel number is spoken.** | 14 digits. Digit-by-digit or in groups is fine; a single enormous number is acceptable but note what you hear. This is a known readability question, not a known defect. |
-| C5 | Reach "Owners of record". | Announced as a **list of 2 items**, each ending "joint tenants" — not "jay tee". |
+| C5 | Reach "Owners of record". | For the city test parcel this is a **single owner**, "MILLCREEK" — confirm it is announced as a list item, not as a bare run of text. **Then look up any parcel with two owners** and confirm each item ends "joint tenants", not "jay tee". The abbreviation expansion is the point of this step, and the city parcel cannot exercise it. |
 | C6 | Reach Hazard and special designations. | Each row spoken as **"…, No"** or **"…, Yes"** — the **word**, never a described symbol, never a colour, never silence. ← 1.4.1 |
 | C7 | Look up a property that **is** flagged, then re-read. | "Yes" is spoken, **and** the plain-language "What this means" explanation is reachable and read. |
 | C8 | Reach Services. | Every row identifies **whose** it is: "Culinary water — Phone", "Electrical — Phone". You should never hear a bare "Phone" and have to guess. ← the 6 Aug fix |

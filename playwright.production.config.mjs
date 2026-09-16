@@ -20,7 +20,7 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests",
   testMatch: "production.spec.mjs",
-  // Live ArcGIS/FEMA, 20 layers, a cold Netlify edge and a slow municipal link:
+  // Live ArcGIS/FEMA, 20 layers, a cold Azure edge and a slow municipal link:
   // generous, and the run reports its real timings so a slow candidate is visible.
   timeout: 120_000,
   fullyParallel: false,

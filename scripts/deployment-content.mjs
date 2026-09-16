@@ -1,125 +1,27 @@
 /* What a correct deployment is allowed to differ by, and nothing else.
    -----------------------------------------------------------------------
-   `check:deployment` proves that the bytes Netlify serves are the bytes the
-   build produced. It could never pass, because Netlify's Pretty URLs asset
-   post-processing parses the deployed HTML and rewrites two links before
-   serving them. Both forms were measured against the live site on 13 August
-   2026 and re-confirmed on 26 August 2026 — see CHANGES-2026-08-13.md §7:
+   `check:deployment` proves that the bytes the host serves are the bytes the
+   build produced. On Azure Static Web Apps that is the whole contract: Azure
+   does not post-process HTML, so the deployed bytes must equal the built bytes
+   exactly, with no allowance of any kind.
 
-     index.html               href="/business-licensing.html" -> href='/business-licensing'
-     business-licensing.html  href="/index.html"              -> href='/'
-
-   The second is not extension-stripping; it is `/index.html` collapsing to the
-   directory root. An implementation that handles only the first leaves the
-   licensing page failing after the property page passes.
-
-   These are *allowances for a known host transformation*, not a normalisation
-   pass. The comparison applies each documented rewrite to the BUILT bytes and
-   requires the result to equal the deployed bytes exactly. Any other change —
-   an injected script, a stale deploy, a truncated response — still fails, and
-   fails with the line it first differs at. If Pretty URLs is ever turned off,
-   the untransformed comparison passes on its own and these allowances become
-   inert; the unit suite fails if the links they name stop existing.
+   It was not always so. Netlify applied three transformations this file had to
+   tolerate — two Pretty URLs link rewrites, its deploy-preview drawer, and from
+   26 August 2026 a marketing comment with two meta tags that carried UTM
+   tracking and the site id. All three were removed when Netlify was retired on
+   2026-09-16; see docs/decisions/0005-retire-netlify.md and
+   CHANGES-2026-09-16.md. The history is in git if a future host ever needs the
+   same shape of allowance again — but add one only for a transformation that is
+   measured, documented, and reported on every passing run, which is what kept
+   the old ones honest.
 
    Everything here is pure so the contract is testable without a deployment. */
-
-export const PRETTY_URL_REWRITES=[
-  {
-    name:"the .html extension stripped and the attribute re-quoted",
-    from:"href=\"/business-licensing.html\"",
-    to:"href='/business-licensing'"
-  },
-  {
-    name:"the index page collapsed to the directory root",
-    from:"href=\"/index.html\"",
-    to:"href='/'"
-  }
-];
-
-/* Deploy previews only. Netlify injects its preview drawer immediately before
-   </body> on a deploy-preview build, tagged with the deploy and site ids:
-
-     <div data-netlify-deploy-id="…" data-netlify-site-id="…" data-vcs="github" style="position:fixed">
-       <script async src="/.netlify/scripts/cdp"></script>
-     </div>
-
-   Without an allowance, no deploy preview can ever pass the content gate — which
-   would make the gate useless exactly where a release candidate is verified. The
-   allowance is safe to apply unconditionally because the marker is unforgeable in
-   practice and self-identifying: production does not serve it, and if it ever
-   appeared there the tolerated-transformation line would say so out loud rather
-   than pass in silence. Measured against deploy-preview-3, 26 August 2026. */
-const PREVIEW_DRAWER=/\n<div data-netlify-deploy-id="[^"]*"[\s\S]*?<\/div>(?=\n<\/body>)/;
-
-export function stripPreviewDrawer(html){
-  return PREVIEW_DRAWER.test(html)
-    ? {text:html.replace(PREVIEW_DRAWER,""),stripped:"the Netlify deploy-preview drawer"}
-    : {text:html,stripped:null};
-}
-
-/* Production only, and not by choice. On 26 August 2026 Netlify began injecting a
-   marketing comment and two meta tags into the served pages of this site:
-
-     <!-- This site is hosted on Netlify. Anyone can build and deploy a site
-          like this one for free: https://netlify.new/?utm_campaign=ai-legible&… -->
-     <meta name="hosting-provider" content="Netlify">
-     <meta name="netlify-deploy" content="https://netlify.new/?…">
-
-   It carries UTM campaign tracking and the site id. Netlify documents no opt-out:
-   post-processing offers snippet injection, Pretty URLs and prerendering, and none
-   of them governs this — `pretty_urls = false` shipped and the injection survived
-   it. Removing it requires a paid plan, and the municipality is waiting on a CDN
-   from its IT provider, so the hosting question is open anyway.
-
-   Tolerated under protest, and deliberately narrowly. The alternative was a gate
-   that is red on every production deploy forever, which teaches everyone to ignore
-   it — the failure mode this check was repaired to escape. The match requires all
-   three parts, in order, contiguous: change any of them and the gate fails loudly
-   rather than widening on its own. It is reported on every passing run, so nobody
-   can forget it is there.
-
-   REMOVE THIS when the site moves to municipally controlled hosting, or when the
-   plan tier changes. The internal readiness plan, open question 3, owns that. */
-const HOSTING_INJECTION=/\n<!-- This site is hosted on Netlify\.[\s\S]*?-->\n<meta name="hosting-provider" content="Netlify">\n<meta name="netlify-deploy" content="[^"]*">/;
-
-export function stripHostingInjection(html){
-  return HOSTING_INJECTION.test(html)
-    ? {text:html.replace(HOSTING_INJECTION,""),
-      stripped:"the Netlify hosting-provider marketing injection (not removable on "+
-        "this plan — see scripts/deployment-content.mjs)"}
-    : {text:html,stripped:null};
-}
 
 const MAX_SHOWN=160;
 
 function show(line){
   if(line===null||line===undefined) return "(no such line — the response ends here)";
   return line.length>MAX_SHOWN?line.slice(0,MAX_SHOWN)+"…":line;
-}
-
-/* Every form the built bytes are allowed to take once the host has post-processed
-   them: each documented rewrite either happened or it did not, so the accepted set
-   is every subset of the rewrites. Netlify applied these two on different pages and
-   at different times — the licensing form was found only after the property page
-   was already passing — so requiring all-or-nothing would fail a correct deploy.
-   Two rewrites is four candidates; the guard keeps that from quietly becoming 2^n
-   string builds if the list ever grows. */
-function acceptableForms(built){
-  if(PRETTY_URL_REWRITES.length>4)
-    throw new Error("too many rewrite allowances to enumerate; the deployment host "+
-      "is transforming more than a documented special case can justify");
-  const forms=[];
-  for(let mask=0;mask<(1<<PRETTY_URL_REWRITES.length);mask++){
-    const applied=[];
-    let text=built;
-    for(const [index,rewrite] of PRETTY_URL_REWRITES.entries()){
-      if(!(mask&(1<<index))||!text.includes(rewrite.from)) continue;
-      text=text.split(rewrite.from).join(rewrite.to);
-      applied.push(rewrite.name);
-    }
-    forms.push({text,applied});
-  }
-  return forms;
 }
 
 function firstDifference(actual,expected){
@@ -145,31 +47,11 @@ function firstDifference(actual,expected){
    closely — the raw build or the rewritten build — so the message points at the real
    drift rather than at the Pretty URLs link every time. */
 export function compareDeployedHtml(deployed,built,page="the deployed page"){
-  /* A deploy preview carries Netlify's own drawer. Remove it first and report it,
-     so a preview is verifiable and an operator still sees what was tolerated. */
-  const preview=stripPreviewDrawer(deployed);
-  const hosting=stripHostingInjection(preview.text);
-  const tolerated=[preview.stripped,hosting.stripped].filter(Boolean);
-  deployed=hosting.text;
-
   if(deployed===built)
-    return {match:true,page,rewritesApplied:tolerated,firstDifference:null};
-  const forms=acceptableForms(built);
-  const accepted=forms.find(form=>form.text===deployed);
-  if(accepted)
-    return {match:true,page,rewritesApplied:[...tolerated,...accepted.applied],
-      firstDifference:null};
+    return {match:true,page,rewritesApplied:[],firstDifference:null};
 
-  const candidates=forms.map(form=>({
-    label:form.applied.length
-      ?"the built bytes with "+form.applied.join(" and ")
-      :"the built bytes",
-    difference:firstDifference(deployed,form.text)
-  }));
-  const closest=candidates.reduce((best,candidate)=>
-    (candidate.difference?.line??0)>(best.difference?.line??0)?candidate:best);
-  const difference=closest.difference;
-  const message=page+" does not match "+closest.label+
+  const difference=firstDifference(deployed,built);
+  const message=page+" does not match the built bytes"+
     "\n  first difference at line "+difference.line+", column "+difference.column+
     "\n    built   : "+show(difference.expected)+
     "\n    deployed: "+show(difference.actual);
@@ -200,12 +82,7 @@ export function missingHeaderDirectives(headers,required){
    path the catch-all does not cover. Returns a failure message, or null. */
 export function unpublishedPathFailure(path,status,body,appHtml){
   if(status===404) return null;
-  /* The reference here is usually the app page as this same deployment served it,
-     so it carries the host's chrome too. Strip it from both sides: comparing a
-     drawer-stripped probe against a drawer-carrying reference would report every
-     probe on a deploy preview as a published file. */
-  const reference=stripHostingInjection(stripPreviewDrawer(appHtml).text).text;
-  if(compareDeployedHtml(body,reference,path).match) return null;
+  if(compareDeployedHtml(body,appHtml,path).match) return null;
   return path+" is served from the deployment (HTTP "+status+"): the publish "+
     "directory is exposing repository files\n    served: "+show(body.split("\n")[0]);
 }

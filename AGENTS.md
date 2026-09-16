@@ -25,6 +25,7 @@ independent screen-reader use. **Live in production** at
 | Azure hosting, cutover, rollback | `docs/azure-hosting.md` |
 | An architecture decision (or a new one) | `docs/decisions/` |
 | The NVDA manual screen-reader script | `docs/manual-screen-reader-test.md` |
+| How to run an accessibility pass, for any app | `docs/accessibility-testing-workbook.md` |
 | Why something used to work differently | `docs/changes/` (dated, historical) |
 | A not-yet-built idea | `docs/ideas/` |
 | What a review of open work found | `docs/reviews/` (dated) |
@@ -65,9 +66,8 @@ deployed URL (staging or post-promotion production) and holds no credential.
    version` in both pages — a unit test fails otherwise.
 3. Missing data renders as `Unknown`, never a false negative; one failed
    layer must not blank the rest of the page.
-4. Response headers are declared twice — `public/_headers` (Netlify) and
-   `public/staticwebapp.config.json` (Azure) — a test compares them
-   header-by-header; edit both together.
+4. Response headers live only in `public/staticwebapp.config.json`; a test
+   asserts HSTS, the CSP's connect-src and the cache rules. Edit nowhere else.
 5. Only the entry pages, their assets, and `public/` reach `dist/`;
    `check:deployment` enforces that allowlist against a live URL.
 6. `npm run check:services` / `live-service-monitor.yml` distinguish

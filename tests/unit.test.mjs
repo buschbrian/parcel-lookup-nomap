@@ -1084,15 +1084,15 @@ test("a hidden layer feeding a visible result is declared and carries its own me
    what ships is durable; denying paths one at a time is not, because the next file
    added to the repository is public by default. */
 test("only the public site is published",async()=>{
-  const toml=await readFile(new URL("../netlify.toml",import.meta.url),"utf8");
-  const publishDir=toml.match(/^\s*publish\s*=\s*"([^"]+)"/m)?.[1];
-  assert.ok(publishDir,"netlify.toml declares a publish directory");
+  const vite=await readFile(new URL("../vite.config.mjs",import.meta.url),"utf8");
+  const publishDir=vite.match(/outDir:\s*"([^"]+)"/)?.[1];
+  assert.ok(publishDir,"vite.config.mjs declares a build output directory");
   assert.notEqual(publishDir,".","the repository root must not be the publish directory");
 
-  const required=["index.html","business-licensing.html","_headers",
+  const required=["index.html","business-licensing.html",
     "staticwebapp.config.json","assets/millcreek-logo.png"];
   const engineering=/^(docs|scripts|tests|node_modules|\.github|src)\//;
-  const repoFile=/^(package(-lock)?\.json|playwright\.config\.mjs|vite\.config\.mjs|netlify\.toml|LICENSE|CODE\.md|USAGE\.md|README\.md|MIGRATION\.md|DATA-SOURCES\.md|WEB-MAP-REVIEW\.md|CHANGES-.+\.md)$/;
+  const repoFile=/^(package(-lock)?\.json|playwright\.config\.mjs|vite\.config\.mjs|LICENSE|CODE\.md|USAGE\.md|README\.md|MIGRATION\.md|DATA-SOURCES\.md|WEB-MAP-REVIEW\.md|CHANGES-.+\.md)$/;
 
   let entries=null;
   try{
@@ -1104,10 +1104,9 @@ test("only the public site is published",async()=>{
   if(entries){
     // The publish directory exists: assert exactly what would be served.
     const served=entries.map(entry=>entry.split(/[\\/]/).join("/"));
-    // Neither host config is honoured from anywhere but the publish directory: if
-    // `_headers` is left behind every security header silently disappears from
-    // Netlify, and if `staticwebapp.config.json` is left behind Azure serves the
-    // site with no headers, no cache rules and no `/business-licensing` at all.
+    // The host config is honoured only from the publish directory: if
+    // `staticwebapp.config.json` is left behind, Azure serves the site with no
+    // headers, no cache rules and no `/business-licensing` at all.
     for(const name of required)
       assert.ok(served.includes(name),publishDir+"/ is missing "+name);
     const leaked=served.filter(name=>engineering.test(name)||repoFile.test(name));
@@ -1126,13 +1125,14 @@ test("only the public site is published",async()=>{
 
   /* The publish directory is a build output that has not been built yet
      (ADR-0001 step 1: `dist/` is generated and gitignored). Assert the INPUTS
-     that must end up there instead, so deleting `_headers` or an entry page
+     that must end up there instead, so deleting the host config or an entry page
      still fails this test rather than passing silently until deploy.
 
      Entry HTML may sit at the repository root (post `git mv`) or still in
      `public/` (pre-move) — see MIGRATION.md step 1. */
-  assert.match(toml,/^\s*command\s*=\s*"(?!\s*")/m,
-    publishDir+"/ does not exist, so netlify.toml must declare a build command that creates it");
+  const pkg=JSON.parse(await readFile(new URL("../package.json",import.meta.url),"utf8"));
+  assert.ok(pkg.scripts?.build,
+    publishDir+"/ does not exist, so package.json must declare a build script that creates it");
 
   const exists=async candidates=>{
     for(const candidate of candidates){
@@ -1147,133 +1147,80 @@ test("only the public site is published",async()=>{
   for(const [name,candidates] of [
     ["index.html",["../index.html","../public/index.html"]],
     ["business-licensing.html",["../business-licensing.html","../public/business-licensing.html"]],
-    ["_headers",["../public/_headers"]],
     ["staticwebapp.config.json",["../public/staticwebapp.config.json"]],
     ["assets/millcreek-logo.png",["../public/assets/millcreek-logo.png"]]
   ]) assert.ok(await exists(candidates),"no source found that would publish "+name);
 });
 
-/* HSTS was being served by the hosting platform rather than declared here, so the
-   deployment gate asserted a header that nothing in the repository guaranteed. Move
-   the site or change the platform and the gate fails for a reason with no source. */
-test("transport security is declared in the repository, not left to the platform",async()=>{
-  const headers=await readFile(new URL("../public/_headers",import.meta.url),"utf8");
-  const hsts=headers.match(/^\s*Strict-Transport-Security:\s*(.+)$/mi)?.[1].trim();
-  assert.ok(hsts,"_headers declares Strict-Transport-Security");
-  const maxAge=Number(hsts.match(/max-age=(\d+)/)?.[1]);
-  assert.ok(maxAge>=31536000,"max-age is at least one year, got "+maxAge);
-});
-
-/* Two hosts, two config files, one set of response headers.
-   -----------------------------------------------------------------------
-   The Azure port (2026-09-02) added `public/staticwebapp.config.json` beside
-   `public/_headers`. Each host reads only its own file and silently ignores the
-   other's, so nothing at runtime would ever notice the two drifting apart: an
-   edit to the CSP in `_headers` would ship to Netlify and not to Azure, and the
-   deployment gate would keep passing against whichever host it was pointed at.
-
-   That is the same failure the test above exists to prevent, one level up — a
-   header with no single source. So the two files are compared here, and the
-   comparison is what makes either of them safe to edit.
-
-   Mapping notes, both of which are host behaviour rather than choices:
-
-   - Azure resolves `/` through the default document, so the SWA rule on
-     `/index.html` is what answers a request for `/`. The `/` block in
-     `_headers` therefore has no separate Azure rule and is compared against
-     the `/index.html` one. Verified live on the planning map, which uses the
-     same pattern.
-   - Azure has no equivalent of Netlify consuming `_headers`: the file is
-     ordinary build output there and would be served at `/_headers`. The route
-     rule that 404s it is asserted below, because losing it publishes a
-     repository file — the one property the publish allowlist exists for. */
-
-function parseNetlifyHeaders(text){
-  const blocks=new Map();
-  let current=null;
-  for(const raw of text.split("\n")){
-    const line=raw.replace(/\s+$/,"");
-    if(!line||line.trimStart().startsWith("#")) continue;
-    if(!/^\s/.test(line)){ current=new Map(); blocks.set(line.trim(),current); continue; }
-    const match=line.match(/^\s+([A-Za-z0-9-]+):\s*(.+)$/);
-    if(match&&current) current.set(match[1].toLowerCase(),match[2].trim());
-  }
-  return blocks;
-}
-
-test("the Netlify and Azure host configs declare the same response headers",async()=>{
-  const netlify=parseNetlifyHeaders(
-    await readFile(new URL("../public/_headers",import.meta.url),"utf8"));
+/* Azure serves `staticwebapp.config.json` as ordinary build output unless told
+   otherwise. It holds no secret, but it is a repository file on a public site,
+   which is exactly what the publish allowlist refuses. Azure's own consumption of
+   the file does not stop it being served; the route below is what does. */
+test("the Azure host config is not served from the deployment",async()=>{
   const swa=JSON.parse(
     await readFile(new URL("../public/staticwebapp.config.json",import.meta.url),"utf8"));
-
-  const globals=netlify.get("/*");
-  assert.ok(globals,"_headers declares a /* block");
-  const swaGlobals=new Map(Object.entries(swa.globalHeaders||{})
+  const globals=new Map(Object.entries(swa.globalHeaders||{})
     .map(([name,value])=>[name.toLowerCase(),value]));
 
-  assert.deepEqual([...swaGlobals.keys()].sort(),[...globals.keys()].sort(),
-    "the two host configs declare different global header sets");
-  for(const [name,value] of globals)
-    assert.equal(swaGlobals.get(name),value,
-      name+" differs between _headers and staticwebapp.config.json");
+  /* HSTS was once served by the hosting platform rather than declared here, so the
+     deployment gate asserted a header nothing in the repository guaranteed. It is
+     declared in this file now, and this is the assertion that keeps it there. */
+  const hsts=globals.get("strict-transport-security");
+  assert.ok(hsts,"staticwebapp.config.json declares Strict-Transport-Security");
+  const maxAge=Number(hsts.match(/max-age=(\d+)/)?.[1]);
+  assert.ok(maxAge>=31536000,"max-age is at least one year, got "+maxAge);
 
-  /* Cache-Control is declared per page, not globally, so it is compared per page.
-     `/` maps to the Azure `/index.html` rule for the default-document reason above. */
-  const routeFor=path=>(swa.routes||[]).find(route=>route.route===path);
-  for(const [netlifyPath,azurePath] of [
-    ["/","/index.html"],
-    ["/index.html","/index.html"],
-    ["/business-licensing.html","/business-licensing.html"],
-    ["/business-licensing","/business-licensing"]
-  ]){
-    const expected=netlify.get(netlifyPath)?.get("cache-control");
-    assert.ok(expected,"_headers declares Cache-Control for "+netlifyPath);
-    const route=routeFor(azurePath);
-    assert.ok(route,"staticwebapp.config.json has no route for "+azurePath);
-    assert.equal(route.headers?.["Cache-Control"],expected,
-      "Cache-Control for "+netlifyPath+" differs between hosts");
-  }
+  /* `includeSubDomains` binds subdomains of the host that sends it. From
+     lookup.gis.millcreekut.gov it reaches only that name's children, of which there
+     are none — NOT gis.millcreekut.gov and not the millcreekut.gov apex. Serving
+     this from the apex would force HTTPS on every City subdomain, so confirm it
+     with whoever owns the domain before doing that. `preload` takes effect only if
+     the domain is submitted to hstspreload.org; sending the token enrols nothing. */
+  assert.match(hsts,/includeSubDomains/,"the HSTS directive set is unchanged");
 
-  /* The readable licensing URL is a rewrite on both hosts: same path, same target,
-     same 200 — a redirect instead would change the address bar and the gate's
-     comparison target. netlify.toml owns the Netlify half. */
-  assert.equal(routeFor("/business-licensing")?.rewrite,"/business-licensing.html",
+  /* 'unsafe-inline' is required because both lookup pages are deliberately
+     self-contained HTML documents with inline <style> and <script>, so GIS staff can
+     edit each config block without a build step. If that constraint is ever lifted,
+     split the CSS/JS into files and drop both 'unsafe-inline' values. */
+  const csp=globals.get("content-security-policy");
+  assert.ok(csp,"staticwebapp.config.json declares a Content-Security-Policy");
+  assert.match(csp,/connect-src https:\/\/services9\.arcgis\.com https:\/\/hazards\.fema\.gov/,
+    "runtime data requests stay limited to Millcreek ArcGIS and FEMA");
+
+  const cacheFor=path=>(swa.routes||[]).find(route=>route.route===path)
+    ?.headers?.["Cache-Control"];
+  /* Azure resolves `/` through the default document, so the `/index.html` rule is
+     what answers a request for `/`. Always revalidate the document so config edits
+     go live immediately. */
+  for(const path of ["/index.html","/business-licensing.html","/business-licensing"])
+    assert.equal(cacheFor(path),"public, max-age=0, must-revalidate",
+      "the document at "+path+" must always revalidate");
+
+  /* The readable licensing URL is a rewrite, not a redirect: a redirect would change
+     the address bar and the deployment gate's comparison target. */
+  assert.equal((swa.routes||[]).find(route=>route.route==="/business-licensing")?.rewrite,
+    "/business-licensing.html",
     "Azure must rewrite /business-licensing rather than redirect it");
-  const toml=await readFile(new URL("../netlify.toml",import.meta.url),"utf8");
-  assert.match(toml,/from\s*=\s*"\/business-licensing"[\s\S]{0,120}?status\s*=\s*200/,
-    "netlify.toml must still rewrite /business-licensing with status 200");
-});
 
-/* Each host publishes the OTHER host's config file as ordinary static content:
-   Netlify consumes `_headers` and would serve `staticwebapp.config.json`, and
-   Azure does the reverse. Neither file holds a secret, and both are still
-   repository files on a public site, which is exactly what the publish allowlist
-   refuses. Each config denies the other's file; assert both halves. */
-test("each host denies the other host's config file",async()=>{
-  const swa=JSON.parse(
-    await readFile(new URL("../public/staticwebapp.config.json",import.meta.url),"utf8"));
-  const denied=(swa.routes||[]).find(route=>route.route==="/_headers");
+  const denied=(swa.routes||[]).find(route=>route.route==="/staticwebapp.config.json");
 
-  /* `statusCode: 404` on the route does NOT work here, and the first staging deploy
-     is what proved it. Measured 2026-09-02 against the staging Static Web App:
+  /* `statusCode: 404` on the route does NOT work, and the first staging deploy is
+     what proved it. Measured 2026-09-02 against the staging Static Web App:
      `/_headers` answered HTTP 200 with all 2339 bytes of the file, while carrying
      the `Cache-Control: no-store` from the very same rule. So the rule matched and
      its headers applied; only the status code was ignored.
 
-     The documented example of a route 404 (`/.auth/login/x`) is a virtual path with
-     no file behind it. A real file appears to win, and Azure does not document the
-     interaction. Blocking by role is the mechanism that does work on an existing
-     file: no visitor holds a role called "denied", anonymous visitors hold only
-     `anonymous`, so authorization fails and the file is never reached.
+     Blocking by role is the mechanism that does work on an existing file: no visitor
+     holds a role called "denied", anonymous visitors hold only `anonymous`, so
+     authorization fails and the file is never reached.
 
-     Authorization failure for a signed-out visitor is a 401, which would be a
-     strange answer for a path that should simply not exist — and `check:deployment`
-     reads a 401 with an error body as a published file. The responseOverride turns
-     it into the 404 it should have been. Nothing else in this application can
-     produce a 401: there is no authentication anywhere in it. */
+     Authorization failure for a signed-out visitor is a 401, which would be a strange
+     answer for a path that should simply not exist — and `check:deployment` reads a
+     401 with an error body as a published file. The responseOverride turns it into
+     the 404 it should have been. Nothing else in this application can produce a 401:
+     there is no authentication anywhere in it. */
   assert.ok(Array.isArray(denied?.allowedRoles)&&denied.allowedRoles.length>0,
-    "Azure must deny /_headers by role; statusCode alone does not block a real file");
+    "Azure must deny its own config by role; statusCode alone does not block a real file");
   assert.ok(!denied.allowedRoles.some(role=>["anonymous","authenticated"].includes(role)),
     "the role must be one no visitor holds - anonymous and authenticated are built in "+
     "and would grant access to everyone and every signed-in user respectively");
@@ -1286,12 +1233,8 @@ test("each host denies the other host's config file",async()=>{
 
   /* Independently of the above, a 404 falls through navigationFallback and comes
      back as the app at HTTP 200 unless the path is excluded from it. */
-  assert.ok((swa.navigationFallback?.exclude||[]).includes("/_headers"),
-    "/_headers must be excluded from navigationFallback or the 404 becomes a 200");
-
-  const toml=await readFile(new URL("../netlify.toml",import.meta.url),"utf8");
-  assert.match(toml,/from\s*=\s*"\/staticwebapp\.config\.json"[\s\S]{0,120}?status\s*=\s*404/,
-    "netlify.toml must refuse to serve /staticwebapp.config.json");
+  assert.ok((swa.navigationFallback?.exclude||[]).includes("/staticwebapp.config.json"),
+    "/staticwebapp.config.json must be excluded from navigationFallback or the 404 becomes a 200");
 });
 
 // A LIKE operand is not an equality operand. Escaping wildcards in an equality
@@ -1450,8 +1393,10 @@ test("live service monitoring is isolated from deterministic merge quality",asyn
 });
 
 test("security policy permits authoritative sources and Planning uses its own contact",async()=>{
-  const headers=await readFile(new URL("../public/_headers",import.meta.url),"utf8");
-  assert.match(headers,/connect-src[^\n]+https:\/\/hazards\.fema\.gov/);
+  const swa=JSON.parse(
+    await readFile(new URL("../public/staticwebapp.config.json",import.meta.url),"utf8"));
+  const csp=swa.globalHeaders?.["Content-Security-Policy"]||"";
+  assert.match(csp,/connect-src[^;]+https:\/\/hazards\.fema\.gov/);
   assert.match(html,/Planning &amp; Zoning[\s\S]{0,200}801-214-2700/);
   assert.doesNotMatch(html,/Planning and Development Services[\s\S]{0,100}801-214-2754/);
 });

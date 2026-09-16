@@ -1,12 +1,17 @@
 {
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/assets/*", "/_headers"]
+    "exclude": [
+      "/assets/*",
+      "/staticwebapp.config.json"
+    ]
   },
   "routes": [
     {
-      "route": "/_headers",
-      "allowedRoles": ["denied"],
+      "route": "/staticwebapp.config.json",
+      "allowedRoles": [
+        "denied"
+      ],
       "headers": {
         "Cache-Control": "no-store"
       }

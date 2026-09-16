@@ -4,11 +4,29 @@ Operational companion to [ADR-0002](decisions/0002-host-on-azure-static-web-apps
 records *why* the site is moving to Azure Static Web Apps and why promotion stays a human act.
 This file is *how*.
 
-**Status, 2026-09-02: live on Azure, in parallel with Netlify.** Both Static Web Apps exist,
-both GitHub environments are configured with their tokens, `lookup.gis.millcreekut.gov` is
-bound with a Ready certificate, and candidate `524a5a2` was promoted to production and
-verified against the real hostname — byte-exact, 24/24 paths unpublished, every declared
-header present, and no injected marketing at all.
+**Status, 2026-09-15: live on Azure, in parallel with Netlify, at release `2026.09.15`.**
+Both Static Web Apps exist, both GitHub environments are configured with their tokens, and
+`lookup.gis.millcreekut.gov` is bound with a Ready certificate. Three promotions have run
+since cutover:
+
+| Date | Promote run | Candidate | What it carried |
+|---|---|---|---|
+| 2026-09-02 | `33653312556` | `524a5a2` | Initial cutover to Azure — verified against the real hostname: byte-exact, 24/24 paths unpublished, every declared header present, no injected marketing at all |
+| 2026-09-03 | `33805625980` | `47b587f` | Housekeeping merged that day — the `AGENTS.md` routing layer and dated change logs moving under `docs/changes/`, and the planning-map links repointed at `planning.gis.millcreekut.gov` |
+| 2026-09-15 | `35014137312` | `297e8667` | Release `2026.09.15`: the A stack (#30–#38), the four rescued 11 September review fixes (#40), the privacy-policy footer link (#41), Property record leading the report again plus the source-updated date (#42), contact routed to `bbusch@millcreekut.gov` (#44), and — merged after the release PR itself — the link-text a11y fix (#46) and a merge-process record (#47). Approved by `buschbrian` via the `production` environment, from staging run `35013696210` |
+
+The 2026-09-15 promotion publishes whatever `main` held at the moment it ran, not only the
+PRs named above or the release PR (#45) — a fact worth stating plainly, since "the release"
+and "everything on `main` that morning" are not always the same set of commits. Verified
+locally against the promoted commit: `dist/index.html` sha256
+`92caff7d47dbd5984169da48567278a1f1487bff8375b753b97bb71934b85dfc`,
+`dist/business-licensing.html` sha256
+`bb7a0d1a0515e5af6b9c49118a53f1bbea3d0c5fcc2fa0629a88c239074f9464` (unchanged since the
+release build — nothing after #45 touched that page). See
+[docs/changes/CHANGES-2026-09-15.md](changes/CHANGES-2026-09-15.md) for what the release
+contains and
+[docs/reviews/2026-09-15-a-stack-merge-readiness.md](reviews/2026-09-15-a-stack-merge-readiness.md)
+for how the merge itself went.
 
 Netlify is **still serving** at `parcel-lookup-millcreek.netlify.app` and remains the
 rollback until the settled week ends. Both addresses answer; only Netlify has been

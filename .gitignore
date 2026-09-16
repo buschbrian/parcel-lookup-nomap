@@ -56,3 +56,9 @@ emails/
 # this decision, not just for the publish directory.
 tasks/
 .DS_Store
+
+# Archify visual-check evidence for docs/architecture-archify.html: screenshots,
+# the contact sheet, and the JSON receipt from one run of `archify visual-check`.
+# Per-run evidence, not the deliverable — the spec (architecture-diagram.json)
+# and the delivered page (architecture-archify.html) are what's committed.
+docs/*.visual-check.*

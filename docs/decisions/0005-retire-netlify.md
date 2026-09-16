@@ -76,10 +76,16 @@ artifact being promotable, which it still is. What is lost is the ability to ser
 provider during an Azure outage. For a lookup whose documented fallback is already a staffed phone
 number and a five-business-day accessible-format commitment, that tradeoff is acceptable.
 
-**The Netlify site still exists.** Deleting it is a dashboard action, not a repository change, and it
-is deliberately the last step: the repository stops configuring and verifying Netlify first, the site
-is confirmed unnecessary, and only then is it deleted. Until it is, the old address keeps serving a
-copy of this site that no gate here can verify and that still carries the injected marketing.
+**The Netlify site is gone.** Deleting it was a dashboard action rather than a repository change,
+and deliberately the last step: the repository stopped configuring and verifying Netlify first, the
+site was confirmed unnecessary, and only then was it deleted. Completed 2026-09-16 — unlinked from
+GitHub, deleted, and the GitHub App's access to this repository removed.
+`parcel-lookup-millcreek.netlify.app` now answers HTTP 404 where it served 200 the same morning, and
+no Netlify check run or commit status reaches this repository.
+
+The app itself stays installed on the account: two other Netlify sites are still in the wider
+retirement plan, so its repository access was narrowed rather than revoked wholesale. That plan lives
+in `millcreek-azure`, `docs/netlify-retirement.md`.
 
 **`playwright.production.config.mjs` and the smoke run are unaffected.** They already targeted the
 production hostname, which has been Azure since 2026-09-02.

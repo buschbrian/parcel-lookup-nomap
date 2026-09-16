@@ -227,9 +227,10 @@ Not before, and each of these is a separate reviewed change:
   Azure-only test; `_headers`' reasoning moved to CODE.md section 1.
 - ~~Record the retirement as its own decision entry~~ — **done 2026-09-16**,
   [ADR-0005](decisions/0005-retire-netlify.md).
-- **Delete the Netlify site itself.** Still outstanding: it needs the Netlify dashboard, not this
-  repository. Until it is deleted the old address keeps serving a copy of the site that no gate in
-  this repository can verify, and that still carries the injected marketing.
+- ~~Delete the Netlify site itself~~ — **done 2026-09-16.** `parcel-lookup-millcreek.netlify.app`
+  was unlinked from GitHub, then deleted, and Netlify's GitHub App access to this repository was
+  removed. Verified from outside: the address now answers **HTTP 404** where it served 200 the same
+  morning, and no Netlify check run or commit status reaches this repository. Azure is the sole host.
 
 ## Rollback
 
@@ -255,5 +256,8 @@ Two consequences worth knowing before you need them:
   (readiness Task 11). The resources were created under one individual's Azure account, which
   reproduces, on a new platform, the exact risk this move exists to close. This is an
   organisational fix, not a repository one.
-- The Netlify **site** still exists and still answers, though the repository no longer configures
-  or verifies it. Deleting it is a dashboard action; see "After the parallel run settles".
+- ~~The Netlify site still exists~~ — resolved 2026-09-16; the site is deleted and the GitHub App no
+  longer has access to this repository. Two other Netlify sites remain in the wider retirement plan
+  (`millcreek-planning-map.netlify.app`, unlinked but not deleted, and
+  `millcreekut-arcgis-experience-dev.netlify.app`, still behind `maps.millcreekut.gov` pending a
+  CivicPlus repoint) — tracked in `millcreek-azure`, `docs/netlify-retirement.md`, not here.

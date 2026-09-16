@@ -719,11 +719,11 @@ test("the inline production JavaScript parses",()=>{
 
 test("address normalization handles words, locality suffixes, and units",()=>{
   const {parseAddress}=pureApp();
-  const expected={num:"3300",street:"SANTA ROSA",normalized:"3300 E SANTA ROSA AVE"};
-  assert.deepEqual({...parseAddress("3300 East Santa Rosa Avenue")},expected);
-  assert.deepEqual({...parseAddress("3300 E Santa Rosa Ave, Millcreek, UT 84109")},expected);
-  assert.deepEqual({...parseAddress("3300 E Santa Rosa Ave #3")},expected);
-  assert.deepEqual({...parseAddress("3300 E Santa Rosa Ave Apt 4")},expected);
+  const expected={num:"1344",street:"CHAMBERS",normalized:"1344 E CHAMBERS AVE"};
+  assert.deepEqual({...parseAddress("1344 East Chambers Avenue")},expected);
+  assert.deepEqual({...parseAddress("1344 E Chambers Ave, Millcreek, UT 84106")},expected);
+  assert.deepEqual({...parseAddress("1344 E Chambers Ave #3")},expected);
+  assert.deepEqual({...parseAddress("1344 E Chambers Ave Apt 4")},expected);
   assert.deepEqual({...parseAddress("2760 South 2100 East")},
     {num:"2760",street:"2100",normalized:"2760 S 2100 E"});
 });
@@ -763,20 +763,20 @@ test("both pages expose the suggestion debounce delay as configuration",()=>{
 // than being passed through to a lookup.
 test("parcelFromQuery accepts a 9-14 digit parcel id, pads it to 14, and rejects everything else",()=>{
   const {parcelFromQuery}=pureApp();
-  assert.equal(parcelFromQuery("?parcel=16264570030000"),"16264570030000");
+  assert.equal(parcelFromQuery("?parcel=16283040280000"),"16283040280000");
   assert.equal(parcelFromQuery("?parcel=123456789"),"00000123456789");  // 9 digits, the floor
   assert.equal(parcelFromQuery("?parcel=12345678"),null);                // 8 digits, under the floor
   assert.equal(parcelFromQuery("?parcel=123456789012345"),null);         // 15 digits, over the ceiling
   assert.equal(parcelFromQuery("?parcel=abc"),null);
   assert.equal(parcelFromQuery("?parcel=%3Cscript%3E"),null);
   assert.equal(parcelFromQuery("?parcel=1626457003000x"),null);          // digits plus a trailing letter
-  assert.equal(parcelFromQuery("?address=16264570030000"),null);         // wrong parameter name
+  assert.equal(parcelFromQuery("?address=16283040280000"),null);         // wrong parameter name
   assert.equal(parcelFromQuery(""),null);
 });
 
 test("addressFromQuery trims, and rejects text over 120 characters",()=>{
   const {addressFromQuery}=pureApp();
-  assert.equal(addressFromQuery("?address=3300%20E%20Santa%20Rosa%20Ave"),"3300 E Santa Rosa Ave");
+  assert.equal(addressFromQuery("?address=1344%20E%20Chambers%20Ave"),"1344 E Chambers Ave");
   assert.equal(addressFromQuery("?address=%20%203300%20Main%20%20"),"3300 Main");
   assert.equal(addressFromQuery("?address="+encodeURIComponent("A".repeat(120))),"A".repeat(120));
   assert.equal(addressFromQuery("?address="+encodeURIComponent("A".repeat(121))),null);

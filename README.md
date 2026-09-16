@@ -56,7 +56,7 @@ review the service as part of the City's wider compliance program.
 
 ## What it does
 
-Enter an address (`3300 East Santa Rosa Avenue`) or a 14-digit parcel number, and get:
+Enter an address (`1344 East Chambers Avenue`) or a 14-digit parcel number, and get:
 
 - **Property record** — address, parcel number, acreage, property type, year built, building area,
   housing units, tax district, owner of record
@@ -262,7 +262,7 @@ GIS staff can reproduce the FEMA full-parcel selection in ArcGIS Pro, an ArcGIS 
 anywhere with ArcGIS API for Python installed:
 
 ```bash
-python scripts/fema_highest_hazard.py 16264570030000
+python scripts/fema_highest_hazard.py 16283040280000
 ```
 
 The JSON output includes the selected highest classification, every FEMA classification touching

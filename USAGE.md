@@ -19,17 +19,17 @@ that appears.
 property:
 
 ```text
-3300 E Santa Rosa Ave
-3300 East Santa Rosa Avenue
-3300 EAST SANTA ROSA
-3300 e. santa rosa ave.
-3300 E Santa Rosa Ave, Millcreek, UT 84109
+1344 E Chambers Ave
+1344 East Chambers Avenue
+1344 EAST CHAMBERS
+1344 e. chambers ave.
+1344 E Chambers Ave, Millcreek, UT 84106
 ```
 
 Grid addresses work spelled out too — `2760 South 2100 East` finds `2760 S 2100 E`.
 
 **If you cannot find your property,** try just the house number and the street name and leave off
-the direction and the street type — `3300 Santa Rosa`. If that still fails, call **801-214-2754**
+the direction and the street type — `1344 Chambers`. If that still fails, call **801-214-2754**
 and staff will look it up for you.
 
 You can also search by **parcel number**, the 14-digit number on your tax notice. Around 66 parcels
@@ -366,7 +366,7 @@ layer. The ordering is an application display rule, not a FEMA risk score. Run t
 ArcGIS Python environment with:
 
 ```bash
-python scripts/fema_highest_hazard.py 16264570030000
+python scripts/fema_highest_hazard.py 16283040280000
 ```
 
 ### Standing disclaimers
@@ -415,7 +415,7 @@ npx playwright install chromium
 npm test
 ```
 
-- [ ] Search `3300 East Santa Rosa Avenue`. Results load, no blank rows.
+- [ ] Search `1344 East Chambers Avenue`. Results load, no blank rows.
 - [ ] **Tab through with a keyboard only.** Every control reachable, focus always visible.
 - [ ] Arrow keys move through the address list; <kbd>Esc</kbd> closes it.
 - [ ] Any new boolean layer shows Yes **or** No, never blank.

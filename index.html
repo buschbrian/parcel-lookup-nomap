@@ -48,7 +48,7 @@ body{
 
 /* 1.4.10 Reflow / 1.4.4 Resize Text.
    Long unbreakable tokens force horizontal scrolling once text is enlarged.
-   Real offenders in this data: 14-digit parcel numbers (16264570030000) and
+   Real offenders in this data: 14-digit parcel numbers (16283040280000) and
    email addresses. Measured before this rule, at a 320px container:
    200% text -> 358px content; 400% text -> 675px content.
    dt/dd/li use `anywhere` rather than `break-word` deliberately — only
@@ -304,8 +304,8 @@ details > *:not(summary){font-size:.9063rem}
       <label for="q">Street address or parcel number</label>
       <p class="hint" id="q-hint">
         Type at least 3 characters, then choose from the list of matches.
-        Example: <span lang="en">3300 E Santa Rosa Ave</span>, or the
-        14&#8209;digit parcel number 16264570030000.
+        Example: <span lang="en">1344 E Chambers Ave</span>, or the
+        14&#8209;digit parcel number 16283040280000.
       </p>
 
       <div class="combo">
@@ -509,10 +509,11 @@ const CFG = {
   // Address suggestions come from the City's authoritative address points.
   //
   // The stored format is:  AddNum + PrefixDir + StreetName + StreetType + SuffixDir
-  //   "3300 E SANTA ROSA AVE"   ->  3300 | E | SANTA ROSA | AVE | (none)
-  //   "2760 S 2100 E"           ->  2760 | S | 2100        | (none) | E
+  //   "1200 E MOUNTAIN VIEW DR"  ->  1200 | E | MOUNTAIN VIEW | DR | (none)
+  //   "2760 S 2100 E"            ->  2760 | S | 2100          | (none) | E
   //
-  // Residents type "3300 East Santa Rosa Avenue", which matches none of that.
+  // The first shows why the street name cannot be assumed to be one word.
+  // Residents type "1200 East Mountain View Drive", which matches none of that.
   // So input is normalised and then searched in tiers — see findAddresses().
   address: {
     url:  "/Address_Points/FeatureServer/0",
@@ -1641,7 +1642,7 @@ function coverageFlag(state){
 /* ---------------------------------------------------------------
    Address parsing.
    Residents do not type addresses the way the County stores them.
-   "3300 East Santa Rosa Avenue" must find "3300 E SANTA ROSA AVE".
+   "1200 East Mountain View Drive" must find "1200 E MOUNTAIN VIEW DR".
    Strategy: normalise the words, split off the house number and the
    street name, and search on those two — because the pieces people
    get wrong (direction, street type) are exactly the pieces we can
@@ -1698,7 +1699,7 @@ function matchSummary(count, more){
   return (count===1 ? "Showing the first match." : "Showing the first "+count+" matches.")+
     " More addresses match than are listed. "+review+
     " Add the direction or street type to narrow the list, for example "+
-    "“3300 E Santa Rosa Ave”.";
+    "“1344 E Chambers Ave”.";
 }
 
 /* Deep links (A6). A shared link opens the report directly instead of making a
@@ -1845,7 +1846,7 @@ function render(note, more){
   if(!items.length){
     closeList();
     say("No addresses match. Try just the house number and street name — for example "+
-        "“3300 Santa Rosa” — or call "+CFG.contact.phone+" for help.");
+        "“1344 Chambers” — or call "+CFG.contact.phone+" for help.");
     return;
   }
   items.forEach((a,i)=>{
@@ -1949,7 +1950,7 @@ $("#lookup").addEventListener("submit", async e=>{
     if(task.mine!==seq) return;
     if(!found.length){
       say("No property matches “"+term+"”. Try just the house number and street name — "+
-          "for example “3300 Santa Rosa”. Or call "+CFG.contact.phone+" and staff will "+
+          "for example “1344 Chambers”. Or call "+CFG.contact.phone+" and staff will "+
           "look it up for you.","error");
       finishTask(task);
       return;

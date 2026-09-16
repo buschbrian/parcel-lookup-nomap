@@ -94,7 +94,7 @@ for(const spec of specs){
 }
 
 const params=new URLSearchParams({f:"json",returnGeometry:"false",
-  where:"UPPER("+CFG.address.searchField+") LIKE '3300 E SANTA ROSA AVE%'",
+  where:"UPPER("+CFG.address.searchField+") LIKE '1344 E CHAMBERS AVE%'",
   outFields:CFG.address.searchField+","+CFG.address.parcelField,resultRecordCount:"1"});
 let parcelId=null;
 await contract("known-address",CFG.address.url,async()=>{

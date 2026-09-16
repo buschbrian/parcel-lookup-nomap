@@ -20,7 +20,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
    playwright.production.config.mjs disables tracing, screenshots and video for the
    same reason. Keep it that way. */
 
-const ADDRESS="3300 E SANTA ROSA AVE";
+const ADDRESS="1344 E CHAMBERS AVE";
 
 /* The hosts the page is permitted to fetch data from, read from the CSP that the
    deployment actually serves. Deriving them means this list cannot drift from the

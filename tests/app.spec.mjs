@@ -2,8 +2,8 @@ import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 const address={
-  FullAdd:"3300 E SANTA ROSA AVE", ParcelID:"16264570030000",
-  City:"MILLCREEK", ZipCode:"84109", UnitType:null, UnitID:null
+  FullAdd:"1344 E CHAMBERS AVE", ParcelID:"16283040280000",
+  City:"MILLCREEK", ZipCode:"84106", UnitType:null, UnitID:null
 };
 
 function parcel(overrides={}){
@@ -11,7 +11,7 @@ function parcel(overrides={}){
     parcel_id:address.ParcelID, prop_location:address.FullAdd,
     parcel_latitude:40.699, parcel_longitude:-111.815,
     parcel_acres:0.25, property_type_code:"RES", year_built:1978,
-    total_sq_ft:0, num_housing_units:0, tax_dist:"MC", prop_zip:"84109",
+    total_sq_ft:0, num_housing_units:0, tax_dist:"MC", prop_zip:"84106",
     own_name:"ALEX EXAMPLE (JT); CASEY EXAMPLE (JT)", care_of:"",
     flood_zone:"X", in_wui:"No", sensitive_land:"No", is_historic:"No",
     slc_link:"https://example.test/assessor", ...overrides
@@ -188,11 +188,11 @@ async function mockArcGIS(page,state={}){
         // "OBJECTID" here only matters if a fixture happens to carry one.
         const filterAddress=attributes=>filterAttributes(attributes,outFieldsParam,"OBJECTID");
         // ArcGIS caps a result set at resultRecordCount and reports the cap with
-        // exceededTransferLimit. Real streets exceed the cap: "Santa Rosa" matches 49.
+        // exceededTransferLimit. Real streets exceed the cap: "Chambers" matches 49.
         if(state.addressOverflow) return json({
           features:Array.from({length:10},(unused,index)=>({attributes:filterAddress({...address,
-            FullAdd:"33"+index+"0 E SANTA ROSA AVE",
-            ParcelID:"1626457003000"+index})})),
+            FullAdd:"13"+index+"4 E CHAMBERS AVE",
+            ParcelID:"1628304028000"+index})})),
           exceededTransferLimit:true
         });
         if(state.cappedToOneUsableMatch) return json({
@@ -275,7 +275,7 @@ async function mockArcGIS(page,state={}){
 }
 
 async function loadKnownProperty(page){
-  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.locator("#q").fill("1344 East Chambers Avenue");
   await expect(page.locator("#sugg")).toBeVisible();
   await page.locator("#q").press("ArrowDown");
   await page.locator("#q").press("Enter");
@@ -350,7 +350,7 @@ test("a missing owner field leaves the remaining parcel record intact",async({pa
   await mockArcGIS(page,{parcel:{own_name:null,care_of:null,slc_link:null}});
   await page.reload();
   await loadKnownProperty(page);
-  await expect(page.locator("#results-body")).toContainText("3300 E SANTA ROSA AVE");
+  await expect(page.locator("#results-body")).toContainText("1344 E CHAMBERS AVE");
   await expect(page.locator("#results-body")).not.toContainText("Owner of record");
   await expect(page.getByRole("link",{name:"Salt Lake County Assessor"})).toHaveCount(0);
 });
@@ -443,7 +443,7 @@ test("a capped address list is announced as partial, with how to narrow it",asyn
   await page.unrouteAll({behavior:"wait"});
   await mockArcGIS(page,{addressOverflow:true});
   await page.reload();
-  await page.locator("#q").fill("Santa Rosa");
+  await page.locator("#q").fill("Chambers");
   await expect(page.locator("#sugg li")).toHaveCount(10);
   await expect(page.locator("#status")).toContainText("Showing the first 10 matches");
   await expect(page.locator("#status")).toContainText("More addresses match");
@@ -451,7 +451,7 @@ test("a capped address list is announced as partial, with how to narrow it",asyn
 });
 
 test("an uncapped address list is not announced as partial",async({page})=>{
-  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.locator("#q").fill("1344 East Chambers Avenue");
   await expect(page.locator("#sugg li")).toHaveCount(1);
   await expect(page.locator("#status")).toContainText("1 address match");
   await expect(page.locator("#status")).not.toContainText("Showing the first");
@@ -464,7 +464,7 @@ test("submitting does not auto-load a lone survivor of a capped result",async({p
   await mockArcGIS(page,{cappedToOneUsableMatch:true});
   await page.reload();
   await page.evaluate(()=>{ CFG.request.suggestDebounceMs=60_000; });
-  await page.locator("#q").fill("Santa Rosa");
+  await page.locator("#q").fill("Chambers");
   await page.locator("#go").click();
   await expect(page.locator("#status")).toContainText("More addresses match");
   await expect(page.locator("#results")).toBeHidden();
@@ -474,18 +474,18 @@ test("submitting does not auto-load a lone survivor of a capped result",async({p
 // fires and the assertion passes for the wrong reason.
 test("the suggestion debounce delay honours its configuration",async({page})=>{
   await page.evaluate(()=>{ CFG.request.suggestDebounceMs=60_000; });
-  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.locator("#q").fill("1344 East Chambers Avenue");
   await page.waitForTimeout(750);
   await expect(page.locator("#sugg")).toBeHidden();
   await expect(page.locator("#q")).toHaveAttribute("aria-expanded","false");
 });
 
 test("a pointer click on an address suggestion loads that property",async({page})=>{
-  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.locator("#q").fill("1344 East Chambers Avenue");
   await expect(page.locator("#sugg li")).toHaveCount(1);
   await page.locator("#sugg li").click();
   await expect(page.locator("#results")).toBeVisible();
-  await expect(page.locator("#r-head")).toContainText("3300 E SANTA ROSA AVE");
+  await expect(page.locator("#r-head")).toContainText("1344 E CHAMBERS AVE");
 });
 
 /* This page already owns its ticket correctly — the input event claims it, not the
@@ -496,7 +496,7 @@ test("a suggestion pending when an address is chosen by keyboard does not abort 
   await page.unrouteAll({behavior:"wait"});
   await mockArcGIS(page,{delayParcel:1500});
   await page.reload();
-  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.locator("#q").fill("1344 East Chambers Avenue");
   await expect(page.locator("#sugg li")).toHaveCount(1);
   await page.evaluate(()=>{
     CFG.request.suggestDebounceMs=50;
@@ -531,7 +531,7 @@ test("Clear invalidates a slow property response",async({page})=>{
   await page.unrouteAll({behavior:"wait"});
   await mockArcGIS(page,{delayParcel:350});
   await page.reload();
-  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.locator("#q").fill("1344 East Chambers Avenue");
   await expect(page.locator("#sugg")).toBeVisible();
   await page.locator("#q").press("ArrowDown");
   await page.locator("#q").press("Enter");
@@ -587,7 +587,7 @@ test("parcel values remain available when only schema metadata fails",async({pag
   await page.reload();
   await page.evaluate(()=>{ CFG.request.retryDelayMs=1; });
   await loadKnownProperty(page);
-  await expect(page.locator("#results-body")).toContainText("3300 E SANTA ROSA AVE");
+  await expect(page.locator("#results-body")).toContainText("1344 E CHAMBERS AVE");
   await expect(page.locator("#results-body")).toContainText("field descriptions were temporarily unavailable");
   await expect(page.locator("#status")).toContainText("data source issue");
 });
@@ -1114,7 +1114,7 @@ test("a coverage query in flight is abandoned when the search is cleared",async(
   await page.unrouteAll({behavior:"wait"});
   await mockArcGIS(page,{coverage:{[ZONE]:{delayMs:600}}});
   await page.reload();
-  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.locator("#q").fill("1344 East Chambers Avenue");
   await expect(page.locator("#sugg")).toBeVisible();
   await page.locator("#q").press("ArrowDown");
   await page.locator("#q").press("Enter");
@@ -1503,7 +1503,7 @@ test("queued requests are abandoned when the search is superseded",async({page})
     const real=window.fetch;
     window.fetch=(...args)=>{ window.__started++; return real(...args); };
   });
-  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.locator("#q").fill("1344 East Chambers Avenue");
   await expect(page.locator("#sugg")).toBeVisible();
   await page.locator("#q").press("ArrowDown");
   await page.locator("#q").press("Enter");
@@ -1711,23 +1711,23 @@ test("every query names its fields explicitly, and asks for an object id only wh
    See SECURITY.md and CODE.md for why a typed address is never written. */
 
 test("a parcel deep link loads the report with no typing and announces readiness",async({page})=>{
-  await page.goto("/index.html?parcel=16264570030000");
+  await page.goto("/index.html?parcel=16283040280000");
   await expect(page.locator("#q")).toHaveValue("");
   await expect(page.locator("#status")).toContainText("Results ready");
   await expect(page.locator("#results")).toBeVisible();
-  await expect(page.locator("#r-head")).toContainText("3300 E SANTA ROSA AVE");
+  await expect(page.locator("#r-head")).toContainText("1344 E CHAMBERS AVE");
 });
 
 test("an address deep link runs the same tiered search as typing it",async({page})=>{
-  await page.goto("/index.html?address=3300%20E%20Santa%20Rosa%20Ave");
-  await expect(page.locator("#q")).toHaveValue("3300 E Santa Rosa Ave");
+  await page.goto("/index.html?address=1344%20E%20Chambers%20Ave");
+  await expect(page.locator("#q")).toHaveValue("1344 E Chambers Ave");
   await expect(page.locator("#results")).toBeVisible();
   await expect(page.locator("#status")).toContainText("Results ready");
 });
 
 test("a normal lookup replaces the URL with the loaded parcel id",async({page})=>{
   await loadKnownProperty(page);
-  await expect.poll(()=>new URL(page.url()).search).toBe("?parcel=16264570030000");
+  await expect.poll(()=>new URL(page.url()).search).toBe("?parcel=16283040280000");
 });
 
 test("a failed lookup leaves the URL alone",async({page})=>{
@@ -1739,7 +1739,7 @@ test("a failed lookup leaves the URL alone",async({page})=>{
   // there (the deep-linked parcel id and the loaded parcel id are the same
   // value, which would otherwise mask a bug that fires replaceState anyway).
   expect(new URL(page.url()).search).toBe("");
-  await page.locator("#q").fill("3300 East Santa Rosa Avenue");
+  await page.locator("#q").fill("1344 East Chambers Avenue");
   await expect(page.locator("#sugg")).toBeVisible();
   await page.locator("#q").press("ArrowDown");
   await page.locator("#q").press("Enter");
@@ -1749,7 +1749,7 @@ test("a failed lookup leaves the URL alone",async({page})=>{
 
 test("lookup, Clear, and reload leaves the form empty",async({page})=>{
   await loadKnownProperty(page);
-  await expect.poll(()=>new URL(page.url()).search).toBe("?parcel=16264570030000");
+  await expect.poll(()=>new URL(page.url()).search).toBe("?parcel=16283040280000");
   await page.locator("#clear").click();
   expect(new URL(page.url()).search).toBe("");
   await page.reload();
@@ -1804,7 +1804,7 @@ test("a blank or out-of-range stored coordinate does not become a map link eithe
 });
 
 test("a parcel deep link produces no detectable axe violations",async({page})=>{
-  await page.goto("/index.html?parcel=16264570030000");
+  await page.goto("/index.html?parcel=16283040280000");
   await expect(page.locator("#results")).toBeVisible();
   expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
 });

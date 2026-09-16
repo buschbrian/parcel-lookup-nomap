@@ -116,7 +116,7 @@ footer{margin-top:3rem;border-top:2px solid var(--line-soft);background:var(--su
   <form id="lookup" novalidate><fieldset>
     <legend>Check a property</legend>
     <label for="q">Street address or 14-digit parcel number</label>
-    <p class="hint" id="q-hint">Type at least 3 characters, then choose an address. Example: 3300 E Santa Rosa Ave.</p>
+    <p class="hint" id="q-hint">Type at least 3 characters, then choose an address. Example: 1344 E Chambers Ave.</p>
     <div class="combo">
       <input id="q" type="text" role="combobox" autocomplete="off" aria-expanded="false" aria-controls="sugg" aria-autocomplete="list" aria-describedby="q-hint" spellcheck="false" enterkeyhint="search">
       <ul id="sugg" role="listbox" aria-label="Address matches" hidden></ul>
@@ -428,7 +428,7 @@ function matchSummary(count,more){
   if(!more)return (count===1?"1 address match. ":count+" address matches. ")+review;
   return (count===1?"Showing the first match.":"Showing the first "+count+" matches.")+
     " More addresses match than are listed. "+review+
-    " Add the direction or street type to narrow the list, for example “3300 E Santa Rosa Ave”.";
+    " Add the direction or street type to narrow the list, for example “1344 E Chambers Ave”.";
 }
 async function findAddresses(raw,signal){
   const A=CFG.address,p=parseAddress(raw);if(!p.normalized)return{items:[],more:false};const tiers=[`UPPER(${A.searchField}) LIKE '${likeOperand(p.normalized)}%' ESCAPE '\\'`];

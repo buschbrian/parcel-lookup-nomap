@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Millcreek Property Lookup — Deploy & Data Flow",
+    "output": "docs/architecture-archify.html",
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "deploy-path", "label": "Build and deploy", "focus": ["repo", "deploy_staging", "staging_swa", "gate", "production_swa"], "note": "One immutable artifact travels from a push on main to the public hostname." },
+      { "id": "runtime-data", "label": "Runtime data flow", "focus": ["browser", "production_swa", "arcgis"], "note": "The served pages are static; every lookup is a live client-side call to Esri." },
+      { "id": "sibling-app", "label": "Sibling app link", "focus": ["production_swa", "planning_map"], "note": "The two municipal GIS apps share a resource group and link to each other." }
+    ]
+  },
+  "components": [
+    { "id": "repo", "type": "external", "label": "parcel-lookup-nomap", "sublabel": "GitHub · main branch", "pos": [20, 300], "size": [150, 62] },
+    { "id": "deploy_staging", "type": "backend", "label": "deploy-staging.yml", "sublabel": "build + test, on push", "pos": [280, 300], "size": [170, 64] },
+    { "id": "staging_swa", "type": "cloud", "label": "Staging", "sublabel": "Azure Static Web App", "pos": [600, 300], "size": [150, 62] },
+    { "id": "gate", "type": "security", "label": "Promotion gate", "sublabel": "verify → required reviewer → promote", "pos": [680, 412], "size": [200, 64] },
+    { "id": "production_swa", "type": "cloud", "label": "Production", "sublabel": "lookup.gis.millcreekut.gov", "pos": [790, 300], "size": [160, 62] },
+    { "id": "planning_map", "type": "external", "label": "millcreek-planning-map", "sublabel": "planning.gis.millcreekut.gov", "pos": [790, 112], "size": [170, 62] },
+    { "id": "browser", "type": "frontend", "label": "Resident's browser", "sublabel": "the lookup's static pages", "pos": [1040, 300], "size": [190, 62] },
+    { "id": "arcgis", "type": "external", "label": "Millcreek GIS ArcGIS Online", "sublabel": "services9.arcgis.com (REST)", "pos": [1040, 430], "size": [220, 66] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Azure — same resource group as the planning map", "wraps": ["staging_swa", "production_swa", "planning_map"], "pad": 14 }
+  ],
+  "connections": [
+    { "from": "repo", "to": "deploy_staging", "label": "push to main", "variant": "emphasis" },
+    { "from": "deploy_staging", "to": "staging_swa", "label": "upload build artifact" },
+    { "from": "staging_swa", "to": "gate", "label": "checked, then approved", "fromSide": "bottom", "toSide": "top" },
+    { "from": "gate", "to": "production_swa", "label": "same artifact, digest-checked", "variant": "security", "fromSide": "top", "toSide": "bottom" },
+    { "from": "production_swa", "to": "browser", "label": "HTTPS", "variant": "emphasis" },
+    { "from": "browser", "to": "arcgis", "label": "client-side REST calls", "variant": "emphasis", "fromSide": "bottom", "toSide": "top" },
+    { "from": "planning_map", "to": "production_swa", "label": "linked, both ways", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Build & deploy", "items": [
+      "Every push to main builds, tests and stages one immutable artifact",
+      "promote-production.yml re-uploads that artifact — it never rebuilds",
+      "A required reviewer is the only path to production, by design",
+      "Netlify still serves the old URL in parallel, as the rollback"
+    ] },
+    { "dot": "emerald", "title": "Runtime data", "items": [
+      "Both pages are static HTML + JS, with no backend of their own",
+      "Every lookup is a live browser call to Millcreek's ArcGIS Online org",
+      "Sources trace onward: parcels to the County, hazards to FEMA/UGS"
+    ] },
+    { "dot": "violet", "title": "Sibling app", "items": [
+      "Shares this app's Azure resource group, region and SKU",
+      "The planning map links here as the non-visual equivalent",
+      "This app links back for residents who want the interactive view"
+    ] }
+  ]
+}

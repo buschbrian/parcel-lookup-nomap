@@ -28,8 +28,13 @@ contains and
 [docs/reviews/2026-09-15-a-stack-merge-readiness.md](reviews/2026-09-15-a-stack-merge-readiness.md)
 for how the merge itself went.
 
-Netlify is **still serving** at `parcel-lookup-millcreek.netlify.app` and remains the
-rollback until the settled week ends. Both addresses answer; only Netlify has been
+**Netlify was retired on 2026-09-16** — see [ADR-0005](decisions/0005-retire-netlify.md). Azure is
+the only host. Rollback is a re-promotion of the last known-good staging run, described under
+"Rollback" below, not a second live site. The paragraph that follows records what the parallel run
+was while it existed:
+
+> Netlify served at `parcel-lookup-millcreek.netlify.app` and remained the
+rollback until the settled week ended. Both addresses answered; only Netlify had been
 advertised. The steps below are kept as the record of what was done and the script for
 doing it again.
 
@@ -214,13 +219,17 @@ the old one still works, so nothing breaks if the parallel run is extended.
 
 Not before, and each of these is a separate reviewed change:
 
-- Delete the marketing-injection allowance in `scripts/deployment-content.mjs` and the unit
-  tests that pin it, and close the open question in the internal readiness plan that owns it. It is
-  already inert on Azure — production reports no tolerated transformation — but it must
-  stay while Netlify is still the rollback.
-- Delete `netlify.toml`, `public/_headers`, the cross-host drift test, and the redirect in
-  `netlify.toml` that denies `staticwebapp.config.json`. Then delete the Netlify site.
-- Record the retirement as its own decision entry.
+- ~~Delete the marketing-injection allowance in `scripts/deployment-content.mjs` and the unit tests
+  that pin it~~ — **done 2026-09-16.** All three Netlify content allowances are gone; the gate now
+  requires exact bytes. The open question in the internal readiness plan that owned it can be closed.
+- ~~Delete `netlify.toml`, `public/_headers`, the cross-host drift test, and the redirect in
+  `netlify.toml` that denies `staticwebapp.config.json`~~ — **done 2026-09-16.** Coverage moved to an
+  Azure-only test; `_headers`' reasoning moved to CODE.md section 1.
+- ~~Record the retirement as its own decision entry~~ — **done 2026-09-16**,
+  [ADR-0005](decisions/0005-retire-netlify.md).
+- **Delete the Netlify site itself.** Still outstanding: it needs the Netlify dashboard, not this
+  repository. Until it is deleted the old address keeps serving a copy of the site that no gate in
+  this repository can verify, and that still carries the injected marketing.
 
 ## Rollback
 
@@ -246,5 +255,5 @@ Two consequences worth knowing before you need them:
   (readiness Task 11). The resources were created under one individual's Azure account, which
   reproduces, on a new platform, the exact risk this move exists to close. This is an
   organisational fix, not a repository one.
-- Netlify is still serving and still connected. Its retirement is a separate decision, taken
-  after the parallel run settles (see "After the parallel run settles").
+- The Netlify **site** still exists and still answers, though the repository no longer configures
+  or verifies it. Deleting it is a dashboard action; see "After the parallel run settles".

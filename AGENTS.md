@@ -66,9 +66,8 @@ deployed URL (staging or post-promotion production) and holds no credential.
    version` in both pages — a unit test fails otherwise.
 3. Missing data renders as `Unknown`, never a false negative; one failed
    layer must not blank the rest of the page.
-4. Response headers are declared twice — `public/_headers` (Netlify) and
-   `public/staticwebapp.config.json` (Azure) — a test compares them
-   header-by-header; edit both together.
+4. Response headers live only in `public/staticwebapp.config.json`; a test
+   asserts HSTS, the CSP's connect-src and the cache rules. Edit nowhere else.
 5. Only the entry pages, their assets, and `public/` reach `dist/`;
    `check:deployment` enforces that allowlist against a live URL.
 6. `npm run check:services` / `live-service-monitor.yml` distinguish

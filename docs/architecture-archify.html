@@ -5518,7 +5518,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <li>&bull; Every push to main builds, tests and stages one immutable artifact</li>
           <li>&bull; promote-production.yml re-uploads that artifact — it never rebuilds</li>
           <li>&bull; A required reviewer is the only path to production, by design</li>
-          <li>&bull; Netlify still serves the old URL in parallel, as the rollback</li>
+          <li>&bull; Rollback is a re-promotion of the last good staging run, not a second host</li>
         </ul>
       </div>
 

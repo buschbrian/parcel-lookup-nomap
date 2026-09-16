@@ -215,8 +215,9 @@ above the line:
    ================================================================== */
 ```
 
-Edit, commit, push. Netlify redeploys automatically. If something breaks, revert the commit — the
-previous deploy is one click away in Netlify.
+Edit, commit, push. `deploy-staging.yml` builds and stages the change automatically; production is a
+separate, human-approved promotion — see `docs/azure-hosting.md`. If something breaks, roll back by
+promoting the last known-good staging run, which needs the same approval as any other promotion.
 
 ### Contact details and the service commitment
 
@@ -432,9 +433,10 @@ npm test
 - [ ] Print preview still includes the disclaimer.
 - [ ] Copied text includes warnings, data notes, links and the public disclaimer.
 
-Then run `npm run check:services` against the public ArcGIS schemas. After Netlify deploys the
-commit, run `npm run build && npm run check:deployment` to compare the live HTML and security headers
-with the built artifact. The check refuses to run without `dist/`.
+Then run `npm run check:services` against the public ArcGIS schemas. After the commit is promoted to
+production, run `npm run build && npm run check:deployment` to compare the live HTML and security
+headers with the built artifact. The check refuses to run without `dist/`, and since Netlify was
+retired it requires an exact byte match with no tolerated host transformation.
 
 > `check:deployment` was red from 13 to 26 August 2026 for a hosting reason, not a deployment fault —
 > Netlify's Pretty URLs post-processing rewrote two links in the deployed pages, and the check aborted

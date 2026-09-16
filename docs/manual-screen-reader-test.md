@@ -15,6 +15,11 @@ enough context to act on it.
 **Time required:** about 60 minutes for both pages.
 **Skill required:** none beyond following the steps. You do not need to be a screen-reader user.
 
+**New to this?** Read
+[`accessibility-testing-workbook.md`](accessibility-testing-workbook.md) first — it covers
+installing NVDA, the handful of keys you need, how to record a finding, and what sign-off commits
+the city to. This file is the app-specific script; that one is the general method.
+
 ---
 
 ## Setup
@@ -80,7 +85,7 @@ Start NVDA. Load `/index.html`.
 | B2 | <kbd>Insert</kbd>+<kbd>F7</kbd> → Landmarks. | banner, main, content info. No unlabelled or repeated regions. |
 | B3 | Press <kbd>F</kbd> to reach the address field. | Announced as a **combobox** with the name "Street address or parcel number". Not "edit", not "blank". |
 | B4 | Listen for the hint. | The example and "type at least 3 characters" guidance is read, either with the field or on request. |
-| B5 | Type `3300 East Santa`. | The **number of matches is announced** without you asking. |
+| B5 | Type `1344 East Cham`. | The **number of matches is announced** without you asking. |
 | B6 | Press <kbd>Down</kbd>. | The **highlighted address is spoken**, and it is the one visually highlighted. |
 | B7 | Press <kbd>Down</kbd> again. | The **new** address is spoken each time. Not silence, not the same one repeated. |
 | B8 | Type `chambers` (no house number). | You hear that the search was **broadened** — words to the effect of "Showing addresses on that street" — *and* the count. |
@@ -101,9 +106,9 @@ Look up `1344 East Chambers Avenue` and let it load.
 |:--|:--|:--|
 | C1 | Listen immediately after it loads. | "Results ready" (or similar) is spoken, and you land on the **"Results for 1344 E CHAMBERS AVE"** heading. You are not left at the top of the page hunting. |
 | C2 | Press <kbd>H</kbd> repeatedly. | You move through Zoning → Property record → Historic designation → Hazard and special designations → Subdivision and plat → Natural hazards → Informational hazard screening → Representation → Services → Location. ← Zoning leads the report since 10 Sep 2026 (PR A7) |
-| C3 | In Property record, read down with <kbd>Insert</kbd>+<kbd>Down</kbd>. | Each label is followed by its value: "Property address, 1344 E CHAMBERS AVE", "Parcel number, 1 6 2 6 4…". **Labels and values must not run together into one stream you cannot separate.** |
+| C3 | In Property record, read down with <kbd>Insert</kbd>+<kbd>Down</kbd>. | Each label is followed by its value: "Property address, 1344 E CHAMBERS AVE", "Parcel number, 1 6 2 8 3…". **Labels and values must not run together into one stream you cannot separate.** |
 | C4 | **Listen to how the parcel number is spoken.** | 14 digits. Digit-by-digit or in groups is fine; a single enormous number is acceptable but note what you hear. This is a known readability question, not a known defect. |
-| C5 | Reach "Owners of record". | Announced as a **list of 2 items**, each ending "joint tenants" — not "jay tee". |
+| C5 | Reach "Owners of record". | For the city test parcel this is a **single owner**, "MILLCREEK" — confirm it is announced as a list item, not as a bare run of text. **Then look up any parcel with two owners** and confirm each item ends "joint tenants", not "jay tee". The abbreviation expansion is the point of this step, and the city parcel cannot exercise it. |
 | C6 | Reach Hazard and special designations. | Each row spoken as **"…, No"** or **"…, Yes"** — the **word**, never a described symbol, never a colour, never silence. ← 1.4.1 |
 | C7 | Look up a property that **is** flagged, then re-read. | "Yes" is spoken, **and** the plain-language "What this means" explanation is reachable and read. |
 | C8 | Reach Services. | Every row identifies **whose** it is: "Culinary water — Phone", "Electrical — Phone". You should never hear a bare "Phone" and have to guess. ← the 6 Aug fix |

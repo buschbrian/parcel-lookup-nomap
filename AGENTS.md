@@ -25,6 +25,7 @@ independent screen-reader use. **Live in production** at
 | Azure hosting, cutover, rollback | `docs/azure-hosting.md` |
 | An architecture decision (or a new one) | `docs/decisions/` |
 | The NVDA manual screen-reader script | `docs/manual-screen-reader-test.md` |
+| How to run an accessibility pass, for any app | `docs/accessibility-testing-workbook.md` |
 | Why something used to work differently | `docs/changes/` (dated, historical) |
 | A not-yet-built idea | `docs/ideas/` |
 | What a review of open work found | `docs/reviews/` (dated) |

@@ -115,7 +115,9 @@ fixed in both pages and covered by regression tests. See `docs/changes/CHANGES-2
 issues, so **no public conformance claim should be made until it is complete.** The remaining checks
 are written up as a runnable script at
 [`docs/manual-screen-reader-test.md`](docs/manual-screen-reader-test.md) — about an hour with NVDA,
-and it needs no prior accessibility expertise.
+and it needs no prior accessibility expertise. Anyone running it for the first time should start
+with [`docs/accessibility-testing-workbook.md`](docs/accessibility-testing-workbook.md), which
+covers NVDA setup, how to record a finding, and what sign-off commits the city to.
 
 If JavaScript is unavailable the lookup cannot run, but the staffed fallback — phone, email,
 response-time commitment — is static HTML and still renders. The service degrades to a human, not
@@ -381,3 +383,4 @@ one host and not the other with nothing failing.
 | [docs/azure-hosting.md](docs/azure-hosting.md) | Hosting resources, cutover and rollback |
 | [docs/decisions/](docs/decisions/) | Architecture decision records |
 | [docs/manual-screen-reader-test.md](docs/manual-screen-reader-test.md) | The runnable NVDA script |
+| [docs/accessibility-testing-workbook.md](docs/accessibility-testing-workbook.md) | How to run that script with no prior experience, and how to write one for another app |

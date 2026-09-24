@@ -36,7 +36,9 @@ independent screen-reader use. **Live in production** at
 npm ci
 npm run dev                       # dev server; file:// breaks ArcGIS requests, don't use it
 npm run build && npm run preview  # exercise the actual dist/ artifact
-export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"  # never download Playwright browsers here
+# Point Playwright at system Chrome; never download Playwright browsers here.
+export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="C:/Program Files/Google/Chrome/Application/chrome.exe"      # Windows (PowerShell: $env:PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = "...")
+# export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"  # macOS
 npm test                          # unit + Python + browser; every ArcGIS call is mocked
 npm run check:services            # live public ArcGIS contract check
 npm run build && npm run check:deployment   # deployment allowlist, against dist/ or a URL
@@ -53,7 +55,7 @@ unit test enforces that. Don't run it casually.
 the staging Static Web App automatically, no approval. `promote-production.yml`
 is manual-only (`workflow_dispatch` with a staging run id): it builds and
 tests nothing, republishing the exact gated artifact behind the `production`
-environment's required reviewer. `verify-deployment.yml` checks a already-
+environment's required reviewer. `verify-deployment.yml` checks an already-
 deployed URL (staging or post-promotion production) and holds no credential.
 **Brian is the sole approver on `production`, and that is intentional** — see
 `docs/decisions/0002-host-on-azure-static-web-apps.md`.

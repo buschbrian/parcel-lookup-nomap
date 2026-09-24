@@ -37,8 +37,8 @@ npm ci
 npm run dev                       # dev server; file:// breaks ArcGIS requests, don't use it
 npm run build && npm run preview  # exercise the actual dist/ artifact
 # Point Playwright at system Chrome; never download Playwright browsers here.
-export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="C:/Program Files/Google/Chrome/Application/chrome.exe"      # Windows (PowerShell: $env:PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = "...")
 # export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"  # macOS
+# export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="C:/Program Files/Google/Chrome/Application/chrome.exe"         # Windows (Git Bash; PowerShell: $env:PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = "...")
 npm test                          # unit + Python + browser; every ArcGIS call is mocked
 npm run check:services            # live public ArcGIS contract check
 npm run build && npm run check:deployment   # deployment allowlist, against dist/ or a URL

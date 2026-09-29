@@ -45,30 +45,70 @@ Reviewed and **not** relevant to these sections, so not carried further: Copy/Pr
 public Assessor records, a policy choice recorded in `SECURITY.md`, not a collection); CI and test
 tooling (synthetic address only); the staff phone and email contacts.
 
+## Who runs each service the pages call
+
+- **Millcreek's own layers, hosted by Esri.** Every Millcreek layer URL begins
+  `services9.arcgis.com/XRrSFvEwSsReIxuA`. That ID is the **Millcreek ArcGIS Online organization**
+  (its portal record reads "Millcreek", key `Millcrk`), and the organization's service directory
+  lists all 20 layer services the two pages call (address points, parcels, zoning, hazards, districts,
+  utilities, short-term rentals). The layers are the City's own items; Esri is the cloud platform
+  that hosts them. This is the ordinary meaning of a site "operated … on behalf of" the City
+  (63A-19-101(17)); the City Attorney should confirm that reading.
+- **FEMA National Flood Hazard Layer, `hazards.fema.gov`.** A federal service, not operated for the
+  City. Sending it the parcel boundary is sharing with another governmental entity, which is what
+  402.5(2)(d)(i) asks a notice to list, if user data is collected.
+
 ## Gap to raise
 
-The pages link the City's privacy notice at `millcreekut.gov/125/Disclaimer` (PR #41), which is
-what the records committee asked for. That page links a **Privacy Notice dated April 17, 2024**,
-written for `www.millcreekut.gov` and in-person services. It predates 402.5 (eff. 3/27/2025) and
-does not mention the data privacy ombudsperson, at-risk employees, the record series, the
-`lookup.gis.millcreekut.gov` site, or Esri and FEMA as recipients of search data. Whether the
-current notice satisfies 402.5 for this site, and whether a lookup-specific addendum is needed,
-**is for the City Attorney**. The City's rewrite (`docs/changes/CHANGES-2026-09-15.md` §4) is the
-natural place to fix it.
+The pages link the City's privacy notice at `millcreekut.gov/125/Disclaimer` (PR #41). That page
+links a **Privacy Notice effective April 17, 2024**, written for `www.millcreekut.gov` and in-person
+services. What the City's site (searched 2026-09-29) does and does not say:
+
+| 402.5 needs | Found on millcreekut.gov |
+|---|---|
+| Responsible entity and contact | The notice names "the City's IT Manager" as contact. Ordinance 25-52 (Council, 12/8/2025) adds data privacy to Millcreek Code ch. 2.82 and designates the **City Manager as chief administrative officer** under 63A-19-101; the notice still names the IT Manager. |
+| How to get and correct your data | One sentence in the notice that an individual "is granted the ability to access and correct personally identifiable information"; no procedure. Public records requests: `millcreekut.gov/384/Record-Requests` (GRAMA, City Recorder). |
+| Complaint to the data privacy ombudsperson | **Not found** on the City's site. |
+| At-risk employee request (63G-2-302) | **Not found** on the City's site. |
+| Record series for user data | **Not found.** The notice says only that retention "follows the City's records retention schedule"; no schedule is named or published. |
+| This site, and Esri and FEMA as recipients | **Not covered.** The notice describes `www.millcreekut.gov` and states that site "collects certain information automatically and stores it in log files," which is not true of the lookup (see below). |
+
+The gaps are the City's to close, not this repository's. Whether the current notice satisfies 402.5
+for this site, and whether a lookup-specific addendum is needed, **is for the City Attorney**. The
+City's rewrite (`docs/changes/CHANGES-2026-09-15.md` §4) is the natural place to fix it.
+
+## Logging and retention
+
+**Owner statement (2026-09-29, site owner, City GIS):** the City does not log requests to the lookup
+pages and keeps no data from them. This audit found no logging code, no analytics and no
+configuration in the repository that contradicts it, but it cannot see Azure or ArcGIS Online
+settings, so the statement is recorded as the owner's and is not independently verified. It does
+not cover Esri's or FEMA's own systems, which the City does not control.
+
+Consequences, **for the City Attorney to confirm**:
+
+- If the City collects and keeps no user data, the extra disclosures in 402.5(2) (data collected,
+  purposes, sharing, **record series**) and the retention rule in 63A-19-404 have nothing to attach
+  to for the City's own systems. The 402.5(1) items (entity, contact, access, correction,
+  ombudsperson, at-risk employee) still apply to the site.
+- The City's linked notice says its website stores visitor data in log files. It should not be read
+  as describing this site.
+- **If** any request data were ever retained, the candidate Utah State Archives series is
+  **GRS-1720, "Transitory tracking records"** ("…includes internet website visitor information";
+  retain 1 year or until administrative need, whichever is less, then destroy). Nothing found ties
+  that series to the City's practice, and the City's own schedule is not published on its website.
+  The City Recorder can say which schedule the City follows.
 
 ## Open questions
 
-Only these block finishing the notice. None can be answered from the repository.
-
-1. **Do any hosts log requests, and what do they keep?** Azure Static Web Apps (production app),
-   anything in front of it, and Millcreek's ArcGIS Online organization (service usage logs, and
-   whether they include query text). Esri's and FEMA's own logging is theirs; the notice can only
-   name them as recipients.
-2. **Which record series or retention schedule covers those logs?** (Needed for 402.5(2)(e) and 404.)
-3. **What is the City's central page for access, correction, ombudsperson complaints and at-risk
-   employee requests?** (Needed for 402.5(1)(c)–(d); the lookup notice can link to it.)
-4. **Are the Esri-hosted layers "operated … on behalf of" the City** for the purposes of
-   63A-19-101(17) and (39)? **For the City Attorney.**
+1. **Confirm the owner statement before it is published** (Azure and ArcGIS Online diagnostic
+   settings are off; nothing in front of the app logs). Owner: City GIS.
+2. **Record series:** none is needed if nothing is retained. If the City Attorney disagrees, the
+   City Recorder names the schedule (candidate: GRS-1720 above).
+3. **Ombudsperson and at-risk-employee text:** neither is on the City's site. City to supply, or
+   confirm where it lives.
+4. **For the City Attorney:** confirm the "operated … on behalf of" reading of the Esri-hosted
+   layers, and whether the April 2024 notice suffices or a lookup addendum is needed.
 5. **Optional, not legal requirements:** keep or remove `?parcel=` in the address bar, and keep or
    strip the URL from console messages. Both are on the visitor's own device.
 
@@ -81,14 +121,16 @@ Only these block finishing the notice. None can be answered from the repository.
 ### Privacy: Millcreek Property Lookup
 
 This page is operated by Millcreek. It covers the property lookup and the short-term-rental
-licensing lookup. [LINK to the City's notice for how to reach the City, get access to or correct
-your information, complain to the state data privacy ombudsperson, and, for at-risk employees, ask
-for private classification. To be supplied — open question 3.]
+licensing lookup. To reach the City, or to ask about access to or correction of your information,
+see the City's [Privacy Notice](https://www.millcreekut.gov/DocumentCenter/View/4317/Millcreek-Privacy-Notice)
+and its [Record Requests page](https://www.millcreekut.gov/384/Record-Requests). [City to supply:
+how to complain to the state data privacy ombudsperson, and how an at-risk employee asks for
+private classification. Neither is on the City's site today.]
 
 **What you type.** When you type an address or parcel number, the page sends it to the map and
 data services that hold the answers. Addresses are searched as you type, so part of an address may
-be sent before you finish. Those services are hosted by Esri for Millcreek's parcel, zoning and
-address data. The property lookup also asks FEMA's flood hazard service about the property; to do
+be sent before you finish. Those map layers belong to Millcreek and are hosted on Esri's ArcGIS Online cloud
+service. The property lookup also asks FEMA's flood hazard service about the property; to do
 that, it sends the shape and location of the parcel you chose.
 
 **What this page does not use.** No cookies. Nothing stored in your browser between visits. No
@@ -100,6 +142,6 @@ history and in links you copy. Selecting **Clear** removes it from the address b
 fails, the page may show the request, including the address you typed, in your browser's developer
 console.
 
-**Technical information from your visit.** [TO BE COMPLETED: what user data the City's web host,
-Esri or FEMA record (for example IP address, time and the address or parcel searched), the
-purposes, and the record series — open questions 1–2. If nothing is recorded, say so.]
+**Records of your visit.** The City does not log requests to this page and keeps no information
+about your visit. [OWNER STATEMENT — City to confirm before publishing.] Esri and FEMA run their
+own systems; their own privacy notices apply to what they receive.

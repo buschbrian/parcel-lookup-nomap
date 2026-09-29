@@ -78,7 +78,7 @@ Only these block finishing the notice. None can be answered from the repository.
 > what the audit above showed. States no retention period and no legal basis. Bracketed items
 > must be completed or removed before use; the notice must not be published with brackets in it.
 
-**Privacy: Millcreek Property Lookup**
+### Privacy: Millcreek Property Lookup
 
 This page is operated by Millcreek. It covers the property lookup and the short-term-rental
 licensing lookup. [LINK to the City's notice for how to reach the City, get access to or correct

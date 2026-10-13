@@ -26,8 +26,11 @@ const ADDRESS="1344 E CHAMBERS AVE";
    deployment actually serves. Deriving them means this list cannot drift from the
    policy, and a candidate that has quietly gained a new data host fails the
    `connect-src` assertion in check:deployment rather than being silently measured
-   here as if it were expected. */
-const csp=await readFile(new URL("../public/_headers",import.meta.url),"utf8");
+   here as if it were expected. The policy lives in staticwebapp.config.json since the
+   Netlify retirement deleted public/_headers (16 September 2026). */
+const csp=JSON.parse(await readFile(
+  new URL("../public/staticwebapp.config.json",import.meta.url),"utf8"))
+  .globalHeaders["Content-Security-Policy"];
 const SERVICE_HOSTS=[...csp.matchAll(/connect-src([^;]*)/g)]
   .flatMap(match=>match[1].trim().split(/\s+/))
   .filter(value=>value.startsWith("https://"))

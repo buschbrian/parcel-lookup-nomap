@@ -1174,14 +1174,16 @@ test("zoning and future land use each explain what they are, beside their own ro
   async({page})=>{
   await loadKnownProperty(page);
   await expect(zoningCard(page)).toContainText(
-    "Zoning is the law now. It sets what you may build on this property and how you may use it today.");
+    "It sets what you may build on this property and how you may use it today.");
   await expect(zoningCard(page)).toContainText(
-    "Future land use is the city's plan for later. It is policy in the General Plan. "+
-    "It does not change what you may build today.");
+    "It is policy in the General Plan. It does not change what you may build today.");
+  // Removed 13 October 2026 at Brian Busch's direction; they must not return.
+  await expect(zoningCard(page)).not.toContainText("Zoning is the law now.");
+  await expect(zoningCard(page)).not.toContainText("the city's plan for later");
   await page.locator("#copy").click();
   const copied=await page.evaluate(()=>navigator.clipboard.readText());
-  expect(copied).toContain("Zoning is the law now.");
-  expect(copied).toContain("Future land use is the city's plan for later.");
+  expect(copied).toContain("It sets what you may build on this property");
+  expect(copied).toContain("It is policy in the General Plan.");
 });
 
 /* ===========================================================================

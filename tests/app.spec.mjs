@@ -1281,10 +1281,10 @@ test("attribution sentences reach the copied text",async({page})=>{
   // these two are the only cards carrying an update date.
   expect(copied).toContain(
     "Sources: Millcreek GIS; parcel records originate with Salt Lake County, "+
-    "updated 3 September 2026, checked 9 August 2026 — Property record.");
+    "updated 7 October 2026, checked 9 August 2026 — Property record.");
   expect(copied).toContain(
     "Sources: Millcreek GIS; parcel records originate with Salt Lake County, "+
-    "updated 3 September 2026, checked 9 August 2026 — Location.");
+    "updated 7 October 2026, checked 9 August 2026 — Location.");
 });
 
 /* ---------------------------------------------------------------------------

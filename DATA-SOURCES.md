@@ -107,3 +107,9 @@ including the known hazard parcel, the fault special-study area, three informati
 screenings, the two historic designation types, the STR parcel and 400-foot buffer, and parity with
 the public Planning web map across 21 adopted local layers. No source URL, field or domain changed;
 this substantiates `CFG.release.dataReviewedOn = 2026-08-13` rather than recording a migration.
+
+**Parcel refresh, 13 October 2026.** `Millcreek_Parcels/0` was refreshed on 7 October 2026
+(`dataLastEditDate`; schema edit 8 October). `npm run check:services` passed 57/57 against live
+services, so no source URL or field changed. `CFG.release.dataUpdatedOn` and
+`CFG.parcel.sourceUpdatedOn` now read `2026-10-07`. Brian Busch reviewed the layers the same day,
+so `CFG.release.dataReviewedOn` is now `2026-10-13`. See docs/changes/CHANGES-2026-10-13.md.

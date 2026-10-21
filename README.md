@@ -211,7 +211,7 @@ Everything below is for people changing the code.
 
 ### Quick start
 
-The required release toolchain is **Node 22.15.0 with npm 10.9.2**. `.nvmrc` is the single source
+The required release toolchain is **Node 22.23.4 with npm 10.9.9**. `.nvmrc` is the single source
 for the Node version consumed by developers and GitHub Actions; load that version before installing
 dependencies. The same contract is mirrored in `package.json` (`engines` and `packageManager`) and
 in this paragraph; a drift test covers all three, so update them together.

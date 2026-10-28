@@ -8,7 +8,8 @@
     "views": [
       { "id": "deploy-path", "label": "Build and deploy", "focus": ["repo", "deploy_staging", "staging_swa", "gate", "production_swa"], "note": "One immutable artifact travels from a push on main to the public hostname." },
       { "id": "runtime-data", "label": "Runtime data flow", "focus": ["browser", "production_swa", "arcgis"], "note": "The served pages are static; every lookup is a live client-side call to Esri." },
-      { "id": "sibling-app", "label": "Sibling app link", "focus": ["production_swa", "planning_map"], "note": "The two municipal GIS apps share a resource group and link to each other." }
+      { "id": "sibling-app", "label": "Sibling app link", "focus": ["production_swa", "planning_map"], "note": "The two municipal GIS apps share a resource group and link to each other." },
+      { "id": "city-custody", "label": "City custody copy", "focus": ["repo", "mirror", "ado"], "note": "Each push to main is also copied to the City's Azure DevOps project; nothing deploys from there." }
     ]
   },
   "components": [
@@ -19,7 +20,9 @@
     { "id": "production_swa", "type": "cloud", "label": "Production", "sublabel": "lookup.gis.millcreekut.gov", "pos": [790, 300], "size": [160, 62] },
     { "id": "planning_map", "type": "external", "label": "millcreek-planning-map", "sublabel": "planning.gis.millcreekut.gov", "pos": [790, 112], "size": [170, 62] },
     { "id": "browser", "type": "frontend", "label": "Resident's browser", "sublabel": "the lookup's static pages", "pos": [1040, 300], "size": [190, 62] },
-    { "id": "arcgis", "type": "external", "label": "Millcreek GIS ArcGIS Online", "sublabel": "services9.arcgis.com (REST)", "pos": [1040, 430], "size": [220, 66] }
+    { "id": "arcgis", "type": "external", "label": "Millcreek GIS ArcGIS Online", "sublabel": "services9.arcgis.com (REST)", "pos": [1040, 430], "size": [220, 66] },
+    { "id": "mirror", "type": "security", "label": "mirror-to-azure-repos.yml", "sublabel": "push to main · OIDC, no stored key", "pos": [20, 160], "size": [170, 64] },
+    { "id": "ado", "type": "external", "label": "Azure DevOps city-code", "sublabel": "the City's record copy", "pos": [20, 30], "size": [170, 62] }
   ],
   "boundaries": [
     { "kind": "region", "label": "Azure — same resource group as the planning map", "wraps": ["staging_swa", "production_swa", "planning_map"], "pad": 14 }
@@ -31,14 +34,17 @@
     { "from": "gate", "to": "production_swa", "label": "same artifact, digest-checked", "variant": "security", "fromSide": "top", "toSide": "bottom" },
     { "from": "production_swa", "to": "browser", "label": "HTTPS", "variant": "emphasis" },
     { "from": "browser", "to": "arcgis", "label": "client-side REST calls", "variant": "emphasis", "fromSide": "bottom", "toSide": "top" },
-    { "from": "planning_map", "to": "production_swa", "label": "linked, both ways", "fromSide": "bottom", "toSide": "top" }
+    { "from": "planning_map", "to": "production_swa", "label": "linked, both ways", "fromSide": "bottom", "toSide": "top" },
+    { "from": "repo", "to": "mirror", "label": "push to main", "fromSide": "top", "toSide": "bottom" },
+    { "from": "mirror", "to": "ado", "label": "every branch + tag, additive", "variant": "security", "fromSide": "top", "toSide": "bottom" }
   ],
   "cards": [
     { "dot": "cyan", "title": "Build & deploy", "items": [
       "Every push to main builds, tests and stages one immutable artifact",
       "promote-production.yml re-uploads that artifact — it never rebuilds",
       "A required reviewer is the only path to production, by design",
-      "Rollback is a re-promotion of the last good staging run, not a second host"
+      "Rollback is a re-promotion of the last good staging run, not a second host",
+        "Each push to main is also mirrored to Azure DevOps (millcreekut/city-code), additive only"
     ] },
     { "dot": "emerald", "title": "Runtime data", "items": [
       "Both pages are static HTML + JS, with no backend of their own",

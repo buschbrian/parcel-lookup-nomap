@@ -76,7 +76,7 @@ Enter an address (`1344 East Chambers Avenue`) or a 14-digit parcel number, and 
 Plus **copy as plain text**, **print**, and a staffed fallback with a published response time.
 
 `business-licensing.html` is deliberately narrower. It reports only whether the selected parcel
-appears in the June 2026 published short-term-rental layer and whether the full parcel intersects a
+appears in the October 2026 published short-term-rental layer and whether the full parcel intersects a
 400-foot buffer belonging to another published rental. It excludes the selected parcel's own
 buffer and directs applicants to Business Licensing for a current, official determination.
 

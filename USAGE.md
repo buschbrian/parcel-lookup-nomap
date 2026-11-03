@@ -123,7 +123,7 @@ protected by a Millcreek local ordinance.
 
 ### Short-term-rental licensing page
 
-Use `business-licensing.html` for a focused licensing screen. It checks the published June 2026 STR
+Use `business-licensing.html` for a focused licensing screen. It checks the published October 2026 STR
 parcel layer and the 400-foot buffer layer against the full selected parcel. If the parcel is itself
 listed, its own buffer is removed before answering whether the parcel is within 400 feet of
 **another** published rental. The page does not expose owner or mailing-address fields and does not

@@ -905,8 +905,8 @@ test("informational hazards stay separate from regulatory hazard results",()=>{
 
 test("the licensing page is limited to published STR parcels and buffers",()=>{
   const CFG=businessConfig();
-  assert.match(CFG.rental.url,/Short_Term_Rentals_June_2026\/FeatureServer\/0/);
-  assert.match(CFG.buffer.url,/Short_Term_Rentals_June_2026\/FeatureServer\/1/);
+  assert.match(CFG.rental.url,/Licensed_Short_Term_Rentals\/FeatureServer\/0/);
+  assert.match(CFG.buffer.url,/Licensed_Short_Term_Rentals\/FeatureServer\/1/);
   assert.equal(CFG.buffer.distanceField,"BUFF_DIST");
   assert.doesNotMatch(licensingHtml,/own_name|own_addr|zoning district|FEMA flood/i);
   assert.match(licensingHtml,/801-214-2759/);

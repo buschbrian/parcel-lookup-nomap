@@ -46,13 +46,13 @@ async function mockArcGIS(page,state={}){
         parcel_id:known.ParcelID,prop_location:known.FullAdd
       },geometry:state.geometry||geometry}]});
     }
-    if(path.includes("/Short_Term_Rentals_June_2026/FeatureServer/0/")){
+    if(path.includes("/Licensed_Short_Term_Rentals/FeatureServer/0/")){
       if(state.countRental)state.countRental();
       if(state.rentalStatus)return route.fulfill({status:state.rentalStatus,body:"rejected"});
       if(state.malformedActiveResponse)return json({});
       return json({features:state.active?[{attributes:{parcel_id:address.ParcelID}}]:[]});
     }
-    if(path.includes("/Short_Term_Rentals_June_2026/FeatureServer/1/")){
+    if(path.includes("/Licensed_Short_Term_Rentals/FeatureServer/1/")){
       if(state.countBuffer)state.countBuffer();
       if(state.bufferFailure)return route.fulfill({status:503,body:"temporary failure"});
       if(state.malformedBufferResponse)return json({});
@@ -94,7 +94,7 @@ test("licensing page has no detectable axe violations before or after lookup",as
 
 test("the focused result reports another rental buffer without unrelated property topics",async({page})=>{
   await loadByKeyboard(page);
-  await expect(page.locator(".pair",{hasText:"Appears in the June 2026"})).toContainText("No");
+  await expect(page.locator(".pair",{hasText:"Appears in the October 2026"})).toContainText("No");
   await expect(page.locator(".pair",{hasText:"Within 400 feet"})).toContainText("Yes");
   await expect(page.locator("#results-body")).toContainText("Business Licensing makes the official measurement");
   await expect(page.locator("#results-body")).not.toContainText("Zoning");
@@ -108,7 +108,7 @@ test("a parcel's own buffer is excluded from the another-rental answer",async({p
   await mockArcGIS(page,{active:true,buffers:[{parcel_id:address.ParcelID,BUFF_DIST:400}]});
   await page.reload();
   await loadByKeyboard(page);
-  await expect(page.locator(".pair",{hasText:"Appears in the June 2026"})).toContainText("Yes");
+  await expect(page.locator(".pair",{hasText:"Appears in the October 2026"})).toContainText("Yes");
   await expect(page.locator(".pair",{hasText:"Within 400 feet"})).toContainText("No");
 });
 
@@ -163,7 +163,7 @@ test("a malformed rental response is Unknown rather than a rendering failure",as
   await mockArcGIS(page,{malformedActiveResponse:true});
   await page.reload();
   await loadByKeyboard(page);
-  await expect(page.locator(".pair",{hasText:"Appears in the June 2026"})).toContainText("Unknown");
+  await expect(page.locator(".pair",{hasText:"Appears in the October 2026"})).toContainText("Unknown");
   await expect(page.locator("#status")).toContainText("unavailable data source");
 });
 
@@ -277,7 +277,7 @@ test("a permanent service error is reported without a retry",async({page})=>{
   await page.reload();
   await page.evaluate(()=>{CFG.request.retryDelayMs=1});
   await loadByKeyboard(page);
-  await expect(page.locator(".pair",{hasText:"Appears in the June 2026"})).toContainText("Unknown");
+  await expect(page.locator(".pair",{hasText:"Appears in the October 2026"})).toContainText("Unknown");
   expect(requests).toBe(1);
 });
 
@@ -300,7 +300,7 @@ test("status glyphs are hidden from assistive technology",async({page})=>{
   await expect(flags).not.toHaveCount(0);
   for(const glyph of await page.locator("#results-body .flag .g").all())
     await expect(glyph).toHaveAttribute("aria-hidden","true");
-  await expect(page.locator(".pair",{hasText:"Appears in the June 2026"})).toContainText("No");
+  await expect(page.locator(".pair",{hasText:"Appears in the October 2026"})).toContainText("No");
   expect(await page.locator("#results-body .flag .g").count())
     .toBe(await flags.count());
 });
@@ -461,7 +461,7 @@ test("a licensing parcel whose boundary overflows the URL is posted and still an
     Buffer.byteLength(request.url,"utf8")>limit)).toEqual([]);
 
   // Yes/No, not the Unknown the 404 used to produce.
-  await expect(page.locator(".pair",{hasText:"Appears in the June 2026"})).toContainText("No");
+  await expect(page.locator(".pair",{hasText:"Appears in the October 2026"})).toContainText("No");
   await expect(page.locator(".pair",{hasText:"Within 400 feet"})).toContainText("Yes");
   await expect(page.locator("#results-body")).not.toContainText("did not return a result");
   await expect(page.locator("#status")).toContainText("Two licensing-map checks completed");

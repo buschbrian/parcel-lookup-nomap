@@ -22,7 +22,7 @@ and, where possible, compare local copies with the responsible agency's current 
 | Surface fault rupture | Replaced the direct fault-trace proximity screen with the map's `Fault_Study_Area/0` special-study-area polygon | Full-parcel intersection; explicit Yes/No |
 | Flood hazard | FEMA NFHL remains primary; `Flood_Hazard_Zones_Final_Update/0` is queried invisibly for comparison | Per-parcel classifications are normalized and compared; mismatches are visible |
 | Informational geologic hazards | Added `LiquefactionPotential/0`, `DebrisFlow_WasatchFront_ClipBuffer/0` and `AlluvialFans/0` in a separate non-regulatory group | Full-parcel queries, permanent caveat, and highest-category test for overlapping liquefaction polygons |
-| Short-term-rental licensing | Added a separate licensing-only page using `Short_Term_Rentals_June_2026/0` and `/1` | Exact active-parcel check; full-parcel buffer intersection; own buffer excluded; live envelope test confirms 400 feet despite the inconsistent `BUFF_DIST` unit/alias |
+| Short-term-rental licensing | Added a separate licensing-only page using `Licensed_Short_Term_Rentals/0` and `/1` (replaced the June 2026 snapshot service on 28 October 2026, matching the web map) | Exact active-parcel check; full-parcel buffer intersection; own buffer excluded; live envelope test confirms 400 feet despite the inconsistent `BUFF_DIST` unit/alias |
 
 The liquefaction service description credits an AGRC/UGS digitization of mapping from 1994 UGS
 contract reports. The debris-flow and alluvial-fan item metadata do not name an external steward.

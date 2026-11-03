@@ -108,7 +108,7 @@ footer{margin-top:3rem;border-top:2px solid var(--line-soft);background:var(--su
 </div></header>
 
 <main id="main" class="wrap" tabindex="-1">
-  <p class="lede">Use an address or parcel number to screen two published licensing-map questions: whether the parcel appears in Millcreek's June 2026 short-term-rental layer, and whether it touches the published 400-foot buffer around another listed property.</p>
+  <p class="lede">Use an address or parcel number to screen two published licensing-map questions: whether the parcel appears in Millcreek's October 2026 short-term-rental layer, and whether it touches the published 400-foot buffer around another listed property.</p>
   <div class="notice">
     <p><strong>This is a screening result, not an official license, eligibility, distance, approval, or denial decision.</strong> Confirm with Business Licensing.</p>
   </div>
@@ -178,7 +178,7 @@ footer{margin-top:3rem;border-top:2px solid var(--line-soft);background:var(--su
    ================================================================== */
 const CFG = {
   org:"https://services9.arcgis.com/XRrSFvEwSsReIxuA/arcgis/rest/services",
-  release:{version:"2026.10.21",publishedOn:"2026-10-21",sourceSnapshot:"June 2026"},
+  release:{version:"2026.10.21",publishedOn:"2026-10-21",sourceSnapshot:"October 2026"},
   // maxConcurrent caps simultaneous requests to ArcGIS. This page peaks at 4 requests,
   // so the cap is never reached here; it is set because the shared request layer
   // requires it, and a layer added to this screen later should meet the same ceiling.
@@ -199,8 +199,8 @@ const CFG = {
     streetAliases:{"MILL CREEK":"MILLCREEK","DEER CREEK":"DEERCREEK"}
   },
   parcel:{url:"/Millcreek_Parcels/FeatureServer/0",idField:"parcel_id"},
-  rental:{url:"/Short_Term_Rentals_June_2026/FeatureServer/0",idField:"parcel_id"},
-  buffer:{url:"/Short_Term_Rentals_June_2026/FeatureServer/1",originField:"parcel_id",distanceField:"BUFF_DIST"}
+  rental:{url:"/Licensed_Short_Term_Rentals/FeatureServer/0",idField:"parcel_id"},
+  buffer:{url:"/Licensed_Short_Term_Rentals/FeatureServer/1",originField:"parcel_id",distanceField:"BUFF_DIST"}
 };
 /* ==================================================================
    No further edits needed below this line.
@@ -516,7 +516,7 @@ function renderResult(record,parcelId,activeResult,bufferResult,label){
     const nearby=bufferFeatures.map(feature=>feature.attributes).filter(attributes=>String(attributes[CFG.buffer.originField]||"")!==String(parcelId));
     nearbyState=presenceState(nearby);
   }
-  list.append(flagPair("Appears in the June 2026 published STR parcel layer",activeState),flagPair("Within 400 feet of another published STR",nearbyState));screen.append(list);
+  list.append(flagPair("Appears in the October 2026 published STR parcel layer",activeState),flagPair("Within 400 feet of another published STR",nearbyState));screen.append(list);
   let meaning;
   if(activeState==="unknown"||nearbyState==="unknown")meaning="At least one source did not return a result. Business Licensing must verify both the listing and separation screen.";
   else if(activeState==="yes"&&nearbyState==="yes")meaning="The map shows the selected parcel in the published rental layer and in one or more mapped buffers for other published rentals. Business Licensing must confirm what this means for a current license or future application.";

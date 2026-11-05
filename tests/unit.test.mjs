@@ -1320,7 +1320,7 @@ test("deterministic CI is reproducible and preserves failure evidence",async()=>
   for(const [action,sha,tag] of [
     ["actions/checkout","3d3c42e5aac5ba805825da76410c181273ba90b1","v7.0.1"],
     ["actions/setup-node","949feb2413d6458794dcd2491c4babbbce0c15c1","v7.1.0"],
-    ["actions/setup-python","5fda3b95a4ea91299a34e894583c3862153e4b97","v7.0.0"],
+    ["actions/setup-python","6d4fd22b20465ccc0f7354476588e8df7c9ca0e0","v7.1.0"],
     ["actions/upload-artifact","cf430e030ddbb5b0abf93d22962f4752f3646cd9","v7.0.2"]
   ]){
     assert.match(workflow,new RegExp(action.replace("/","\\/")+"@"+sha+"\\s+# "+tag),
